@@ -1,4 +1,5 @@
-// src/lib/session.ts
+"use client";
+
 export type SessionData = {
   access_token: string;
   role: string;
@@ -30,12 +31,21 @@ export function clearSession() {
 }
 
 export function getSession() {
-  const token = localStorage.getItem("celex_token");
-  const role = localStorage.getItem("celex_role");
-  const email = localStorage.getItem("celex_email");
+  const token  = localStorage.getItem("celex_token");
+  const role   = localStorage.getItem("celex_role");
+  const email  = localStorage.getItem("celex_email");
   const nombre = localStorage.getItem("celex_nombre") || "";
-  const curp = localStorage.getItem("celex_curp") || "";
+  const curp   = localStorage.getItem("celex_curp") || "";
   const is_ipn = localStorage.getItem("celex_is_ipn") === "true";
   const boleta = localStorage.getItem("celex_boleta") || "";
   return { token, role, email, nombre, curp, is_ipn, boleta };
+}
+
+// Helper para apiFetch
+export function getToken(): string | null {
+  try {
+    return localStorage.getItem("celex_token");
+  } catch {
+    return null;
+  }
 }

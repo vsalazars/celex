@@ -58,7 +58,7 @@ def main():
             is_ipn=False,
             boleta=None,
             curp=curp,
-            role="superadmin",              # roles: student | teacher | coordinator | admin | superadmin
+            role="superuser",              # roles: student | teacher | coordinator | admin | superadmin
             hashed_password=get_password_hash(pwd),
             is_active=True,
         )

@@ -1,3 +1,4 @@
+# app/main.py
 import os
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +9,10 @@ from .database import Base, engine, get_db
 from .models import User, UserRole as ModelUserRole          # 👈 importa el Enum del modelo
 from .schemas import UserCreate, UserOut, LoginRequest, TokenResponse, UserRole
 from .auth import get_password_hash, verify_password, create_access_token
+
+# ✅ Routers
+from .routers.admin import router as admin_router
+from .routers.coordinacion_docentes import router as coordinacion_docentes_router  # 👈 NUEVO
 
 Base.metadata.create_all(bind=engine)
 
@@ -20,6 +25,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Routers montados
+app.include_router(admin_router)
+app.include_router(coordinacion_docentes_router)  # 👈 NUEVO
 
 @app.post("/auth/register", response_model=UserOut, status_code=201)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
@@ -59,7 +68,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
 
-    token = create_access_token({"sub": str(user.id), "email": user.email, "role": user.role})
+    # ✅ AJUSTE: usar email en "sub" para que get_current_user() resuelva por email sin problemas
+    token = create_access_token({"sub": user.email, "email": user.email, "role": user.role})
     return TokenResponse(
         access_token=token,
         role=user.role,

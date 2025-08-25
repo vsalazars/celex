@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
@@ -82,6 +82,11 @@ class UserOut(BaseModel):
     boleta: Optional[str]
     curp: str
     role: UserRole
+    # Campos útiles en listados
+    # Nota: asumo que tu modelo User tiene estos campos:
+    # - is_active: bool
+    # - created_at: datetime
+    is_active: bool | None = None
 
     class Config:
         from_attributes = True  # pydantic v2: permite ORM -> schema
@@ -97,3 +102,17 @@ class TokenResponse(BaseModel):
     curp: str
     is_ipn: bool                 # 👈 NUEVO
     boleta: Optional[str] = None # 👈 NUEVO
+
+
+# ---------- Listados de coordinadores ----------
+class CoordinatorListResponse(BaseModel):
+    items: List[UserOut]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+# ---------- Toggle estado ----------
+class ToggleActiveRequest(BaseModel):
+    is_active: bool
