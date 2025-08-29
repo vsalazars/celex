@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { clearSession, getSession } from "@/lib/sessions";
 import RequireAuth from "@/components/RequireAuth";
+import AlumnoShell from "@/components/alumno/Shell";
+import { Button } from "@/components/ui/button";
 
 export default function AlumnoDashboardPage() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function AlumnoDashboardPage() {
 
   useEffect(() => {
     const { token, role, email, nombre, curp, is_ipn, boleta } = getSession();
-    if (!token || role !== "student") return; // RequireAuth ya redirige si no coincide
+    if (!token || role !== "student") return;
     setRole(role || "");
     setEmail(email || "");
     setNombre(nombre || "Alumno");
@@ -34,39 +35,66 @@ export default function AlumnoDashboardPage() {
 
   return (
     <RequireAuth roles={["student"]}>
-      {loading ? (
-        <p className="p-6">Verificando sesión...</p>
-      ) : (
-        <main className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold">Panel del Alumno</h1>
-            <Button variant="outline" onClick={handleLogout}>
-              Cerrar sesión
-            </Button>
-          </div>
+      <AlumnoShell title="Panel del Alumno">
+        {loading ? (
+          <p className="p-6">Verificando sesión...</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-2xl border bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">
+                  Hola, <span className="text-neutral-900">{nombre}</span>
+                </h2>
+                <Button variant="outline" onClick={handleLogout}>
+                  Cerrar sesión
+                </Button>
+              </div>
 
-          <div className="rounded-lg border p-4 shadow-sm bg-white space-y-1">
-            <p className="text-lg">
-              👋 Bienvenido, <span className="font-semibold">{nombre}</span>
-            </p>
-            <p className="text-neutral-600">📧 {email}</p>
-            <p className="text-neutral-600">🆔 CURP: {curp}</p>
-            <p className="text-neutral-500">👤 Perfil: {role}</p>
-            {isIpn && (
-              <p className="text-neutral-600">
-                🎓 IPN · Boleta: <span className="font-medium">{boleta}</span>
-              </p>
-            )}
-          </div>
+              <div className="mt-3 grid sm:grid-cols-2 gap-2 text-sm text-neutral-700">
+                <div>📧 {email}</div>
+                <div>🆔 CURP: {curp}</div>
+                <div>👤 Perfil: {role}</div>
+                {isIpn && <div>🎓 IPN · Boleta: <b>{boleta}</b></div>}
+              </div>
+            </div>
 
-          <section className="mt-6">
-            <h2 className="text-xl font-semibold">Contenido protegido</h2>
-            <p className="text-neutral-700 mt-2">
-              Aquí irá la información, herramientas y recursos exclusivos para alumnos.
-            </p>
-          </section>
-        </main>
-      )}
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                <h3 className="font-medium">Inscripción</h3>
+                <p className="text-sm text-neutral-600 mt-1">
+                  Revisa grupos disponibles y realiza tu inscripción.
+                </p>
+                <Button
+                  className="mt-3"
+                  onClick={() => router.push("/alumno/inscripcion")}
+                >
+                  Ver grupos
+                </Button>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                <h3 className="font-medium">Mis cursos</h3>
+                <p className="text-sm text-neutral-600 mt-1">
+                  Consulta horarios y materiales de tus cursos.
+                </p>
+                <Button className="mt-3" onClick={() => router.push("/alumno/cursos")}>
+                  Ir a mis cursos
+                </Button>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-4 shadow-sm">
+                <h3 className="font-medium">Pagos</h3>
+                <p className="text-sm text-neutral-600 mt-1">
+                  Descarga fichas y confirma pagos.
+                </p>
+                <Button className="mt-3" onClick={() => router.push("/alumno/pagos")}>
+                  Gestionar pagos
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AlumnoShell>
     </RequireAuth>
   );
 }

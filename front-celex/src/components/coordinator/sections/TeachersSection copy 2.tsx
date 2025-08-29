@@ -83,14 +83,7 @@ import type {
   CicloListResponse,
   ListCiclosParams,
 } from "@/lib/types";
-import { Languages, Layers, Clock, GraduationCap } from "lucide-react";
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
 
 /* ===================== Helpers ===================== */
@@ -568,96 +561,9 @@ function TeacherCyclesSheetInline({
 
   const items = resp?.items ?? [];
 
-
-// Combobox reutilizable con Tooltip + Popover + Command
-function FilterCombobox({
-  icon,
-  value,
-  onChange,
-  options,
-  tooltip, // 👈 NUEVO
-}: {
-  icon: React.ReactNode;
-  value: string;
-  onChange: (v: string) => void;
-  options: { label: string; value: string }[];
-  tooltip: string; // 👈 NUEVO
-}) {
-  const [open, setOpen] = useState(false);
-  const current = options.find((o) => o.value === value);
-
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <TooltipTrigger asChild>
-              <Button variant="outline" className="h-9 min-w-[120px] justify-between">
-                <div className="flex items-center gap-2">
-                  {icon}
-                  <span className="truncate text-sm">
-                    {current ? current.label : "—"}
-                  </span>
-                </div>
-                <SlidersHorizontal className="ml-1 h-4 w-4 shrink-0 opacity-60" />
-              </Button>
-            </TooltipTrigger>
-          </PopoverTrigger>
-
-          <PopoverContent className="w-[220px] p-0" align="start">
-            <Command>
-              <CommandInput placeholder="Buscar opción…" />
-              <CommandEmpty>Sin coincidencias.</CommandEmpty>
-              <div className="max-h-56 overflow-auto">
-                <CommandGroup>
-                  {options.map((opt) => (
-                    <CommandItem
-                      key={opt.value}
-                      value={opt.label}
-                      onSelect={() => {
-                        onChange(opt.value);
-                        setOpen(false);
-                      }}
-                    >
-                      {opt.label}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </div>
-            </Command>
-
-            <div className="border-t p-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start"
-                onClick={() => {
-                  onChange(options[0]?.value ?? "all");
-                  setOpen(false);
-                }}
-              >
-                <X className="mr-2 h-4 w-4" />
-                Limpiar
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
-
-        <TooltipContent side="top">
-          {tooltip}
-          {current && current.value !== "all" ? `: ${current.label}` : ""}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-
-
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-6xl p-0 flex flex-col">
+      <SheetContent side="right" className="w-full sm:max-w-3xl p-0 flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b bg-white/70 backdrop-blur">
           <SheetHeader>
@@ -682,84 +588,117 @@ function FilterCombobox({
       />
     </div>
 
-   {/* Comboboxes por filtro (buscables) */}
-      <div className="flex flex-wrap items-center gap-2">
-      <FilterCombobox
-        icon={<Languages className="h-4 w-4" />}
-        value={fIdioma}
-        onChange={setFIdioma}
-        tooltip="Idioma" // 👈 NUEVO
-        options={[
-          { label: "Todos", value: "all" },
-          { label: "Inglés", value: "ingles" },
-          { label: "Francés", value: "frances" },
-          { label: "Alemán", value: "aleman" },
-          { label: "Italiano", value: "italiano" },
-          { label: "Portugués", value: "portugues" },
-        ]}
-      />
-
-      <FilterCombobox
-        icon={<Layers className="h-4 w-4" />}
-        value={fModalidad}
-        onChange={setFModalidad}
-        tooltip="Modalidad" // 👈 NUEVO
-        options={[
-          { label: "Todas", value: "all" },
-          { label: "Intensivo", value: "intensivo" },
-          { label: "Sabatino", value: "sabatino" },
-          { label: "Semestral", value: "semestral" },
-        ]}
-      />
-
-      <FilterCombobox
-        icon={<Clock className="h-4 w-4" />}
-        value={fTurno}
-        onChange={setFTurno}
-        tooltip="Turno" // 👈 NUEVO
-        options={[
-          { label: "Todos", value: "all" },
-          { label: "Matutino", value: "matutino" },
-          { label: "Vespertino", value: "vespertino" },
-          { label: "Mixto", value: "mixto" },
-        ]}
-      />
-
-      <FilterCombobox
-        icon={<GraduationCap className="h-4 w-4" />}
-        value={fNivel}
-        onChange={setFNivel}
-        tooltip="Nivel" // 👈 NUEVO
-        options={[
-          { label: "Todos", value: "all" },
-          { label: "A1", value: "A1" },
-          { label: "A2", value: "A2" },
-          { label: "B1", value: "B1" },
-          { label: "B2", value: "B2" },
-          { label: "C1", value: "C1" },
-          { label: "C2", value: "C2" },
-        ]}
-      />
-
-
-
-        {(qSheet || fIdioma !== "all" || fModalidad !== "all" || fTurno !== "all" || fNivel !== "all") ? (
-          <Button
-            variant="outline"
-            className="h-9"
-            onClick={() => {
-              setQSheet("");
-              setFIdioma("all");
-              setFModalidad("all");
-              setFTurno("all");
-              setFNivel("all");
-            }}
-          >
-            Limpiar
+    {/* Botón de filtros avanzados con Popover + Command */}
+    <div className="flex items-center gap-2">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className="h-9 gap-2">
+            <SlidersHorizontal className="h-4 w-4" />
+            Filtros
           </Button>
-        ) : null}
-      </div>
+        </PopoverTrigger>
+        <PopoverContent className="w-[360px] p-0" align="end">
+          <Command>
+            <CommandInput placeholder="Filtrar por… (escribe y selecciona)" />
+            <CommandEmpty>Sin coincidencias.</CommandEmpty>
 
+            {/* Idioma */}
+            <CommandGroup heading="Idioma">
+              {[
+                { label: "Todos", value: "all" },
+                { label: "Inglés", value: "ingles" },
+                { label: "Francés", value: "frances" },
+                { label: "Alemán", value: "aleman" },
+                { label: "Italiano", value: "italiano" },
+                { label: "Portugués", value: "portugues" },
+              ].map(opt => (
+                <CommandItem
+                  key={`idioma-${opt.value}`}
+                  value={`idioma:${opt.value}`}
+                  onSelect={() => setFIdioma(opt.value)}
+                >
+                  {opt.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+
+            {/* Modalidad */}
+            <CommandGroup heading="Modalidad">
+              {[
+                { label: "Todas", value: "all" },
+                { label: "Intensivo", value: "intensivo" },
+                { label: "Sabatino", value: "sabatino" },
+                { label: "Semestral", value: "semestral" },
+              ].map(opt => (
+                <CommandItem
+                  key={`modalidad-${opt.value}`}
+                  value={`modalidad:${opt.value}`}
+                  onSelect={() => setFModalidad(opt.value)}
+                >
+                  {opt.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+
+            {/* Turno */}
+            <CommandGroup heading="Turno">
+              {[
+                { label: "Todos", value: "all" },
+                { label: "Matutino", value: "matutino" },
+                { label: "Vespertino", value: "vespertino" },
+                { label: "Mixto", value: "mixto" },
+              ].map(opt => (
+                <CommandItem
+                  key={`turno-${opt.value}`}
+                  value={`turno:${opt.value}`}
+                  onSelect={() => setFTurno(opt.value)}
+                >
+                  {opt.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+
+            {/* Nivel */}
+            <CommandGroup heading="Nivel">
+              {[
+                { label: "Todos", value: "all" },
+                { label: "A1", value: "A1" },
+                { label: "A2", value: "A2" },
+                { label: "B1", value: "B1" },
+                { label: "B2", value: "B2" },
+                { label: "C1", value: "C1" },
+                { label: "C2", value: "C2" },
+              ].map(opt => (
+                <CommandItem
+                  key={`nivel-${opt.value}`}
+                  value={`nivel:${opt.value}`}
+                  onSelect={() => setFNivel(opt.value)}
+                >
+                  {opt.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Command>
+        </PopoverContent>
+      </Popover>
+
+      {/* Limpiar todo */}
+      {(qSheet || fIdioma !== "all" || fModalidad !== "all" || fTurno !== "all" || fNivel !== "all") ? (
+        <Button
+          variant="outline"
+          className="h-9"
+          onClick={() => {
+            setQSheet("");
+            setFIdioma("all");
+            setFModalidad("all");
+            setFTurno("all");
+            setFNivel("all");
+          }}
+        >
+          Limpiar
+        </Button>
+      ) : null}
+    </div>
   </div>
 
   {/* Chips de filtros activos */}
@@ -873,7 +812,7 @@ function FilterCombobox({
                           <td className="px-3 py-2 tabular-nums">
                             <div className="flex items-center gap-1.5">
                               <Clock3 className="h-3.5 w-3.5" />
-                               {horario}
+                              {diasTxt} {diasTxt !== "—" ? "·" : ""} {horario}
                             </div>
                           </td>
                           <td className="px-3 py-2 tabular-nums">

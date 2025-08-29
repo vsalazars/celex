@@ -50,7 +50,7 @@ import type {
   CicloDTO, CicloListResponse, ListCiclosParams, Teacher
 } from "@/lib/types";
 
-/* ========================= Utils ========================= */
+// ======= Utils =======
 type DateRange = { from?: Date; to?: Date };
 const fmt = new Intl.DateTimeFormat("es-MX", { day: "2-digit", month: "short", year: "numeric" });
 const fmtRange = (r?: DateRange) =>
@@ -89,7 +89,7 @@ const DIAS_OPCIONES = [
   { key: "sabado", label: "Sáb" },
 ];
 
-// Zod
+// ======= Zod Schema =======
 const RangeSchema = z.object({
   from: z.date({ required_error: "Requerido" }),
   to: z.date({ required_error: "Requerido" }),
@@ -123,11 +123,12 @@ const FormSchema = z.object({
 
   inscripcion: RangeSchema,
   curso: RangeSchema,
-  colocacion: OptionalRangeSchema,
+  colocacion: OptionalRangeSchema, // opcional
 
   examenMT: z.date().optional(),
   examenFinal: z.date().optional(),
 
+  // docente opcional (Select devuelve string o "")
   docente_id: z.string().optional(),
 
   notas: z.string().optional(),
@@ -146,27 +147,35 @@ const FormSchema = z.object({
 
 type FormType = z.infer<typeof FormSchema>;
 
+// ======= EMPTY FORM =======
 const EMPTY_FORM: FormType = {
   codigo: "",
   idioma: undefined as unknown as FormType["idioma"],
   modalidad: undefined as unknown as FormType["modalidad"],
   turno: undefined as unknown as FormType["turno"],
   nivel: undefined as unknown as FormType["nivel"],
+
   modalidad_asistencia: "presencial",
   aula: "",
+
   cupo_total: 0,
+
   dias: [],
   hora_inicio: "" as any,
   hora_fin: "" as any,
+
   inscripcion: {} as any,
   curso: {} as any,
   colocacion: {} as any,
+
   examenMT: undefined,
   examenFinal: undefined,
+
   docente_id: undefined,
   notas: "",
 };
 
+// ======= Pickers =======
 function DatePicker({
   label, value, onChange, placeholder = "Seleccionar fecha", error,
 }: { label: string; value?: Date; onChange: (d?: Date) => void; placeholder?: string; error?: string; }) {
@@ -228,14 +237,11 @@ function DateRangePicker({
   );
 }
 
-/* ========================= MAIN ========================= */
+// ======= MAIN =======
 export default function GroupsSection() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"create" | "edit">("create");
   const [selected, setSelected] = useState<CicloDTO | null>(null);
-
-  // Vista: tarjetas o lista
-  const [view, setView] = useState<"cards" | "list">("cards");
 
   // Toolbar
   const [q, setQ] = useState("");
@@ -332,6 +338,7 @@ export default function GroupsSection() {
       notas: values.notas?.trim() || undefined,
     };
 
+    // docente opcional
     const docenteId = values.docente_id && values.docente_id.length ? Number(values.docente_id) : undefined;
     if (docenteId) payload.docente_id = docenteId;
 
@@ -423,12 +430,10 @@ export default function GroupsSection() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button className="gap-2 rounded-xl shadow-sm" onClick={openCreate}>
-            <PlusCircle className="h-4 w-4" />
-            Crear nuevo ciclo
-          </Button>
-        </div>
+        <Button className="gap-2 rounded-xl shadow-sm" onClick={openCreate}>
+          <PlusCircle className="h-4 w-4" />
+          Crear nuevo ciclo
+        </Button>
       </header>
 
       {/* Toolbar */}
@@ -507,26 +512,6 @@ export default function GroupsSection() {
                 Limpiar
               </Button>
             ) : null}
-
-            {/* Toggle vista */}
-            <div className="flex items-center gap-2 ml-2">
-              <Button
-                type="button"
-                variant={view === "cards" ? "default" : "outline"}
-                className="rounded-xl h-9"
-                onClick={() => setView("cards")}
-              >
-                Tarjetas
-              </Button>
-              <Button
-                type="button"
-                variant={view === "list" ? "default" : "outline"}
-                className="rounded-xl h-9"
-                onClick={() => setView("list")}
-              >
-                Lista
-              </Button>
-            </div>
           </div>
         </div>
 
@@ -535,15 +520,11 @@ export default function GroupsSection() {
         {/* Lista + paginación */}
         {items.length ? (
           <>
-            {view === "cards" ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {items.map((c) => (
-                  <CardCiclo key={c.id} c={c} onEdit={onEdit} onDelete={onDelete} />
-                ))}
-              </div>
-            ) : (
-              <TableCiclos items={items} onEdit={onEdit} onDelete={onDelete} />
-            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {items.map((c) => (
+                <CardCiclo key={c.id} c={c} onEdit={onEdit} onDelete={onDelete} />
+              ))}
+            </div>
 
             <div className="mt-4 flex items-center justify-between">
               <span className="text-xs text-neutral-500">
@@ -609,7 +590,7 @@ export default function GroupsSection() {
   );
 }
 
-/* ========================= Subcomponentes ========================= */
+/* ======= Subcomponentes ======= */
 
 function CardCiclo({ c, onEdit, onDelete }: {
   c: CicloDTO;
@@ -634,297 +615,178 @@ function CardCiclo({ c, onEdit, onDelete }: {
   const diasTexto = dias.length ? dias.map(d => abreviarDia(d)).join(" • ") : "—";
   const horarioTexto = hInicio && hFin ? `${hhmm(hInicio)}–${hhmm(hFin)}` : "—";
 
+
   const modalidadAsistencia = (c as any).modalidad_asistencia as "presencial" | "virtual" | undefined;
   const aula = (c as any).aula as string | undefined;
 
-  return (
-    <div className="rounded-2xl border bg-white/60 p-4 shadow-sm hover:shadow-md transition-shadow">
-      {/* Encabezado: Código + Docente */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold tracking-tight">{c.codigo}</h3>
-          {c.docente && (c.docente.first_name || c.docente.last_name) ? (
-            <div className="mt-0.5 text-[12px] text-neutral-600">
-              Docente:&nbsp;
-              <span className="font-medium">
-                {(c.docente.first_name ?? "") + " " + (c.docente.last_name ?? "")}
-              </span>
-              {c.docente.email ? (
-                <span className="text-neutral-400"> · {c.docente.email}</span>
-              ) : null}
-            </div>
-          ) : (
-            <div className="mt-0.5 text-[12px] text-neutral-400 italic">Sin docente asignado</div>
-          )}
-        </div>
-
-        {/* Menú acciones */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onEdit(c)}>
-              <Pencil className="mr-2 h-4 w-4" /> Editar
-            </DropdownMenuItem>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <DropdownMenuItem className="text-red-600">
-                  <Trash2 className="mr-2 h-4 w-4" /> Eliminar
-                </DropdownMenuItem>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Eliminar ciclo</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    ¿Seguro que deseas eliminar <b>{c.codigo}</b>? Esta acción no se puede deshacer.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction
-                    className="bg-red-600 hover:bg-red-700"
-                    onClick={() => onDelete(c)}
-                  >
-                    Sí, eliminar
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* Chips informativos */}
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        <Badge variant="secondary" className="rounded-full">{c.idioma}</Badge>
-        <Badge variant="secondary" className="rounded-full">{c.modalidad}</Badge>
-        <Badge variant="outline" className="rounded-full">{c.turno}</Badge>
-
-        {nivel && (
-          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-neutral-700">
-            <GraduationCap className="h-3.5 w-3.5" /> {nivel}
-          </span>
-        )}
-
-        <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-neutral-700">
-          <Users className="h-3.5 w-3.5" /> {cupo} lugares
-        </span>
-
-        {modalidadAsistencia && (
-          <Badge variant="secondary" className="rounded-full capitalize">{modalidadAsistencia}</Badge>
-        )}
-
-        {aula && (
-          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-neutral-700">
-            <Building2 className="h-3.5 w-3.5" /> {aula}
-          </span>
-        )}
-      </div>
-
-      {/* Separador */}
-      <div className="my-3"><Separator /></div>
-
-      {/* Bloques de info en grilla */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {/* Días & Horario */}
-        <div className="rounded-xl border bg-white/50 p-3">
-          <div className="flex items-center gap-1.5 text-xs text-neutral-700">
-            <CalendarDays className="h-3.5 w-3.5" />
-            <span className="font-medium text-neutral-800">Días</span>
-          </div>
-          <div className="mt-1 text-[12px] text-neutral-700">{diasTexto}</div>
-
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-neutral-700">
-            <Clock3 className="h-3.5 w-3.5" />
-            <span className="font-medium text-neutral-800">Horario</span>
-          </div>
-          <div className="mt-1 text-[12px] tabular-nums">{horarioTexto}</div>
-        </div>
-
-        {/* Inscripción & Curso */}
-        <div className="rounded-xl border bg-white/50 p-3">
-          <div className="text-xs font-medium text-neutral-800">Inscripción</div>
-          <div className="mt-1 text-[12px] tabular-nums">
-            {c.inscripcion?.from ? d(c.inscripcion.from) : "—"} – {c.inscripcion?.to ? d(c.inscripcion.to) : "—"}
-          </div>
-
-          <div className="mt-2 text-xs font-medium text-neutral-800">Periodo del curso</div>
-          <div className="mt-1 text-[12px] tabular-nums">
-            {c.curso?.from ? d(c.curso.from) : "—"} – {c.curso?.to ? d(c.curso.to) : "—"}
-          </div>
-        </div>
-
-        {/* Colocación & Exámenes (si hay) */}
-        {(c.colocacion?.from || c.colocacion?.to || c.examenMT || c.examenFinal) ? (
-          <div className="rounded-xl border bg-white/50 p-3">
-            {(c.colocacion?.from || c.colocacion?.to) && (
-              <>
-                <div className="text-xs font-medium text-neutral-800">Colocación</div>
-                <div className="mt-1 text-[12px] tabular-nums">
-                  {c.colocacion?.from ? d(c.colocacion.from) : "—"} – {c.colocacion?.to ? d(c.colocacion.to) : "—"}
-                </div>
-              </>
-            )}
-
-            {c.examenMT && (
-              <>
-                <div className="mt-2 text-xs font-medium text-neutral-800">Examen MT</div>
-                <div className="mt-1 text-[12px] tabular-nums">{d(c.examenMT)}</div>
-              </>
-            )}
-
-            {c.examenFinal && (
-              <>
-                <div className="mt-2 text-xs font-medium text-neutral-800">Examen final</div>
-                <div className="mt-1 text-[12px] tabular-nums">{d(c.examenFinal)}</div>
-              </>
-            )}
+return (
+  <div className="rounded-2xl border bg-white/60 p-4 shadow-sm hover:shadow-md transition-shadow">
+    {/* Encabezado: Código + Docente */}
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold tracking-tight">{c.codigo}</h3>
+        {c.docente && (c.docente.first_name || c.docente.last_name) ? (
+          <div className="mt-0.5 text-[12px] text-neutral-600">
+            Docente:&nbsp;
+            <span className="font-medium">
+              {(c.docente.first_name ?? "") + " " + (c.docente.last_name ?? "")}
+            </span>
+            {c.docente.email ? (
+              <span className="text-neutral-400"> · {c.docente.email}</span>
+            ) : null}
           </div>
         ) : (
-          <div className="rounded-xl border bg-white/30 p-3 text-[12px] text-neutral-400 flex items-center justify-center">
-            Sin fechas de colocación o exámenes
-          </div>
+          <div className="mt-0.5 text-[12px] text-neutral-400 italic">Sin docente asignado</div>
         )}
       </div>
 
-      {/* Notas */}
-      {c.notas ? (
-        <>
-          <div className="my-3"><Separator /></div>
-          <p className="text-xs text-neutral-700">
-            <span className="font-medium">Notas:</span> {c.notas}
-          </p>
-        </>
-      ) : null}
+      {/* Menú acciones */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => onEdit(c)}>
+            <Pencil className="mr-2 h-4 w-4" /> Editar
+          </DropdownMenuItem>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <DropdownMenuItem className="text-red-600">
+                <Trash2 className="mr-2 h-4 w-4" /> Eliminar
+              </DropdownMenuItem>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Eliminar ciclo</AlertDialogTitle>
+                <AlertDialogDescription>
+                  ¿Seguro que deseas eliminar <b>{c.codigo}</b>? Esta acción no se puede deshacer.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-red-600 hover:bg-red-700"
+                  onClick={() => onDelete(c)}
+                >
+                  Sí, eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
-  );
-}
 
-function TableCiclos({
-  items,
-  onEdit,
-  onDelete,
-}: {
-  items: CicloDTO[];
-  onEdit: (c: CicloDTO) => void;
-  onDelete: (c: CicloDTO) => void;
-}) {
-  const d = (s?: string) => {
-    if (!s) return "—";
-    const dt = new Date(`${s}T00:00:00`);
-    const day = dt.toLocaleString("es-MX", { day: "2-digit" });
-    const month = dt.toLocaleString("es-MX", { month: "short" });
-    const year = dt.toLocaleString("es-MX", { year: "2-digit" });
-    return `${day}/${month}/${year}`;
-  };
+    {/* Chips informativos */}
+    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <Badge variant="secondary" className="rounded-full">{c.idioma}</Badge>
+      <Badge variant="secondary" className="rounded-full">{c.modalidad}</Badge>
+      <Badge variant="outline" className="rounded-full">{c.turno}</Badge>
 
-  return (
-    <div className="rounded-2xl border bg-white/60 p-2 shadow-sm overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-[12px] text-neutral-600">
-          <tr className="[&>th]:px-3 [&>th]:py-2 text-left">
-            <th>Código</th>
-            <th>Idioma</th>
-            <th>Modalidad</th>
-            <th>Turno</th>
-            <th>Nivel</th>
-            <th>Días</th>
-            <th>Horario</th>
-            <th>Inscripción</th>
-            <th>Curso</th>
-            <th>Docente</th>
-            <th>Cupo</th>
-            <th>Modalidad Asist.</th>
-            <th>Aula</th>
-            <th className="text-right">Acciones</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {items.map((c) => {
-            const dias = ((c as any).dias ?? []) as string[];
-            const diasTexto = dias.length ? dias.map((x) => abreviarDia(x)).join(" • ") : "—";
+      {nivel && (
+        <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-neutral-700">
+          <GraduationCap className="h-3.5 w-3.5" /> {nivel}
+        </span>
+      )}
 
-            const hInicio = (c as any).hora_inicio as string | undefined;
-            const hFin = (c as any).hora_fin as string | undefined;
-            const horario = hInicio && hFin ? `${hhmm(hInicio)}–${hhmm(hFin)}` : "—";
+      <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-neutral-700">
+        <Users className="h-3.5 w-3.5" /> {cupo} lugares
+      </span>
 
-            const docente =
-              c.docente && (c.docente.first_name || c.docente.last_name)
-                ? `${c.docente.first_name ?? ""} ${c.docente.last_name ?? ""}`.trim()
-                : "—";
+      {modalidadAsistencia && (
+        <Badge variant="secondary" className="rounded-full capitalize">{modalidadAsistencia}</Badge>
+      )}
 
-            const cupo = (c as any).cupo_total ?? 0;
-            const nivel = (c as any).nivel as string | undefined;
-            const modalidadAsistencia = (c as any).modalidad_asistencia as "presencial" | "virtual" | undefined;
-            const aula = (c as any).aula as string | undefined;
-
-            return (
-              <tr key={c.id} className="[&>td]:px-3 [&>td]:py-2 align-top">
-                <td className="font-medium">{c.codigo}</td>
-                <td className="capitalize">{c.idioma}</td>
-                <td className="capitalize">{c.modalidad}</td>
-                <td className="capitalize">{c.turno}</td>
-                <td>{nivel ?? "—"}</td>
-                <td>{diasTexto}</td>
-                <td className="tabular-nums">{horario}</td>
-                <td className="tabular-nums">
-                  {(c.inscripcion?.from ? d(c.inscripcion.from) : "—") +
-                    " – " +
-                    (c.inscripcion?.to ? d(c.inscripcion.to) : "—")}
-                </td>
-                <td className="tabular-nums">
-                  {(c.curso?.from ? d(c.curso.from) : "—") +
-                    " – " +
-                    (c.curso?.to ? d(c.curso.to) : "—")}
-                </td>
-                <td>{docente}</td>
-                <td className="tabular-nums">{cupo}</td>
-                <td className="capitalize">{modalidadAsistencia ?? "—"}</td>
-                <td>{aula ?? "—"}</td>
-                <td className="text-right">
-                  <div className="inline-flex gap-1">
-                    <Button variant="outline" size="sm" className="h-8 rounded-lg" onClick={() => onEdit(c)}>
-                      <Pencil className="h-4 w-4 mr-1" /> Editar
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-8 rounded-lg text-red-600 border-red-200">
-                          <Trash2 className="h-4 w-4 mr-1" /> Eliminar
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Eliminar ciclo</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            ¿Seguro que deseas eliminar <b>{c.codigo}</b>? Esta acción no se puede deshacer.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction
-                            className="bg-red-600 hover:bg-red-700"
-                            onClick={() => onDelete(c)}
-                          >
-                            Sí, eliminar
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {aula && (
+        <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-neutral-700">
+          <Building2 className="h-3.5 w-3.5" /> {aula}
+        </span>
+      )}
     </div>
-  );
-}
+
+    {/* Separador */}
+    <div className="my-3"><Separator /></div>
+
+    {/* Bloques de info en grilla */}
+    <div className="grid gap-3 sm:grid-cols-3">
+      {/* Bloque 1: Días & Horario */}
+      <div className="rounded-xl border bg-white/50 p-3">
+        <div className="flex items-center gap-1.5 text-xs text-neutral-700">
+          <CalendarDays className="h-3.5 w-3.5" />
+          <span className="font-medium text-neutral-800">Días</span>
+        </div>
+        <div className="mt-1 text-[12px] text-neutral-700">{diasTexto}</div>
+
+        <div className="mt-2 flex items-center gap-1.5 text-xs text-neutral-700">
+          <Clock3 className="h-3.5 w-3.5" />
+          <span className="font-medium text-neutral-800">Horario</span>
+        </div>
+        <div className="mt-1 text-[12px] tabular-nums">{horarioTexto}</div>
+      </div>
+
+      {/* Bloque 2: Inscripción & Curso */}
+      <div className="rounded-xl border bg-white/50 p-3">
+        <div className="text-xs font-medium text-neutral-800">Inscripción</div>
+        <div className="mt-1 text-[12px] tabular-nums">
+          {c.inscripcion?.from ? d(c.inscripcion.from) : "—"} – {c.inscripcion?.to ? d(c.inscripcion.to) : "—"}
+        </div>
+
+        <div className="mt-2 text-xs font-medium text-neutral-800">Curso</div>
+        <div className="mt-1 text-[12px] tabular-nums">
+          {c.curso?.from ? d(c.curso.from) : "—"} – {c.curso?.to ? d(c.curso.to) : "—"}
+        </div>
+      </div>
+
+      {/* Bloque 3: Colocación & Exámenes (solo si hay algo) */}
+      {(c.colocacion?.from || c.colocacion?.to || c.examenMT || c.examenFinal) ? (
+        <div className="rounded-xl border bg-white/50 p-3">
+          {(c.colocacion?.from || c.colocacion?.to) && (
+            <>
+              <div className="text-xs font-medium text-neutral-800">Colocación</div>
+              <div className="mt-1 text-[12px] tabular-nums">
+                {c.colocacion?.from ? d(c.colocacion.from) : "—"} – {c.colocacion?.to ? d(c.colocacion.to) : "—"}
+              </div>
+            </>
+          )}
+
+          {c.examenMT && (
+            <>
+              <div className="mt-2 text-xs font-medium text-neutral-800">Examen MT</div>
+              <div className="mt-1 text-[12px] tabular-nums">{d(c.examenMT)}</div>
+            </>
+          )}
+
+          {c.examenFinal && (
+            <>
+              <div className="mt-2 text-xs font-medium text-neutral-800">Examen final</div>
+              <div className="mt-1 text-[12px] tabular-nums">{d(c.examenFinal)}</div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-xl border bg-white/30 p-3 text-[12px] text-neutral-400 flex items-center justify-center">
+          Sin fechas de colocación o exámenes
+        </div>
+      )}
+    </div>
+
+    {/* Notas */}
+    {c.notas ? (
+      <>
+        <div className="my-3"><Separator /></div>
+        <p className="text-xs text-neutral-700">
+          <span className="font-medium">Notas:</span> {c.notas}
+        </p>
+      </>
+    ) : null}
+  </div>
+);
+} 
+
 
 function FormCiclo({
   onSubmit, errors, control, register, isSubmitting, isValid, setValue, teachers,
@@ -1337,10 +1199,6 @@ function FormCiclo({
   );
 }
 
-
-
-
-/* ========================= Helpers locales ========================= */
 function Section({ title, children }: { title: string; children: React.ReactNode; }) {
   return (
     <section className="rounded-2xl border bg-white/60 p-4 shadow-sm">
@@ -1350,6 +1208,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+// util local
 function abreviarDia(key: string) {
   const m: Record<string, string> = {
     lunes: "Lun",
@@ -1366,5 +1225,5 @@ function abreviarDia(key: string) {
 function hhmm(h?: string) {
   if (!h) return "";
   const m = h.match(/^(\d{2}):(\d{2})/);
-  return m ? `${m[1]}:${m[2]}` : h;
+  return m ? `${m[1]}:${m[2]}` : h; // si no coincide, deja tal cual
 }

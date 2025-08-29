@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional, List
-
+from datetime import date, time
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
@@ -116,3 +116,159 @@ class CoordinatorListResponse(BaseModel):
 # ---------- Toggle estado ----------
 class ToggleActiveRequest(BaseModel):
     is_active: bool
+
+# ---------------- Enums (coinciden con models) ----------------
+class Modalidad(str, Enum):
+    intensivo = "intensivo"
+    sabatino  = "sabatino"
+    semestral = "semestral"
+
+class Turno(str, Enum):
+    matutino   = "matutino"
+    vespertino = "vespertino"
+    mixto      = "mixto"
+
+class Idioma(str, Enum):
+    ingles    = "ingles"
+    frances   = "frances"
+    aleman    = "aleman"
+    italiano  = "italiano"
+    portugues = "portugues"
+
+class Nivel(str, Enum):
+    A1 = "A1"
+    A2 = "A2"
+    B1 = "B1"
+    B2 = "B2"
+    C1 = "C1"
+    C2 = "C2"
+
+class DiaSemana(str, Enum):
+    lunes     = "lunes"
+    martes    = "martes"
+    miercoles = "miercoles"
+    jueves    = "jueves"
+    viernes   = "viernes"
+    sabado    = "sabado"
+    domingo   = "domingo"
+
+class ModalidadAsistencia(str, Enum):
+    presencial = "presencial"
+    virtual    = "virtual"
+
+# ---------------- Periodo ----------------
+class Periodo(BaseModel):
+    from_: date = Field(..., alias="from")
+    to: date
+
+    @model_validator(mode="after")
+    def check_order(self):
+        if self.from_ > self.to:
+            raise ValueError("La fecha inicial debe ser anterior o igual a la final")
+        return self
+
+# ---------------- Schemas de Ciclo ----------------
+class CicloBase(BaseModel):
+    codigo: str = Field(..., min_length=3)
+    idioma: Idioma
+    modalidad: Modalidad
+    turno: Turno
+    nivel: Nivel
+
+    cupo_total: int = Field(..., ge=0)
+
+    # Horario
+    dias: List[DiaSemana] = Field(..., min_length=1)
+    hora_inicio: time
+    hora_fin: time
+
+    # Modalidad de asistencia (default = presencial) y aula (opcional)
+    modalidad_asistencia: ModalidadAsistencia = ModalidadAsistencia.presencial
+    aula: Optional[str] = None
+
+    # Periodos (sin reinscripción)
+    inscripcion: Periodo
+    curso: Periodo
+    colocacion: Optional[Periodo] = None  # opcional
+
+    # Exámenes (opcionales)
+    examenMT: Optional[date] = None
+    examenFinal: Optional[date] = None
+
+    # Asignación de docente (opcional)
+    docente_id: Optional[int] = None
+
+    notas: Optional[str] = None
+
+    @model_validator(mode="after")
+    def check_horario(self):
+        if self.hora_inicio >= self.hora_fin:
+            raise ValueError("hora_inicio debe ser estrictamente menor que hora_fin")
+        return self
+
+class CicloCreate(CicloBase):
+    pass
+
+class CicloUpdate(BaseModel):
+    codigo: Optional[str] = Field(None, min_length=3)
+    idioma: Optional[Idioma] = None
+    modalidad: Optional[Modalidad] = None
+    turno: Optional[Turno] = None
+    nivel: Optional[Nivel] = None
+
+    cupo_total: Optional[int] = Field(None, ge=0)
+
+    dias: Optional[List[DiaSemana]] = Field(None, min_length=1)
+    hora_inicio: Optional[time] = None
+    hora_fin: Optional[time] = None
+
+    modalidad_asistencia: Optional[ModalidadAsistencia] = None
+    aula: Optional[str] = None
+
+    inscripcion: Optional[Periodo] = None
+    curso: Optional[Periodo] = None
+    colocacion: Optional[Periodo] = None
+
+    examenMT: Optional[date] = None
+    examenFinal: Optional[date] = None
+
+    docente_id: Optional[int] = None
+
+    notas: Optional[str] = None
+
+    @model_validator(mode="after")
+    def check_horario_update(self):
+        if self.hora_inicio and self.hora_fin and self.hora_inicio >= self.hora_fin:
+            raise ValueError("hora_inicio debe ser estrictamente menor que hora_fin")
+        return self
+
+# Salida: incluimos docente resumido
+class DocenteLite(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+    email: str
+
+    class Config:
+        from_attributes = True
+
+class DocenteMini(BaseModel):
+    id: Optional[int] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+
+class CicloOut(CicloBase):
+    id: int
+    docente: Optional[DocenteMini] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CicloListResponse(BaseModel):
+    items: List[CicloOut]
+    total: int
+    page: int
+    page_size: int
+    pages: int

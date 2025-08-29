@@ -6,13 +6,15 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, get_db
-from .models import User, UserRole as ModelUserRole          # 👈 importa el Enum del modelo
+from .models import User, UserRole as ModelUserRole
 from .schemas import UserCreate, UserOut, LoginRequest, TokenResponse, UserRole
 from .auth import get_password_hash, verify_password, create_access_token
 
-# ✅ Routers
+# ✅ Routers (importa cada router con alias .router)
 from .routers.admin import router as admin_router
-from .routers.coordinacion_docentes import router as coordinacion_docentes_router  # 👈 NUEVO
+from .routers.coordinacion_docentes import router as coordinacion_docentes_router
+from .routers.coordinacion_ciclos import router as coordinacion_ciclos_router   # 👈 CORRECTO
+from .routers.alumno_ciclos import router as alumno_ciclos_router               # 👈 CORRECTO
 
 Base.metadata.create_all(bind=engine)
 
@@ -26,9 +28,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers montados
+# Monta routers
 app.include_router(admin_router)
-app.include_router(coordinacion_docentes_router)  # 👈 NUEVO
+app.include_router(coordinacion_docentes_router)
+app.include_router(coordinacion_ciclos_router)   # 👈 ya existe la variable
+app.include_router(alumno_ciclos_router)         # 👈 ya existe la variable
 
 @app.post("/auth/register", response_model=UserOut, status_code=201)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
@@ -54,7 +58,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
         is_ipn=payload.is_ipn,
         boleta=payload.boleta.strip() if payload.boleta else None,
         curp=payload.curp.upper().strip(),
-        role=ModelUserRole.student,                     # 👈 usa el Enum del modelo, no string literal
+        role=ModelUserRole.student,
         hashed_password=get_password_hash(payload.password),
     )
     db.add(user)
@@ -68,7 +72,6 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
 
-    # ✅ AJUSTE: usar email en "sub" para que get_current_user() resuelva por email sin problemas
     token = create_access_token({"sub": user.email, "email": user.email, "role": user.role})
     return TokenResponse(
         access_token=token,
@@ -77,8 +80,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         first_name=user.first_name,
         last_name=user.last_name,
         curp=user.curp,
-        is_ipn=bool(user.is_ipn),     # 👈 NUEVO
-        boleta=user.boleta,           # 👈 NUEVO
+        is_ipn=bool(user.is_ipn),
+        boleta=user.boleta,
     )
 
 @app.get("/health")
