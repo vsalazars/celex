@@ -123,7 +123,6 @@ const FormSchema = z.object({
 
   inscripcion: RangeSchema,
   curso: RangeSchema,
-  colocacion: OptionalRangeSchema,
 
   examenMT: z.date().optional(),
   examenFinal: z.date().optional(),
@@ -160,7 +159,6 @@ const EMPTY_FORM: FormType = {
   hora_fin: "" as any,
   inscripcion: {} as any,
   curso: {} as any,
-  colocacion: {} as any,
   examenMT: undefined,
   examenFinal: undefined,
   docente_id: undefined,
@@ -324,7 +322,6 @@ export default function GroupsSection() {
 
       inscripcion: rangeToISO(values.inscripcion)!,
       curso: rangeToISO(values.curso)!,
-      colocacion: rangeToISO(values.colocacion),
 
       examenMT: dateToISO(values.examenMT),
       examenFinal: dateToISO(values.examenFinal),
@@ -378,7 +375,6 @@ export default function GroupsSection() {
 
       inscripcion: rangeFromDTO(c.inscripcion) as any,
       curso: rangeFromDTO(c.curso) as any,
-      colocacion: rangeFromDTO(c.colocacion ?? undefined) as any,
 
       examenMT: isoToDate((c as any).examenMT),
       examenFinal: isoToDate((c as any).examenFinal),
@@ -759,37 +755,28 @@ function CardCiclo({ c, onEdit, onDelete }: {
           </div>
         </div>
 
-        {/* Colocación & Exámenes (si hay) */}
-        {(c.colocacion?.from || c.colocacion?.to || c.examenMT || c.examenFinal) ? (
-          <div className="rounded-xl border bg-white/50 p-3">
-            {(c.colocacion?.from || c.colocacion?.to) && (
-              <>
-                <div className="text-xs font-medium text-neutral-800">Colocación</div>
-                <div className="mt-1 text-[12px] tabular-nums">
-                  {c.colocacion?.from ? d(c.colocacion.from) : "—"} – {c.colocacion?.to ? d(c.colocacion.to) : "—"}
-                </div>
-              </>
-            )}
+          {/* Exámenes (si hay) */}
+          {(c.examenMT || c.examenFinal) ? (
+            <div className="rounded-xl border bg-white/50 p-3">
+              {c.examenMT && (
+                <>
+                  <div className="text-xs font-medium text-neutral-800">Examen MT</div>
+                  <div className="mt-1 text-[12px] tabular-nums">{d(c.examenMT)}</div>
+                </>
+              )}
 
-            {c.examenMT && (
-              <>
-                <div className="mt-2 text-xs font-medium text-neutral-800">Examen MT</div>
-                <div className="mt-1 text-[12px] tabular-nums">{d(c.examenMT)}</div>
-              </>
-            )}
-
-            {c.examenFinal && (
-              <>
-                <div className="mt-2 text-xs font-medium text-neutral-800">Examen final</div>
-                <div className="mt-1 text-[12px] tabular-nums">{d(c.examenFinal)}</div>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="rounded-xl border bg-white/30 p-3 text-[12px] text-neutral-400 flex items-center justify-center">
-            Sin fechas de colocación o exámenes
-          </div>
-        )}
+              {c.examenFinal && (
+                <>
+                  <div className="mt-2 text-xs font-medium text-neutral-800">Examen final</div>
+                  <div className="mt-1 text-[12px] tabular-nums">{d(c.examenFinal)}</div>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-xl border bg-white/30 p-3 text-[12px] text-neutral-400 flex items-center justify-center">
+              Sin fechas de exámenes
+            </div>
+          )}
       </div>
 
       {/* Notas */}
@@ -833,9 +820,9 @@ function TableCiclos({
             <th>Modalidad</th>
             <th>Turno</th>
             <th>Nivel</th>
-            <th>Días</th>
+            {/*<th>Días</th>*/}
             <th>Horario</th>
-            <th>Inscripción</th>
+            {/*<th>Inscripción</th>*/}
             <th>Curso</th>
             <th>Docente</th>
             <th>Cupo</th>
@@ -870,13 +857,13 @@ function TableCiclos({
                 <td className="capitalize">{c.modalidad}</td>
                 <td className="capitalize">{c.turno}</td>
                 <td>{nivel ?? "—"}</td>
-                <td>{diasTexto}</td>
+                {/*<td>{diasTexto}</td>*/}
                 <td className="tabular-nums">{horario}</td>
-                <td className="tabular-nums">
+                {/*<td className="tabular-nums">
                   {(c.inscripcion?.from ? d(c.inscripcion.from) : "—") +
                     " – " +
                     (c.inscripcion?.to ? d(c.inscripcion.to) : "—")}
-                </td>
+                </td>*/}
                 <td className="tabular-nums">
                   {(c.curso?.from ? d(c.curso.from) : "—") +
                     " – " +
@@ -1270,21 +1257,9 @@ function FormCiclo({
         </Section>
 
         {/* Exámenes / Colocación (opcionales) */}
-        <Section title="Exámenes / Colocación (opcionales)">
+        <Section title="Exámenes (opcionales)">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Controller
-              control={control}
-              name="colocacion"
-              render={({ field }) => (
-                <DateRangePicker
-                  label="Colocación (periodo)"
-                  value={field.value as DateRange}
-                  onChange={field.onChange}
-                  months={2}
-                  error={errors.colocacion?.to?.message || errors.colocacion?.from?.message}
-                />
-              )}
-            />
+            
             <Controller
               control={control}
               name="examenMT"

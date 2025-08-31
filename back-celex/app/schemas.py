@@ -189,7 +189,6 @@ class CicloBase(BaseModel):
     # Periodos (sin reinscripción)
     inscripcion: Periodo
     curso: Periodo
-    colocacion: Optional[Periodo] = None  # opcional
 
     # Exámenes (opcionales)
     examenMT: Optional[date] = None
@@ -227,7 +226,6 @@ class CicloUpdate(BaseModel):
 
     inscripcion: Optional[Periodo] = None
     curso: Optional[Periodo] = None
-    colocacion: Optional[Periodo] = None
 
     examenMT: Optional[date] = None
     examenFinal: Optional[date] = None

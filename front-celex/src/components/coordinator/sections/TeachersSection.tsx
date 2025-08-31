@@ -657,7 +657,7 @@ function FilterCombobox({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-6xl p-0 flex flex-col">
+      <SheetContent side="left" className="w-full sm:max-w-6xl p-0 flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b bg-white/70 backdrop-blur">
           <SheetHeader>

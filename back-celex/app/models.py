@@ -127,9 +127,7 @@ class Ciclo(Base):
     insc_fin     = Column(Date, nullable=False)
     curso_inicio = Column(Date, nullable=False)
     curso_fin    = Column(Date, nullable=False)
-    coloc_inicio = Column(Date, nullable=True)
-    coloc_fin    = Column(Date, nullable=True)
-
+    
     # Exámenes (opcionales)
     examen_mt    = Column(Date, nullable=True)
     examen_final = Column(Date, nullable=True)

@@ -35,7 +35,7 @@ export default function AlumnoDashboardPage() {
 
   return (
     <RequireAuth roles={["student"]}>
-      <AlumnoShell title="Panel del Alumno">
+      <AlumnoShell title="Centro de Lenguas Extranjeras CELEX">
         {loading ? (
           <p className="p-6">Verificando sesión...</p>
         ) : (

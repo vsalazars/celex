@@ -92,7 +92,6 @@ def _to_out(m: Ciclo) -> CicloOut:
         aula=getattr(m, "aula", None),
         inscripcion={"from": m.insc_inicio, "to": m.insc_fin},
         curso={"from": m.curso_inicio, "to": m.curso_fin},
-        colocacion=_periodo_or_none(m.coloc_inicio, m.coloc_fin),
         examenMT=getattr(m, "examen_mt", None),
         examenFinal=getattr(m, "examen_final", None),
         notas=m.notas,
@@ -218,9 +217,7 @@ def create_ciclo(payload: CicloCreate, db: Session = Depends(get_db)):
         insc_fin=payload.inscripcion.to,
         curso_inicio=payload.curso.from_,
         curso_fin=payload.curso.to,
-        coloc_inicio=(payload.colocacion.from_ if payload.colocacion else None),
-        coloc_fin=(payload.colocacion.to if payload.colocacion else None),
-
+       
         # exámenes (opcionales)
         examen_mt=getattr(payload, "examenMT", None),
         examen_final=getattr(payload, "examenFinal", None),
@@ -293,10 +290,7 @@ def update_ciclo(ciclo_id: int, payload: CicloUpdate, db: Session = Depends(get_
     if payload.curso is not None:
         m.curso_inicio = payload.curso.from_
         m.curso_fin = payload.curso.to
-    if payload.colocacion is not None:
-        m.coloc_inicio = payload.colocacion.from_
-        m.coloc_fin = payload.colocacion.to
-
+  
     # exámenes opcionales
     if payload.examenMT is not None:
         m.examen_mt = payload.examenMT

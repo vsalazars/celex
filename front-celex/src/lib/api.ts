@@ -182,7 +182,6 @@ export type CicloDTO = {
   // Fechas
   inscripcion: PeriodoDTO;
   curso: PeriodoDTO;
-  colocacion?: PeriodoDTO | null;      // opcional
 
   // Exámenes (opcionales)
   examenMT?: string | null;            // YYYY-MM-DD
@@ -233,7 +232,6 @@ export type CreateCicloInput = {
 
   inscripcion: PeriodoInput;
   curso: PeriodoInput;
-  colocacion?: PeriodoInput;           // opcional
 
   examenMT?: string;                   // opcional
   examenFinal?: string;                // opcional
