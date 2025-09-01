@@ -609,19 +609,20 @@ export default function GroupsSection() {
 
             return (
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 pb-1">
-                <div className="rounded-xl border bg-white/60 p-3">
-                  <div className="text-xs text-neutral-500">Alumnos IPN</div>
+                <div className="rounded-xl border bg-white/60 p-3 text-center">
+                  <div className="text-xs text-neutral-500">Comunidad IPN</div>
                   <div className="mt-1 text-2xl font-bold tabular-nums">{ipnCount}</div>
                 </div>
-                <div className="rounded-xl border bg-white/60 p-3">
+                <div className="rounded-xl border bg-white/60 p-3 text-center">
                   <div className="text-xs text-neutral-500">Externos</div>
                   <div className="mt-1 text-2xl font-bold tabular-nums">{externos}</div>
                 </div>
-                <div className="rounded-xl border bg-white/60 p-3">
+                <div className="rounded-xl border bg-white/60 p-3 text-center">
                   <div className="text-xs text-neutral-500">Total</div>
                   <div className="mt-1 text-2xl font-bold tabular-nums">{total}</div>
                 </div>
               </div>
+
             );
           })()}
 

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import {
@@ -69,6 +70,35 @@ function capPercent(disp: number, total: number) {
   return Math.round(pct * 100);
 }
 
+/* ===== Validaciones del pago ===== */
+const MAX_MB = 5;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
+const ACCEPT = "application/pdf,image/*";
+
+function validarComprobante(file: File | null) {
+  if (!file) return "Adjunta tu comprobante.";
+  if (!(file.type.startsWith("image/") || file.type === "application/pdf")) {
+    return "Solo PDF o imágenes.";
+  }
+  if (file.size > MAX_BYTES) {
+    return `El archivo no debe exceder ${MAX_MB} MB.`;
+  }
+  return "";
+}
+
+function parseImporteToCentavos(importeStr: string): number | null {
+  // Acepta "1,234.56" o "1234,56" o "1234.56" o "1234"
+  const normalized = importeStr
+    .replace(/\s/g, "")
+    .replace(/[,$]/g, ".")               // , -> .
+    .replace(/(\..*)\./g, "$1");         // deja solo el primer punto decimal
+  const value = Number(normalized.replace(/[^0-9.]/g, ""));
+  if (Number.isFinite(value) && value >= 0) {
+    return Math.round(value * 100);
+  }
+  return null;
+}
+
 export default function AlumnoInscripcionPage() {
   const router = useRouter();
 
@@ -89,7 +119,26 @@ export default function AlumnoInscripcionPage() {
   // Ficha lateral (detalle + inscribir)
   const [openSheet, setOpenSheet] = useState(false);
   const [selected, setSelected] = useState<CicloDTO | null>(null);
-  const openDetalle = (c: CicloDTO) => { setSelected(c); setOpenSheet(true); };
+  const openDetalle = (c: CicloDTO) => { 
+    setSelected(c); 
+    // reset de formulario de pago cada vez que abrimos
+    setReferencia("");
+    setImporte("");
+    setFile(null);
+    setErrReferencia("");
+    setErrImporte("");
+    setErrFile("");
+    setOpenSheet(true); 
+  };
+
+  // Formulario de pago
+  const [referencia, setReferencia] = useState("");
+  const [importe, setImporte] = useState(""); // string amigable, lo convertimos a centavos
+  const [file, setFile] = useState<File | null>(null);
+  const [errReferencia, setErrReferencia] = useState("");
+  const [errImporte, setErrImporte] = useState("");
+  const [errFile, setErrFile] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   async function fetchList(params: ListCiclosParams) {
     const resp = await listCiclosAlumno({
@@ -128,29 +177,55 @@ export default function AlumnoInscripcionPage() {
     setPage(1);
   };
 
+  const validarFormularioPago = () => {
+    let ok = true;
+
+    const ref = referencia.trim();
+    const impCent = parseImporteToCentavos(importe);
+    const eFile = validarComprobante(file);
+
+    if (!ref) { setErrReferencia("Captura la referencia."); ok = false; } else { setErrReferencia(""); }
+    if (impCent === null || impCent <= 0) { setErrImporte("Ingresa un importe válido."); ok = false; } else { setErrImporte(""); }
+    if (eFile) { setErrFile(eFile); ok = false; } else { setErrFile(""); }
+
+    return ok;
+  };
+
   const onInscribirme = async (c: CicloDTO) => {
+    if (!validarFormularioPago()) return;
+
+    const importe_centavos = parseImporteToCentavos(importe)!;
+
     try {
-      await createInscripcion({ ciclo_id: c.id });
+      setSubmitting(true);
+      await createInscripcion({
+        ciclo_id: c.id,
+        referencia: referencia.trim(),
+        importe_centavos,
+        comprobante: file!, // validado arriba
+      });
     } catch (err: any) {
       console.error(err);
       const msg = (err?.message || "").toLowerCase();
       if (msg.includes("no hay lugares disponibles")) {
         toast.warning("No hay lugares disponibles en este grupo");
-        return;
       } else if (msg.includes("periodo de inscripción")) {
         toast.warning("El periodo de inscripción no está vigente");
-        return;
       } else if (msg.includes("ya estás inscrito")) {
         toast.info("Ya estabas inscrito en este ciclo");
+      } else if (msg.includes("archivo")) {
+        toast.error("El archivo no es válido o excede el tamaño permitido");
       } else {
         toast.error(err?.message || "No fue posible completar la inscripción");
-        return;
       }
+      setSubmitting(false);
+      return;
     }
 
-    toast.success("Inscripción registrada 🎉");
+    toast.success("¡Listo! Quedaste preinscrito. Validaremos tu pago en breve.");
     setOpenSheet(false);
     setSelected(null);
+    setSubmitting(false);
     await refreshFirst();
     router.push("/alumno/cursos");
   };
@@ -254,7 +329,7 @@ export default function AlumnoInscripcionPage() {
                       key={c.id}
                       c={c as CicloDTO}
                       onDetalle={() => openDetalle(c as CicloDTO)}
-                      onInscribir={() => onInscribirme(c as CicloDTO)}
+                      onInscribir={() => openDetalle(c as CicloDTO)} // abre detalle (con formulario)
                     />
                   ))}
                 </div>
@@ -294,94 +369,174 @@ export default function AlumnoInscripcionPage() {
             )}
           </div>
 
-          {/* Sheet de detalle */}
+         {/* Sheet de detalle + pago (compacto, 2 columnas en sm+) */}
           <Sheet open={openSheet} onOpenChange={setOpenSheet}>
-            <SheetContent className="w-full sm:max-w-lg">
-              <SheetHeader>
+            <SheetContent className="w-full sm:max-w-6xl mx-4 sm:mx-auto px-4 sm:px-6">
+              <SheetHeader className="pb-2">
                 <SheetTitle>Detalle del ciclo</SheetTitle>
-                <SheetDescription>Revisa la información antes de confirmar tu inscripción.</SheetDescription>
+                <SheetDescription>Revisa la información y carga tu comprobante de pago.</SheetDescription>
               </SheetHeader>
 
               {selected && (
-              <div className="mt-4 space-y-3 text-sm">
-                <div className="rounded-2xl border bg-white p-4">
-                  {/* Encabezado */}
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">{selected.codigo}</div>
-                    <Badge className={`rounded-full border ${selTone.badgeClass}`}>
-                      <Users className="mr-1 h-3.5 w-3.5" />
-                      {selDisp} / {selTotal} · {selTone.label}
-                    </Badge>
-                  </div>
-
-                  {/* === KPI: número grande de lugares === */}
-                  <div className="mt-3">
-                    <div className="flex items-baseline gap-2">
-                      <span className={`text-3xl font-bold leading-none ${selTone.textClass}`}>
-                        {selDisp}
-                      </span>
-                      <span className="text-sm text-neutral-500">de {selTotal} lugares</span>
-                    </div>
-                    <div className="mt-2 h-2 w-full rounded-full bg-neutral-100 overflow-hidden">
-                      <div
-                        className={`h-2 ${selTone.barClass}`}
-                        style={{ width: `${Math.round((selTotal ? Math.max(0, Math.min(1, selDisp / selTotal)) : 0) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Chips de info rápida */}
-                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                    <Badge variant="secondary">{selected.modalidad}</Badge>
-                    <Badge variant="outline">{selected.turno}</Badge>
-                    <span className="ml-1 inline-flex items-center gap-1 text-xs text-neutral-700">
-                      <GraduationCap className="h-3.5 w-3.5" /> {selected.nivel}
-                    </span>
-                    {selected.modalidad_asistencia ? (
-                      <Badge variant="secondary" className="rounded-full capitalize">
-                        {selected.modalidad_asistencia}
+                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  {/* === Columna izquierda: Detalle === */}
+                  <div className="rounded-2xl border bg-white p-3">
+                    {/* Encabezado + KPI en la misma franja */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{selected.codigo}</div>
+                        <div className="mt-0.5 text-[12px] text-neutral-600">
+                          {selected.idioma} · {selected.modalidad} · {selected.turno}
+                        </div>
+                      </div>
+                      <Badge className={`rounded-full border shrink-0 ${selTone.badgeClass}`}>
+                        <Users className="mr-1 h-3.5 w-3.5" />
+                        {selDisp}/{selTotal}
                       </Badge>
-                    ) : null}
-                    {selected.aula ? (
-                      <span className="ml-1 inline-flex items-center gap-1 text-xs text-neutral-700">
-                        <Building2 className="h-3.5 w-3.5" /> {selected.aula}
+                    </div>
+
+                    {/* KPI barra compacta */}
+                    <div className="mt-2">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className={`text-2xl font-bold leading-none ${selTone.textClass}`}>{selDisp}</span>
+                        <span className="text-xs text-neutral-500">de {selTotal} lugares</span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full rounded-full bg-neutral-100 overflow-hidden">
+                        <div
+                          className={`h-1.5 ${selTone.barClass}`}
+                          style={{
+                            width: `${Math.round(
+                              (selTotal ? Math.max(0, Math.min(1, selDisp / selTotal)) : 0) * 100
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Chips */}
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <Badge variant="secondary">{selected.modalidad}</Badge>
+                      <Badge variant="outline">{selected.turno}</Badge>
+                      <span className="inline-flex items-center gap-1 text-xs text-neutral-700">
+                        <GraduationCap className="h-3.5 w-3.5" /> {selected.nivel}
                       </span>
+                      {selected.modalidad_asistencia ? (
+                        <Badge variant="secondary" className="rounded-full capitalize">
+                          {selected.modalidad_asistencia}
+                        </Badge>
+                      ) : null}
+                      {selected.aula ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-neutral-700">
+                          <Building2 className="h-3.5 w-3.5" /> {selected.aula}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {/* Fechas y horarios en grid compacto */}
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] text-neutral-700">
+                      <div><b>Días:</b> {(selected.dias ?? []).map(abreviarDia).join(" • ")}</div>
+                      <div><b>Horario:</b> {selected.hora_inicio?.slice(0, 5)}–{selected.hora_fin?.slice(0, 5)}</div>
+                      <div><b>Inscripción:</b> {d(selected.inscripcion.from)} – {d(selected.inscripcion.to)}</div>
+                      <div><b>Curso:</b> {d(selected.curso.from)} – {d(selected.curso.to)}</div>
+                      <div><b>Examen MT:</b> {d(selected.examenMT)}</div>
+                      <div><b>Examen final:</b> {d(selected.examenFinal)}</div>
+                    </div>
+
+                    {selected.notas ? (
+                      <p className="mt-2 text-[12px] text-neutral-700">
+                        <Info className="inline-block mr-1 h-3.5 w-3.5" />
+                        {selected.notas}
+                      </p>
                     ) : null}
                   </div>
 
-                  {/* Fechas y horarios (una línea por ítem) */}
-                  <div className="mt-3 text-xs text-neutral-700 space-y-1">
-                    <div><b>Días:</b> {(selected.dias ?? []).map((x) => abreviarDia(x)).join(" • ")}</div>
-                    <div><b>Horario:</b> {selected.hora_inicio?.slice(0,5)}-{selected.hora_fin?.slice(0,5)}</div>
-                    <div><b>Inscripción:</b> {d(selected.inscripcion.from)} – {d(selected.inscripcion.to)}</div>
-                    <div><b>Curso:</b> {d(selected.curso.from)} – {d(selected.curso.to)}</div>
-                    <div><b>Examen MT:</b> {d(selected.examenMT)}</div>
-                    <div><b>Examen final:</b> {d(selected.examenFinal)}</div>
+                  {/* === Columna derecha: Formulario pago === */}
+                  <div className="rounded-2xl border bg-white p-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold">Comprobante de pago</h4>
+                      <span className="text-[11px] text-neutral-500">PDF/JPG/PNG/WEBP · máx. {MAX_MB} MB</span>
+                    </div>
+
+                    {/* Inputs en grid para ahorrar espacio */}
+                    <div className="mt-2 grid grid-cols-1 gap-2">
+                      {/* Referencia + Importe en 2 col en sm+ */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Referencia</Label>
+                            {errReferencia ? (
+                              <span className="text-[11px] text-red-600">{errReferencia}</span>
+                            ) : null}
+                          </div>
+                          <Input
+                            placeholder="Ej. 123456/ABC"
+                            value={referencia}
+                            onChange={(e) => setReferencia(e.target.value)}
+                            className="h-9"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Importe pagado</Label>
+                            {errImporte ? (
+                              <span className="text-[11px] text-red-600">{errImporte}</span>
+                            ) : null}
+                          </div>
+                          <Input
+                            placeholder="Ej. 1,250.00"
+                            inputMode="decimal"
+                            value={importe}
+                            onChange={(e) => setImporte(e.target.value)}
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs">Comprobante (PDF o imagen)</Label>
+                          {errFile ? <span className="text-[11px] text-red-600">{errFile}</span> : null}
+                        </div>
+                        <Input
+                          type="file"
+                          accept={ACCEPT}
+                          className="h-9"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0] || null;
+                            setFile(f);
+                            setErrFile(validarComprobante(f));
+                          }}
+                        />
+                        {file ? (
+                          <p className="text-[11px] text-neutral-600">
+                            <b>{file.name}</b> · {(file.size / 1024).toFixed(0)} KB
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-[12px] text-amber-800">
+                        Tu estatus quedará <b>preinscrita</b> hasta que coordinación valide tu pago.
+                      </div>
+                    </div>
                   </div>
-
-                  {selected.notas ? (
-                    <p className="mt-2 text-xs text-neutral-700">
-                      <Info className="inline-block mr-1 h-3.5 w-3.5" />
-                      {selected.notas}
-                    </p>
-                  ) : null}
                 </div>
+              )}
 
-                <div className="text-xs text-neutral-500">
-                  Al confirmar, se registrará tu inscripción para este ciclo. Si el grupo requiere validación adicional (p. ej. cupo o requisitos), se te notificará.
-                </div>
-              </div>
-            )}
-
-
-              <SheetFooter className="mt-4">
-                <Button variant="outline" onClick={() => setOpenSheet(false)}>Cancelar</Button>
-                <Button onClick={() => selected && onInscribirme(selected)} disabled={selSinLugares}>
-                  {selSinLugares ? "Sin lugares" : "Confirmar inscripción"}
+              <SheetFooter className="mt-3">
+                <Button variant="outline" onClick={() => setOpenSheet(false)} disabled={submitting}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => selected && onInscribirme(selected)}
+                  disabled={selSinLugares || submitting}
+                >
+                  {selSinLugares ? "Sin lugares" : (submitting ? "Enviando…" : "Enviar comprobante y preinscribirme")}
                 </Button>
               </SheetFooter>
             </SheetContent>
           </Sheet>
+
         </div>
       </AlumnoShell>
     </RequireAuth>
@@ -425,7 +580,7 @@ function CardCiclo({
         <div><b>Horario:</b> {h(c.hora_inicio)}-{h(c.hora_fin)}</div>
       </div>
 
-      {/* Barrita de capacidad (opcional, visual) */}
+      {/* Barrita de capacidad */}
       <div className="mt-2 h-2 w-full rounded-full bg-neutral-100 overflow-hidden">
         <div
           className={`h-2 ${tone.barClass}`}

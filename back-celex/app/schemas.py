@@ -1,10 +1,22 @@
 from enum import Enum
-from typing import Optional, List
-from datetime import date, time
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from typing import Optional, List, Literal
+from datetime import date, time, datetime
 
+from pydantic import (
+    BaseModel,
+    EmailStr,         # 👈 AGREGA ESTO
+    Field,
+    field_validator,
+    model_validator,
+    computed_field,
+    field_serializer, # 👈 ya lo agregamos antes
+)
 
-# ---- Roles permitidos ----
+MAX_COMPROBANTE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+# ==========================
+# Roles y autenticación
+# ==========================
 class UserRole(str, Enum):
     student = "student"
     teacher = "teacher"
@@ -12,12 +24,10 @@ class UserRole(str, Enum):
     superuser = "superuser"
 
 
-# ---- Helpers regex ----
 CURP_REGEX = r"^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]{2}$"
-BOLETA_REGEX = r"^\d{10}$"  # exactamente 10 dígitos (ej. 2025070109)
+BOLETA_REGEX = r"^\d{10}$"  # exactamente 10 dígitos
 
 
-# -------- IN --------
 class UserCreate(BaseModel):
     first_name: str = Field(..., min_length=2)
     last_name: str = Field(..., min_length=2)
@@ -27,10 +37,8 @@ class UserCreate(BaseModel):
     curp: str = Field(..., pattern=CURP_REGEX)
     password: str = Field(..., min_length=6)
     password_confirm: str
-    # El registro público crea alumnos; el backend puede sobreescribir para staff
     role: UserRole = UserRole.student
 
-    # Normaliza CURP a mayúsculas
     @field_validator("curp")
     @classmethod
     def curp_upper_and_valid(cls, v: str) -> str:
@@ -42,7 +50,6 @@ class UserCreate(BaseModel):
             raise ValueError("CURP inválida")
         return v
 
-    # Valida que la boleta sea 10 dígitos si is_ipn=True
     @field_validator("boleta")
     @classmethod
     def boleta_digits_if_present(cls, v: Optional[str]) -> Optional[str]:
@@ -54,7 +61,6 @@ class UserCreate(BaseModel):
             raise ValueError("Boleta inválida: deben ser 10 dígitos")
         return v
 
-    # Reglas cruzadas: confirmar password y boleta requerida cuando is_ipn=True
     @model_validator(mode="after")
     def check_cross_fields(self):
         if self.password != self.password_confirm:
@@ -62,7 +68,6 @@ class UserCreate(BaseModel):
         if self.is_ipn and not self.boleta:
             raise ValueError("La boleta es obligatoria para usuarios IPN")
         if (not self.is_ipn) and self.boleta:
-            # opcional: evitar que externos envíen boleta
             raise ValueError("No proporciones boleta si no eres IPN")
         return self
 
@@ -72,7 +77,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-# -------- OUT --------
 class UserOut(BaseModel):
     id: int
     first_name: str
@@ -82,14 +86,10 @@ class UserOut(BaseModel):
     boleta: Optional[str]
     curp: str
     role: UserRole
-    # Campos útiles en listados
-    # Nota: asumo que tu modelo User tiene estos campos:
-    # - is_active: bool
-    # - created_at: datetime
     is_active: bool | None = None
 
     class Config:
-        from_attributes = True  # pydantic v2: permite ORM -> schema
+        from_attributes = True
 
 
 class TokenResponse(BaseModel):
@@ -100,11 +100,10 @@ class TokenResponse(BaseModel):
     first_name: str
     last_name: str
     curp: str
-    is_ipn: bool                 # 👈 NUEVO
-    boleta: Optional[str] = None # 👈 NUEVO
+    is_ipn: bool
+    boleta: Optional[str] = None
 
 
-# ---------- Listados de coordinadores ----------
 class CoordinatorListResponse(BaseModel):
     items: List[UserOut]
     total: int
@@ -113,27 +112,32 @@ class CoordinatorListResponse(BaseModel):
     pages: int
 
 
-# ---------- Toggle estado ----------
 class ToggleActiveRequest(BaseModel):
     is_active: bool
 
-# ---------------- Enums (coinciden con models) ----------------
+
+# ==========================
+# Catálogos / Enums académicos
+# ==========================
 class Modalidad(str, Enum):
     intensivo = "intensivo"
-    sabatino  = "sabatino"
+    sabatino = "sabatino"
     semestral = "semestral"
 
+
 class Turno(str, Enum):
-    matutino   = "matutino"
+    matutino = "matutino"
     vespertino = "vespertino"
-    mixto      = "mixto"
+    mixto = "mixto"
+
 
 class Idioma(str, Enum):
-    ingles    = "ingles"
-    frances   = "frances"
-    aleman    = "aleman"
-    italiano  = "italiano"
+    ingles = "ingles"
+    frances = "frances"
+    aleman = "aleman"
+    italiano = "italiano"
     portugues = "portugues"
+
 
 class Nivel(str, Enum):
     A1 = "A1"
@@ -143,20 +147,25 @@ class Nivel(str, Enum):
     C1 = "C1"
     C2 = "C2"
 
+
 class DiaSemana(str, Enum):
-    lunes     = "lunes"
-    martes    = "martes"
+    lunes = "lunes"
+    martes = "martes"
     miercoles = "miercoles"
-    jueves    = "jueves"
-    viernes   = "viernes"
-    sabado    = "sabado"
-    domingo   = "domingo"
+    jueves = "jueves"
+    viernes = "viernes"
+    sabado = "sabado"
+    domingo = "domingo"
+
 
 class ModalidadAsistencia(str, Enum):
     presencial = "presencial"
-    virtual    = "virtual"
+    virtual = "virtual"
 
-# ---------------- Periodo ----------------
+
+# ==========================
+# Ciclos
+# ==========================
 class Periodo(BaseModel):
     from_: date = Field(..., alias="from")
     to: date
@@ -167,7 +176,7 @@ class Periodo(BaseModel):
             raise ValueError("La fecha inicial debe ser anterior o igual a la final")
         return self
 
-# ---------------- Schemas de Ciclo ----------------
+
 class CicloBase(BaseModel):
     codigo: str = Field(..., min_length=3)
     idioma: Idioma
@@ -177,24 +186,19 @@ class CicloBase(BaseModel):
 
     cupo_total: int = Field(..., ge=0)
 
-    # Horario
     dias: List[DiaSemana] = Field(..., min_length=1)
     hora_inicio: time
     hora_fin: time
 
-    # Modalidad de asistencia (default = presencial) y aula (opcional)
     modalidad_asistencia: ModalidadAsistencia = ModalidadAsistencia.presencial
     aula: Optional[str] = None
 
-    # Periodos (sin reinscripción)
     inscripcion: Periodo
     curso: Periodo
 
-    # Exámenes (opcionales)
     examenMT: Optional[date] = None
     examenFinal: Optional[date] = None
 
-    # Asignación de docente (opcional)
     docente_id: Optional[int] = None
 
     notas: Optional[str] = None
@@ -205,8 +209,10 @@ class CicloBase(BaseModel):
             raise ValueError("hora_inicio debe ser estrictamente menor que hora_fin")
         return self
 
+
 class CicloCreate(CicloBase):
     pass
+
 
 class CicloUpdate(BaseModel):
     codigo: Optional[str] = Field(None, min_length=3)
@@ -240,7 +246,7 @@ class CicloUpdate(BaseModel):
             raise ValueError("hora_inicio debe ser estrictamente menor que hora_fin")
         return self
 
-# Salida: incluimos docente resumido
+
 class DocenteLite(BaseModel):
     id: int
     first_name: str
@@ -250,18 +256,18 @@ class DocenteLite(BaseModel):
     class Config:
         from_attributes = True
 
+
 class DocenteMini(BaseModel):
     id: Optional[int] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[str] = None
 
+
 class CicloOut(CicloBase):
     id: int
     docente: Optional[DocenteMini] = None
-
-     # 👇 NUEVO: lugares disponibles (calculado en el router)
-    lugares_disponibles: int = Field(0, ge=0)
+    lugares_disponibles: int = Field(0, ge=0)  # calculado en el router
 
     class Config:
         from_attributes = True
@@ -273,3 +279,70 @@ class CicloListResponse(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+# ==========================
+# Inscripciones
+# ==========================
+class AlumnoMini(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    is_ipn: Optional[bool] = None
+    boleta: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ComprobanteMeta(BaseModel):
+    filename: Optional[str] = None
+    mimetype: Optional[str] = None
+    size_bytes: Optional[int] = Field(default=None, ge=0)
+    storage_path: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# --- CicloLite a nivel tope (para incrustar en InscripcionOut) ---
+class CicloLite(BaseModel):
+    id: int
+    codigo: str
+    idioma: str
+    modalidad: str
+    turno: str
+    nivel: Optional[str] = None
+    dias: List[str] = []
+    hora_inicio: Optional[time] = None
+    hora_fin: Optional[time] = None
+    aula: Optional[str] = None             # 👈 AQUI EL AULA
+    inscripcion: Optional[dict] = None
+    curso: Optional[dict] = None
+
+    @field_serializer("hora_inicio", "hora_fin")
+    def _ser_time(self, v: Optional[time]):
+        return v.strftime("%H:%M") if v is not None else None
+
+    class Config:
+        from_attributes = True
+
+
+class InscripcionOut(BaseModel):
+    id: int
+    ciclo_id: int
+    status: Literal["registrada","preinscrita","confirmada","rechazada","cancelada"]
+    referencia: Optional[str] = None
+    importe_centavos: Optional[int] = Field(default=None, ge=0)
+    comprobante: Optional["ComprobanteMeta"] = None
+    alumno: Optional["AlumnoMini"] = None
+    created_at: datetime
+    ciclo: Optional[CicloLite] = None      # 👈 USA EL TOP-LEVEL CicloLite
+
+    @computed_field
+    @property
+    def importe_mxn(self) -> Optional[float]:
+        return None if self.importe_centavos is None else round(self.importe_centavos / 100.0, 2)
+
+    class Config:
+        from_attributes = True

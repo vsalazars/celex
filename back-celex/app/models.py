@@ -169,10 +169,17 @@ class Inscripcion(Base):
     )
 
     # Estado sencillo basado en strings (consistente con el router)
-    # Valores típicos: "registrada" | "pendiente" | "confirmada" | "rechazada"
+    # Valores: "registrada" | "pendiente" | "confirmada" | "rechazada"
     status = Column(String(20), nullable=False, default="registrada")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # ====== Datos de pago / comprobante ======
+    referencia = Column(String(100), nullable=True)          # referencia o folio de pago (opcional)
+    importe_centavos = Column(Integer, nullable=True)        # monto en centavos (opcional)
+    comprobante_path = Column(String(255), nullable=True)    # ruta donde se guardó el archivo
+    comprobante_mime = Column(String(100), nullable=True)    # ej. "application/pdf", "image/png"
+    comprobante_size = Column(Integer, nullable=True)        # tamaño en bytes
 
     # Relaciones (opcionales pero útiles)
     alumno = relationship("User", backref="inscripciones")

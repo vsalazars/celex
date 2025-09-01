@@ -5,6 +5,11 @@ import type {
 } from "./types";
 
 /* ========== Helper ========== */
+function isFormDataBody(init?: RequestInit) {
+  // Navegador / Next client
+  return typeof FormData !== "undefined" && init?.body instanceof FormData;
+}
+
 async function apiFetch<T = any>(
   input: string,
   init?: RequestInit & { auth?: boolean }
@@ -16,7 +21,15 @@ async function apiFetch<T = any>(
     if (!token) throw new Error("Sesión inválida");
     headers.set("Authorization", `Bearer ${token}`);
   }
-  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+  // ⚠️ Importante: NO forzar JSON si mandamos FormData (multipart)
+  if (!isFormDataBody(init) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  // Si alguien puso Content-Type pero el body es FormData, lo quitamos para permitir el boundary
+  if (isFormDataBody(init) && headers.has("Content-Type")) {
+    headers.delete("Content-Type");
+  }
 
   const res = await fetch(input, { ...init, headers, cache: "no-store" });
 
@@ -264,10 +277,26 @@ export async function listCiclosAlumno(params: {
 export type InscripcionDTO = {
   id: number;
   ciclo_id: number;
-  status: "registrada" | "pendiente" | "confirmada" | "rechazada";
+  status: "registrada" | "preinscrita" | "confirmada" | "rechazada" | "cancelada";
   created_at: string;
-  ciclo?: CicloDTO;
+  referencia?: string | null;
+  importe_centavos?: number | null;
+  ciclo?: {
+    id: number;
+    codigo: string;
+    idioma: string;
+    modalidad: string;
+    turno: string;
+    nivel?: string | null;
+    dias: string[];
+    hora_inicio?: string | null; // "HH:MM"
+    hora_fin?: string | null;    // "HH:MM"
+    aula?: string | null;        // 👈 AQUI
+    inscripcion?: { from: string; to: string } | null;
+    curso?: { from: string; to: string } | null;
+  } | null;
 };
+
 
 // 🔽 Pon esto junto a tus types de inscripciones (debajo de InscripcionDTO, por ejemplo)
 export type InscritoAlumno = {
@@ -282,13 +311,31 @@ export type InscripcionRow = {
   alumno: InscritoAlumno;
 };
 
-export async function createInscripcion(input: { ciclo_id: number }): Promise<void> {
+/**
+ * Crear inscripción con comprobante (multipart/form-data)
+ * Campos esperados por el backend:
+ * - ciclo_id (int)
+ * - referencia (string)
+ * - importe_centavos (int)
+ * - comprobante (File - PDF/imagen)
+ */
+export async function createInscripcion(input: {
+  ciclo_id: number;
+  referencia: string;
+  importe_centavos: number;
+  comprobante: File;
+}): Promise<void> {
   const url = buildURL("/alumno/inscripciones");
+  const fd = new FormData();
+  fd.append("ciclo_id", String(input.ciclo_id));
+  fd.append("referencia", input.referencia);
+  fd.append("importe_centavos", String(input.importe_centavos));
+  fd.append("comprobante", input.comprobante);
+
   await apiFetch(url, {
     method: "POST",
+    body: fd,
     auth: true,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ciclo_id: input.ciclo_id }),
   });
 }
 
@@ -302,7 +349,6 @@ export async function cancelarInscripcion(id: number | string): Promise<void> {
   const url = buildURL(`/alumno/inscripciones/${id}`);
   await apiFetch(url, { method: "DELETE", auth: true });
 }
-
 
 // 🔽 Función para coordinador: lista inscripciones de un ciclo
 export async function listInscripcionesCiclo(ciclo_id: number) {
