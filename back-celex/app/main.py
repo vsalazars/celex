@@ -13,8 +13,9 @@ from .auth import get_password_hash, verify_password, create_access_token
 # ✅ Routers (importa cada router con alias .router)
 from .routers.admin import router as admin_router
 from .routers.coordinacion_docentes import router as coordinacion_docentes_router
-from .routers.coordinacion_ciclos import router as coordinacion_ciclos_router   # 👈 CORRECTO
-from .routers.alumno_ciclos import router as alumno_ciclos_router               # 👈 CORRECTO
+from .routers.coordinacion_ciclos import router as coordinacion_ciclos_router
+from .routers.alumno_ciclos import router as alumno_ciclos_router
+from .routers.alumno_inscripciones import router as alumno_inscripciones_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -25,14 +26,15 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"],  # incluye Authorization
 )
 
 # Monta routers
 app.include_router(admin_router)
 app.include_router(coordinacion_docentes_router)
-app.include_router(coordinacion_ciclos_router)   # 👈 ya existe la variable
-app.include_router(alumno_ciclos_router)         # 👈 ya existe la variable
+app.include_router(coordinacion_ciclos_router)
+app.include_router(alumno_ciclos_router)
+app.include_router(alumno_inscripciones_router)
 
 @app.post("/auth/register", response_model=UserOut, status_code=201)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
@@ -87,3 +89,4 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 @app.get("/health")
 def health():
     return {"ok": True}
+

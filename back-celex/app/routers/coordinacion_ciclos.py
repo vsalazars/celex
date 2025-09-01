@@ -2,15 +2,19 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session, joinedload
 
-from ..auth import get_db, require_coordinator_or_admin
+# 👇 AGREGA get_current_user aquí
+from ..auth import get_db, require_coordinator_or_admin, get_current_user
+
 from ..models import (
     Ciclo,
-    User,  # 👈 necesario para validar/traer docente
+    User,
+    Inscripcion,
     Modalidad as ModelModalidad,
     Turno as ModelTurno,
     Idioma as ModelIdioma,
     Nivel as ModelNivel,
     ModalidadAsistencia as ModelModalidadAsistencia,
+    UserRole as ModelUserRole,
 )
 from ..schemas import (
     CicloCreate,
@@ -23,6 +27,8 @@ from ..schemas import (
     Nivel as SchemaNivel,
     ModalidadAsistencia as SchemaModalidadAsistencia,
 )
+
+
 
 router = APIRouter(prefix="/coordinacion/ciclos", tags=["coordinación-ciclos"])
 
@@ -323,3 +329,70 @@ def delete_ciclo(ciclo_id: int, db: Session = Depends(get_db)):
     db.delete(m)
     db.commit()
     return
+
+@router.get("/{ciclo_id}/inscripciones")
+def list_inscripciones_ciclo(
+    ciclo_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    page: int = Query(None, ge=1),
+    page_size: int = Query(None, ge=1, le=200),
+):
+    # Permisos: coordinador o superuser
+    if user.role not in (ModelUserRole.coordinator, ModelUserRole.superuser):
+        raise HTTPException(status_code=403, detail="Solo coordinación")
+
+    ciclo = db.query(Ciclo).filter(Ciclo.id == ciclo_id).first()
+    if not ciclo:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    q = (
+        db.query(Inscripcion, User)
+        .join(User, User.id == Inscripcion.alumno_id)
+        .filter(Inscripcion.ciclo_id == ciclo_id)
+        .order_by(Inscripcion.created_at.asc())
+    )
+
+    # Si te mandan paginado, responde paginado
+    if page and page_size:
+        total = q.count()
+        rows = q.offset((page - 1) * page_size).limit(page_size).all()
+        items = [
+            {
+                "id": ins.id,
+                "created_at": ins.created_at.isoformat(),
+                "alumno": {
+                    "first_name": alumno.first_name,
+                    "last_name": alumno.last_name,
+                    "email": alumno.email,
+                    "is_ipn": bool(getattr(alumno, "is_ipn", False)),
+                    "boleta": getattr(alumno, "boleta", None),
+                },
+            }
+            for ins, alumno in rows
+        ]
+        pages = (total + page_size - 1) // page_size if total else 1
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": pages,
+        }
+
+    # Por defecto: arreglo simple (no paginado)
+    rows = q.all()
+    return [
+        {
+            "id": ins.id,
+            "created_at": ins.created_at.isoformat(),
+            "alumno": {
+                "first_name": alumno.first_name,
+                "last_name": alumno.last_name,
+                "email": alumno.email,
+                "is_ipn": bool(getattr(alumno, "is_ipn", False)),
+                "boleta": getattr(alumno, "boleta", None),
+            },
+        }
+        for ins, alumno in rows
+    ]

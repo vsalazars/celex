@@ -1,6 +1,8 @@
 import { API_URL } from "./constants";
 import { getToken, clearSession } from "./sessions";
-import type { CoordResp, CreateTeacherInput, Paginated, Teacher } from "./types";
+import type {
+  CoordResp, CreateTeacherInput, Paginated, Teacher
+} from "./types";
 
 /* ========== Helper ========== */
 async function apiFetch<T = any>(
@@ -19,21 +21,18 @@ async function apiFetch<T = any>(
   const res = await fetch(input, { ...init, headers, cache: "no-store" });
 
   if (!res.ok) {
-    // Si expira el token
     if (res.status === 401) {
       try { clearSession(); } catch {}
       throw new Error("No autorizado. Vuelve a iniciar sesión.");
     }
-
     let detail = `Error ${res.status}`;
     try {
       const json = await res.json();
       detail = json?.detail || json?.message || detail;
-    } catch { /* sin cuerpo */ }
+    } catch {}
     throw new Error(detail);
   }
 
-  // 204 No Content
   if (res.status === 204) return undefined as unknown as T;
 
   const text = await res.text();
@@ -55,14 +54,10 @@ function buildURL(path: string, params?: Record<string, string | number | boolea
   return url.toString();
 }
 
-/* =========================================================================================
- * ========== Coordinadores ================================================================
- * =======================================================================================*/
+/* =================== Coordinadores =================== */
 
 export async function listCoordinators({
-  q,
-  page,
-  page_size,
+  q, page, page_size,
 }: { q?: string; page: number; page_size: number; }): Promise<CoordResp> {
   const url = buildURL("/admin/coordinators", { q, page, page_size });
   return apiFetch<CoordResp>(url, { auth: true });
@@ -88,11 +83,8 @@ export async function createCoordinator(payload: {
   });
 }
 
-/* =========================================================================================
- * ========== Docentes (Coordinación) ======================================================
- * =======================================================================================*/
+/* ================= Docentes (Coordinación) ================= */
 
-// Lista normaliza tanto arreglo simple como respuesta paginada
 export async function listTeachers(params?: {
   q?: string; page?: number; page_size?: number;
 }): Promise<Teacher[]> {
@@ -136,18 +128,9 @@ export async function deleteTeacher(id: string | number): Promise<void> {
   await apiFetch(url, { method: "DELETE", auth: true });
 }
 
-/* =========================================================================================
- * ========== Ciclos / Grupos (Coordinación) ===============================================
- * =======================================================================================*/
+/* ================= Ciclos / Grupos (Coordinación) ================= */
 
-/** Debe coincidir con el backend */
-export type Idioma =
-  | "ingles"
-  | "frances"
-  | "aleman"
-  | "italiano"
-  | "portugues";
-
+export type Idioma = "ingles" | "frances" | "aleman" | "italiano" | "portugues";
 export type Modalidad = "intensivo" | "sabatino" | "semestral";
 export type Turno = "matutino" | "vespertino" | "mixto";
 export type Nivel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
@@ -156,12 +139,8 @@ export type ModalidadAsistencia = "presencial" | "virtual";
 export type PeriodoDTO = { from: string; to: string };
 export type PeriodoInput = { from: string; to: string };
 
-// 👉 Docente ligero devuelto por el back (si se incluye)
 export type DocenteLite = {
-  id: number;
-  first_name: string;
-  last_name: string;
-  email: string;
+  id: number; first_name: string; last_name: string; email: string;
 } | null;
 
 export type CicloDTO = {
@@ -171,30 +150,19 @@ export type CicloDTO = {
   modalidad: Modalidad;
   turno: Turno;
   nivel: Nivel;
-
   cupo_total: number;
-
-  // Horario
-  dias: string[];                // ["lunes","miercoles",...]
-  hora_inicio: string;           // "HH:MM"
-  hora_fin: string;              // "HH:MM"
-
-  // Fechas
+  lugares_disponibles: number;   // 👈 NUEVO
+  dias: string[];
+  hora_inicio: string;
+  hora_fin: string;
   inscripcion: PeriodoDTO;
   curso: PeriodoDTO;
-
-  // Exámenes (opcionales)
-  examenMT?: string | null;            // YYYY-MM-DD
-  examenFinal?: string | null;         // YYYY-MM-DD
-
-  // Asistencia (el back default = "presencial")
+  examenMT?: string | null;
+  examenFinal?: string | null;
   modalidad_asistencia?: ModalidadAsistencia;
   aula?: string | null;
-
-  // 👉 Docente asignado (opcional)
   docente_id?: number | null;
   docente?: DocenteLite;
-
   notas?: string | null;
 };
 
@@ -212,7 +180,7 @@ export type ListCiclosParams = {
   modalidad?: Modalidad;
   turno?: Turno;
   nivel?: Nivel;
-  docente_id?: number;           // 👈 NUEVO
+  docente_id?: number;
   page?: number;
   page_size?: number;
 };
@@ -223,33 +191,22 @@ export type CreateCicloInput = {
   modalidad: Modalidad;
   turno: Turno;
   nivel: Nivel;
-
   cupo_total: number;
-
   dias: string[];
-  hora_inicio: string;   // "HH:MM"
-  hora_fin: string;      // "HH:MM"
-
+  hora_inicio: string;
+  hora_fin: string;
   inscripcion: PeriodoInput;
   curso: PeriodoInput;
-
-  examenMT?: string;                   // opcional
-  examenFinal?: string;                // opcional
-
-  modalidad_asistencia?: ModalidadAsistencia; // opcional (back default = "presencial")
+  examenMT?: string;
+  examenFinal?: string;
+  modalidad_asistencia?: ModalidadAsistencia;
   aula?: string;
-
-  // 👉 Asignación opcional de docente al crear
   docente_id?: number;
-
   notas?: string;
 };
 
-export type UpdateCicloInput = Partial<CreateCicloInput> & {
-  codigo?: string;
-};
+export type UpdateCicloInput = Partial<CreateCicloInput> & { codigo?: string };
 
-/** Listar ciclos (paginado + filtros) — **Coordinación** */
 export async function listCiclos(params: ListCiclosParams = {}): Promise<CicloListResponse> {
   const url = buildURL("/coordinacion/ciclos", {
     q: params.q,
@@ -257,48 +214,30 @@ export async function listCiclos(params: ListCiclosParams = {}): Promise<CicloLi
     modalidad: params.modalidad,
     turno: params.turno,
     nivel: params.nivel,
-    docente_id: params.docente_id,     // 👈 NUEVO
+    docente_id: params.docente_id,
     page: params.page ?? 1,
     page_size: params.page_size ?? 8,
   });
   return apiFetch<CicloListResponse>(url, { auth: true });
 }
 
-/** Crear ciclo — **Coordinación** */
 export async function createCiclo(input: CreateCicloInput): Promise<CicloDTO> {
   const url = buildURL("/coordinacion/ciclos");
-  // JSON.stringify ya omite undefined, así no mandamos campos opcionales vacíos
-  return apiFetch<CicloDTO>(url, {
-    method: "POST",
-    body: JSON.stringify(input),
-    auth: true,
-  });
+  return apiFetch<CicloDTO>(url, { method: "POST", body: JSON.stringify(input), auth: true });
 }
 
-/** Actualizar ciclo — **Coordinación** */
 export async function updateCiclo(id: number | string, input: UpdateCicloInput): Promise<CicloDTO> {
   const url = buildURL(`/coordinacion/ciclos/${id}`);
-  return apiFetch<CicloDTO>(url, {
-    method: "PUT",
-    body: JSON.stringify(input),
-    auth: true,
-  });
+  return apiFetch<CicloDTO>(url, { method: "PUT", body: JSON.stringify(input), auth: true });
 }
 
-/** Eliminar ciclo — **Coordinación** */
 export async function deleteCiclo(id: number | string): Promise<void> {
   const url = buildURL(`/coordinacion/ciclos/${id}`);
   await apiFetch<void>(url, { method: "DELETE", auth: true });
 }
 
-/* =========================================================================================
- * ========== Alumno – Ciclos visibles e Inscripciones =====================================
- * =======================================================================================*/
+/* ================= Alumno – Ciclos e Inscripciones ================= */
 
-/** Listar ciclos que el alumno puede ver (evita 403).
- *   Usa el endpoint de alumno: GET /alumno/ciclos
- *   Por defecto: solo_abiertos=true para mostrar periodos con inscripción vigente.
- */
 export async function listCiclosAlumno(params: {
   q?: string;
   idioma?: Idioma;
@@ -322,19 +261,6 @@ export async function listCiclosAlumno(params: {
   return apiFetch<CicloListResponse>(url, { auth: true });
 }
 
-/** Crear inscripción del alumno al ciclo actual.
- *  Endpoint sugerido: POST /alumno/inscripciones  { ciclo_id }
- */
-export async function createInscripcion(payload: { ciclo_id: number }) {
-  const url = buildURL("/alumno/inscripciones");
-  return apiFetch(url, {
-    method: "POST",
-    body: JSON.stringify(payload),
-    auth: true,
-  });
-}
-
-/** (Opcional) Listar mis inscripciones */
 export type InscripcionDTO = {
   id: number;
   ciclo_id: number;
@@ -343,14 +269,56 @@ export type InscripcionDTO = {
   ciclo?: CicloDTO;
 };
 
+// 🔽 Pon esto junto a tus types de inscripciones (debajo de InscripcionDTO, por ejemplo)
+export type InscritoAlumno = {
+  first_name: string;
+  last_name: string;
+  email: string;
+};
+
+export type InscripcionRow = {
+  id: number;
+  created_at: string; // ISO
+  alumno: InscritoAlumno;
+};
+
+export async function createInscripcion(input: { ciclo_id: number }): Promise<void> {
+  const url = buildURL("/alumno/inscripciones");
+  await apiFetch(url, {
+    method: "POST",
+    auth: true,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ciclo_id: input.ciclo_id }),
+  });
+}
+
 export async function listMisInscripciones(): Promise<InscripcionDTO[]> {
   const url = buildURL("/alumno/inscripciones");
   const raw = await apiFetch<InscripcionDTO[] | Paginated<InscripcionDTO>>(url, { auth: true });
   return Array.isArray(raw) ? raw : raw?.items ?? [];
 }
 
-/** (Opcional) Cancelar mi inscripción */
 export async function cancelarInscripcion(id: number | string): Promise<void> {
   const url = buildURL(`/alumno/inscripciones/${id}`);
   await apiFetch(url, { method: "DELETE", auth: true });
+}
+
+
+// 🔽 Función para coordinador: lista inscripciones de un ciclo
+export async function listInscripcionesCiclo(ciclo_id: number) {
+  const url = buildURL(`/coordinacion/ciclos/${ciclo_id}/inscripciones`);
+  const raw = await apiFetch<any>(url, { auth: true });
+
+  const rows = Array.isArray(raw) ? raw : raw?.items || [];
+  return rows.map((r: any) => ({
+    id: r.id,
+    created_at: r.created_at,
+    alumno: {
+      first_name: r.alumno?.first_name ?? null,
+      last_name:  r.alumno?.last_name ?? null,
+      email:      r.alumno?.email ?? null,
+      is_ipn:     !!r.alumno?.is_ipn,
+      boleta:     r.alumno?.boleta ?? null,
+    },
+  }));
 }

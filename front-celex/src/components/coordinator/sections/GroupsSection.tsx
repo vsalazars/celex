@@ -44,8 +44,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import {
-  listCiclos, createCiclo, updateCiclo, deleteCiclo, listTeachers
+  listCiclos, createCiclo, updateCiclo, deleteCiclo, listTeachers,
+  listInscripcionesCiclo, // 👈 NUEVO: API para listar inscritos del ciclo
 } from "@/lib/api";
+
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription
+} from "@/components/ui/sheet";
+
 import type {
   CicloDTO, CicloListResponse, ListCiclosParams, Teacher
 } from "@/lib/types";
@@ -165,66 +171,61 @@ const EMPTY_FORM: FormType = {
   notas: "",
 };
 
-function DatePicker({
-  label, value, onChange, placeholder = "Seleccionar fecha", error,
-}: { label: string; value?: Date; onChange: (d?: Date) => void; placeholder?: string; error?: string; }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs">{label}</Label>
-        {error ? <span className="text-[11px] text-red-500">{error}</span> : null}
-      </div>
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button variant="outline" className="w-full justify-start rounded-xl h-9">
-            {value ? fmt.format(value) : <span className="text-neutral-400">{placeholder}</span>}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start" sideOffset={8}>
-          <Calendar mode="single" selected={value} onSelect={onChange} initialFocus locale={es} />
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
+/* ====== Helpers de formato para pantalla ====== */
+function abreviarDia(key: string) {
+  const m: Record<string, string> = {
+    lunes: "Lun",
+    martes: "Mar",
+    miercoles: "Mié",
+    jueves: "Jue",
+    viernes: "Vie",
+    sabado: "Sáb",
+    domingo: "Dom",
+  };
+  return m[key] ?? key;
 }
+function hhmm(h?: string) {
+  if (!h) return "";
+  const m = h.match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : h;
+}
+const dShort = (s?: string) => {
+  if (!s) return "—";
+  const dt = new Date(`${s}T00:00:00`);
+  const day = dt.toLocaleString("es-MX", { day: "2-digit" });
+  const month = dt.toLocaleString("es-MX", { month: "short" }).replace(/\./g, "");
+  const year = dt.toLocaleString("es-MX", { year: "2-digit" });
+  return `${day}/${month}/${year}`;
+};
+// dt ISO -> "lun 02 sep 2025, 07:15"
+const dWhen = (s?: string) => {
+  if (!s) return "—";
+  const dt = new Date(s);
+  return dt
+    .toLocaleString("es-MX", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    .replace(/\./g, "");
+};
 
-function DateRangePicker({
-  label, value, onChange, months = 2, error,
-}: { label: string; value: DateRange; onChange: (r: DateRange) => void; months?: number; error?: string; }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs">{label}</Label>
-        {error ? <span className="text-[11px] text-red-500">{error}</span> : null}
-      </div>
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button variant="outline" className="w-full justify-start rounded-xl h-9">
-            {fmtRange(value)}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" side="bottom" sideOffset={8} className="w-auto p-0 min-w-[320px] sm:min-w-[620px]">
-          <div className="p-2">
-            <Calendar
-              mode="range"
-              numberOfMonths={months}
-              selected={{ from: value?.from, to: value?.to } as any}
-              onSelect={(val) => onChange({ from: val?.from, to: val?.to })}
-              initialFocus
-              defaultMonth={value?.from ?? new Date()}
-              locale={es}
-              classNames={{
-                months: "flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4",
-                month: "space-y-2",
-                caption: "flex justify-center pt-2 relative items-center",
-              }}
-            />
-          </div>
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
+/* ===== Tipos locales ===== */
+type InscripcionLite = {
+  id: number;
+  created_at?: string | null;
+  alumno?: {
+    first_name?: string | null;
+    last_name?: string | null;
+    email?: string | null;
+    is_ipn?: boolean | null;   // 👈 nuevo
+    boleta?: string | null;    // 👈 nuevo
+  } | null;
+};
 
 /* ========================= MAIN ========================= */
 export default function GroupsSection() {
@@ -252,6 +253,12 @@ export default function GroupsSection() {
   const items = data?.items ?? [];
   const canPrev = (data?.page ?? 1) > 1;
   const canNext = !!data && data.page < data.pages;
+
+  // Sheet de inscritos
+  const [openIns, setOpenIns] = useState(false);
+  const [insCiclo, setInsCiclo] = useState<CicloDTO | null>(null);
+  const [insList, setInsList] = useState<InscripcionLite[]>([]);
+  const [loadingIns, setLoadingIns] = useState(false);
 
   // Form
   const form = useForm<FormType>({
@@ -397,11 +404,21 @@ export default function GroupsSection() {
     }
   };
 
-  const openCreate = () => {
-    setMode("create");
-    setSelected(null);
-    reset(EMPTY_FORM, { keepDefaultValues: false });
-    setOpen(true);
+  // ==== NUEVO: abrir sheet de inscritos ====
+  const openInscritos = async (c: CicloDTO) => {
+    setInsCiclo(c);
+    setOpenIns(true);
+    setLoadingIns(true);
+    try {
+      const rows = await listInscripcionesCiclo(c.id);
+      setInsList(rows || []);
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || "No se pudieron cargar las inscripciones");
+      setInsList([]);
+    } finally {
+      setLoadingIns(false);
+    }
   };
 
   return (
@@ -420,10 +437,19 @@ export default function GroupsSection() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button className="gap-2 rounded-xl shadow-sm" onClick={openCreate}>
+          <Button
+            className="gap-2 rounded-xl shadow-sm"
+            onClick={() => {
+              setMode("create");
+              setSelected(null);
+              reset(EMPTY_FORM, { keepDefaultValues: false });
+              setOpen(true);
+            }}
+          >
             <PlusCircle className="h-4 w-4" />
             Crear nuevo ciclo
           </Button>
+
         </div>
       </header>
 
@@ -534,11 +560,11 @@ export default function GroupsSection() {
             {view === "cards" ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 {items.map((c) => (
-                  <CardCiclo key={c.id} c={c} onEdit={onEdit} onDelete={onDelete} />
+                  <CardCiclo key={c.id} c={c} onEdit={onEdit} onDelete={onDelete} onShowIns={openInscritos} />
                 ))}
               </div>
             ) : (
-              <TableCiclos items={items} onEdit={onEdit} onDelete={onDelete} />
+              <TableCiclos items={items} onEdit={onEdit} onDelete={onDelete} onShowIns={openInscritos} />
             )}
 
             <div className="mt-4 flex items-center justify-between">
@@ -563,6 +589,94 @@ export default function GroupsSection() {
           </div>
         )}
       </div>
+
+      {/* ==== SHEET: Inscritos del ciclo ==== */}
+      <Sheet open={openIns} onOpenChange={setOpenIns}>
+        <SheetContent
+          side="top"
+          className="w-full sm:max-w-xl px-4 sm:px-6"  
+        >
+          <SheetHeader className="px-0">
+            <SheetTitle>Inscritos — {insCiclo?.codigo ?? "—"}</SheetTitle>
+            <SheetDescription>Listado de alumnos inscritos con fecha y hora.</SheetDescription>
+          </SheetHeader>
+
+          {/* métricas */}
+          {(() => {
+            const ipnCount = insList.reduce((acc, r) => acc + (r.alumno?.is_ipn ? 1 : 0), 0);
+            const total = insList.length;
+            const externos = Math.max(0, total - ipnCount);
+
+            return (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 pb-1">
+                <div className="rounded-xl border bg-white/60 p-3">
+                  <div className="text-xs text-neutral-500">Alumnos IPN</div>
+                  <div className="mt-1 text-2xl font-bold tabular-nums">{ipnCount}</div>
+                </div>
+                <div className="rounded-xl border bg-white/60 p-3">
+                  <div className="text-xs text-neutral-500">Externos</div>
+                  <div className="mt-1 text-2xl font-bold tabular-nums">{externos}</div>
+                </div>
+                <div className="rounded-xl border bg-white/60 p-3">
+                  <div className="text-xs text-neutral-500">Total</div>
+                  <div className="mt-1 text-2xl font-bold tabular-nums">{total}</div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Contenido con margen inferior */}
+          <div className="mt-3 space-y-3 pb-6">
+            {/* Lista */}
+            <div className="rounded-xl border bg-white/60">
+              {loadingIns ? (
+                <div className="p-4 text-sm text-neutral-600">Cargando…</div>
+              ) : insList.length === 0 ? (
+                <div className="p-4 text-sm text-neutral-600">Aún no hay inscritos.</div>
+              ) : (
+                <ul className="max-h-[55vh] overflow-y-auto divide-y">
+                  {insList.map((row) => {
+                    const name = `${row.alumno?.first_name ?? ""} ${row.alumno?.last_name ?? ""}`.trim();
+                    const isIpn = !!row.alumno?.is_ipn;
+                    const boleta = row.alumno?.boleta;
+                    return (
+                      <li key={row.id} className="flex items-center justify-between gap-3 p-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-medium truncate">
+                              {name || row.alumno?.email || "Alumno"}
+                            </div>
+                            {isIpn && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                                IPN
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-xs text-neutral-500 truncate">
+                            {row.alumno?.email ?? "—"}
+                          </div>
+
+                          {isIpn && boleta && (
+                            <div className="text-[11px] text-primary mt-0.5">
+                              Boleta: <span className="font-medium tabular-nums">{boleta}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="text-xs tabular-nums text-neutral-700">
+                          {dWhen(row.created_at ?? undefined)}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
 
       {/* Dialog Crear/Editar */}
       <Dialog
@@ -607,10 +721,11 @@ export default function GroupsSection() {
 
 /* ========================= Subcomponentes ========================= */
 
-function CardCiclo({ c, onEdit, onDelete }: {
+function CardCiclo({ c, onEdit, onDelete, onShowIns }: {
   c: CicloDTO;
   onEdit: (c: CicloDTO) => void;
   onDelete: (c: CicloDTO) => void;
+  onShowIns: (c: CicloDTO) => void;
 }) {
   const cupo = (c as any).cupo_total ?? 0;
   const nivel = (c as any).nivel as string | undefined;
@@ -618,20 +733,14 @@ function CardCiclo({ c, onEdit, onDelete }: {
   const hInicio = (c as any).hora_inicio as string | undefined;
   const hFin = (c as any).hora_fin as string | undefined;
 
-  const d = (s?: string) => {
-    if (!s) return "—";
-    const dt = new Date(`${s}T00:00:00`);
-    const day = dt.toLocaleString("es-MX", { day: "2-digit" });
-    const month = dt.toLocaleString("es-MX", { month: "short" });
-    const year = dt.toLocaleString("es-MX", { year: "2-digit" });
-    return `${day}/${month}/${year}`;
-  };
-
   const diasTexto = dias.length ? dias.map(d => abreviarDia(d)).join(" • ") : "—";
   const horarioTexto = hInicio && hFin ? `${hhmm(hInicio)}–${hhmm(hFin)}` : "—";
 
   const modalidadAsistencia = (c as any).modalidad_asistencia as "presencial" | "virtual" | undefined;
   const aula = (c as any).aula as string | undefined;
+
+  // Si el back te regresa `inscritos_count` lo usamos; si no, lo omitimos
+  const inscritosCount = (c as any).inscritos_count as number | undefined;
 
   return (
     <div className="rounded-2xl border bg-white/60 p-4 shadow-sm hover:shadow-md transition-shadow">
@@ -711,6 +820,12 @@ function CardCiclo({ c, onEdit, onDelete }: {
           <Users className="h-3.5 w-3.5" /> {cupo} lugares
         </span>
 
+        {typeof inscritosCount === "number" && (
+          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-neutral-700">
+            <Users className="h-3.5 w-3.5" /> {inscritosCount} inscritos
+          </span>
+        )}
+
         {modalidadAsistencia && (
           <Badge variant="secondary" className="rounded-full capitalize">{modalidadAsistencia}</Badge>
         )}
@@ -733,7 +848,9 @@ function CardCiclo({ c, onEdit, onDelete }: {
             <CalendarDays className="h-3.5 w-3.5" />
             <span className="font-medium text-neutral-800">Días</span>
           </div>
-          <div className="mt-1 text-[12px] text-neutral-700">{diasTexto}</div>
+          <div className="mt-1 text-[12px] text-neutral-700">
+            {dias.length ? dias.map(abreviarDia).join(" • ") : "—"}
+          </div>
 
           <div className="mt-2 flex items-center gap-1.5 text-xs text-neutral-700">
             <Clock3 className="h-3.5 w-3.5" />
@@ -746,48 +863,72 @@ function CardCiclo({ c, onEdit, onDelete }: {
         <div className="rounded-xl border bg-white/50 p-3">
           <div className="text-xs font-medium text-neutral-800">Inscripción</div>
           <div className="mt-1 text-[12px] tabular-nums">
-            {c.inscripcion?.from ? d(c.inscripcion.from) : "—"} – {c.inscripcion?.to ? d(c.inscripcion.to) : "—"}
+            {c.inscripcion?.from ? dShort(c.inscripcion.from) : "—"} – {c.inscripcion?.to ? dShort(c.inscripcion.to) : "—"}
           </div>
 
           <div className="mt-2 text-xs font-medium text-neutral-800">Periodo del curso</div>
           <div className="mt-1 text-[12px] tabular-nums">
-            {c.curso?.from ? d(c.curso.from) : "—"} – {c.curso?.to ? d(c.curso.to) : "—"}
+            {c.curso?.from ? dShort(c.curso.from) : "—"} – {c.curso?.to ? dShort(c.curso.to) : "—"}
           </div>
         </div>
 
-          {/* Exámenes (si hay) */}
-          {(c.examenMT || c.examenFinal) ? (
-            <div className="rounded-xl border bg-white/50 p-3">
-              {c.examenMT && (
-                <>
-                  <div className="text-xs font-medium text-neutral-800">Examen MT</div>
-                  <div className="mt-1 text-[12px] tabular-nums">{d(c.examenMT)}</div>
-                </>
-              )}
+        {/* Exámenes (si hay) */}
+        {(c.examenMT || c.examenFinal) ? (
+          <div className="rounded-xl border bg-white/50 p-3">
+            {c.examenMT && (
+              <>
+                <div className="text-xs font-medium text-neutral-800">Examen MT</div>
+                <div className="mt-1 text-[12px] tabular-nums">{dShort(c.examenMT)}</div>
+              </>
+            )}
 
-              {c.examenFinal && (
-                <>
-                  <div className="mt-2 text-xs font-medium text-neutral-800">Examen final</div>
-                  <div className="mt-1 text-[12px] tabular-nums">{d(c.examenFinal)}</div>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-xl border bg-white/30 p-3 text-[12px] text-neutral-400 flex items-center justify-center">
-              Sin fechas de exámenes
-            </div>
-          )}
+            {c.examenFinal && (
+              <>
+                <div className="mt-2 text-xs font-medium text-neutral-800">Examen final</div>
+                <div className="mt-1 text-[12px] tabular-nums">{dShort(c.examenFinal)}</div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border bg-white/30 p-3 text-[12px] text-neutral-400 flex items-center justify-center">
+            Sin fechas de exámenes
+          </div>
+        )}
       </div>
 
-      {/* Notas */}
-      {c.notas ? (
-        <>
-          <div className="my-3"><Separator /></div>
-          <p className="text-xs text-neutral-700">
-            <span className="font-medium">Notas:</span> {c.notas}
-          </p>
-        </>
-      ) : null}
+      {/* Acciones secundarias */}
+      <div className="mt-3 flex gap-2">
+        <Button variant="outline" onClick={() => onShowIns(c)} className="rounded-xl">
+          <Users className="h-4 w-4 mr-2" /> Ver inscritos
+        </Button>
+        <Button variant="outline" onClick={() => onEdit(c)} className="rounded-xl">
+          <Pencil className="h-4 w-4 mr-2" /> Editar
+        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" className="rounded-xl text-red-600 border-red-200">
+              <Trash2 className="h-4 w-4 mr-2" /> Eliminar
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Eliminar ciclo</AlertDialogTitle>
+              <AlertDialogDescription>
+                ¿Seguro que deseas eliminar <b>{c.codigo}</b>? Esta acción no se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                onClick={() => onDelete(c)}
+              >
+                Sí, eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </div>
   );
 }
@@ -796,20 +937,13 @@ function TableCiclos({
   items,
   onEdit,
   onDelete,
+  onShowIns,
 }: {
   items: CicloDTO[];
   onEdit: (c: CicloDTO) => void;
   onDelete: (c: CicloDTO) => void;
+  onShowIns: (c: CicloDTO) => void;
 }) {
-  const d = (s?: string) => {
-    if (!s) return "—";
-    const dt = new Date(`${s}T00:00:00`);
-    const day = dt.toLocaleString("es-MX", { day: "2-digit" });
-    const month = dt.toLocaleString("es-MX", { month: "short" });
-    const year = dt.toLocaleString("es-MX", { year: "2-digit" });
-    return `${day}/${month}/${year}`;
-  };
-
   return (
     <div className="rounded-2xl border bg-white/60 p-2 shadow-sm overflow-x-auto">
       <table className="w-full text-sm">
@@ -820,9 +954,7 @@ function TableCiclos({
             <th>Modalidad</th>
             <th>Turno</th>
             <th>Nivel</th>
-            {/*<th>Días</th>*/}
             <th>Horario</th>
-            {/*<th>Inscripción</th>*/}
             <th>Curso</th>
             <th>Docente</th>
             <th>Cupo</th>
@@ -834,17 +966,13 @@ function TableCiclos({
         <tbody className="divide-y">
           {items.map((c) => {
             const dias = ((c as any).dias ?? []) as string[];
-            const diasTexto = dias.length ? dias.map((x) => abreviarDia(x)).join(" • ") : "—";
-
             const hInicio = (c as any).hora_inicio as string | undefined;
             const hFin = (c as any).hora_fin as string | undefined;
             const horario = hInicio && hFin ? `${hhmm(hInicio)}–${hhmm(hFin)}` : "—";
-
             const docente =
               c.docente && (c.docente.first_name || c.docente.last_name)
                 ? `${c.docente.first_name ?? ""} ${c.docente.last_name ?? ""}`.trim()
                 : "—";
-
             const cupo = (c as any).cupo_total ?? 0;
             const nivel = (c as any).nivel as string | undefined;
             const modalidadAsistencia = (c as any).modalidad_asistencia as "presencial" | "virtual" | undefined;
@@ -857,17 +985,11 @@ function TableCiclos({
                 <td className="capitalize">{c.modalidad}</td>
                 <td className="capitalize">{c.turno}</td>
                 <td>{nivel ?? "—"}</td>
-                {/*<td>{diasTexto}</td>*/}
                 <td className="tabular-nums">{horario}</td>
-                {/*<td className="tabular-nums">
-                  {(c.inscripcion?.from ? d(c.inscripcion.from) : "—") +
-                    " – " +
-                    (c.inscripcion?.to ? d(c.inscripcion.to) : "—")}
-                </td>*/}
                 <td className="tabular-nums">
-                  {(c.curso?.from ? d(c.curso.from) : "—") +
+                  {(c.curso?.from ? dShort(c.curso.from) : "—") +
                     " – " +
-                    (c.curso?.to ? d(c.curso.to) : "—")}
+                    (c.curso?.to ? dShort(c.curso.to) : "—")}
                 </td>
                 <td>{docente}</td>
                 <td className="tabular-nums">{cupo}</td>
@@ -875,6 +997,9 @@ function TableCiclos({
                 <td>{aula ?? "—"}</td>
                 <td className="text-right">
                   <div className="inline-flex gap-1">
+                    <Button variant="outline" size="sm" className="h-8 rounded-lg" onClick={() => onShowIns(c)}>
+                      <Users className="h-4 w-4 mr-1" /> Inscritos
+                    </Button>
                     <Button variant="outline" size="sm" className="h-8 rounded-lg" onClick={() => onEdit(c)}>
                       <Pencil className="h-4 w-4 mr-1" /> Editar
                     </Button>
@@ -909,6 +1034,67 @@ function TableCiclos({
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function DatePicker({
+  label, value, onChange, placeholder = "Seleccionar fecha", error,
+}: { label: string; value?: Date; onChange: (d?: Date) => void; placeholder?: string; error?: string; }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs">{label}</Label>
+        {error ? <span className="text-[11px] text-red-500">{error}</span> : null}
+      </div>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className="w-full justify-start rounded-xl h-9">
+            {value ? fmt.format(value) : <span className="text-neutral-400">{placeholder}</span>}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start" sideOffset={8}>
+          <Calendar mode="single" selected={value} onSelect={onChange} initialFocus locale={es} />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
+function DateRangePicker({
+  label, value, onChange, months = 2, error,
+}: { label: string; value: DateRange; onChange: (r: DateRange) => void; months?: number; error?: string; }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs">{label}</Label>
+        {error ? <span className="text-[11px] text-red-500">{error}</span> : null}
+      </div>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className="w-full justify-start rounded-xl h-9">
+            {fmtRange(value)}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" side="bottom" sideOffset={8} className="w-auto p-0 min-w-[320px] sm:min-w-[620px]">
+          <div className="p-2">
+            <Calendar
+              mode="range"
+              numberOfMonths={months}
+              selected={{ from: value?.from, to: value?.to } as any}
+              onSelect={(val) => onChange({ from: val?.from, to: val?.to })}
+              initialFocus
+              defaultMonth={value?.from ?? new Date()}
+              locale={es}
+              classNames={{
+                months: "flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4",
+                month: "space-y-2",
+                caption: "flex justify-center pt-2 relative items-center",
+              }}
+            />
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -1109,8 +1295,8 @@ function FormCiclo({
                 name="docente_id"
                 render={({ field }) => (
                   <Select
-                    value={field.value ?? "__none"}               // <— no uses ""
-                    onValueChange={(v) =>                         // <— mapea "__none" a undefined
+                    value={field.value ?? "__none"}
+                    onValueChange={(v) =>
                       field.onChange(v === "__none" ? undefined : v)
                     }
                   >
@@ -1118,7 +1304,7 @@ function FormCiclo({
                       <SelectValue placeholder="Sin asignar" />
                     </SelectTrigger>
                     <SelectContent className="max-h-72">
-                      <SelectItem value="__none">Sin asignar</SelectItem>  {/* <— sentinel */}
+                      <SelectItem value="__none">Sin asignar</SelectItem>
                       {teachers.map(t => (
                         <SelectItem key={t.id} value={String(t.id)}>
                           {t.first_name} {t.last_name} — {t.email}
@@ -1259,7 +1445,6 @@ function FormCiclo({
         {/* Exámenes / Colocación (opcionales) */}
         <Section title="Exámenes (opcionales)">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            
             <Controller
               control={control}
               name="examenMT"
@@ -1312,9 +1497,6 @@ function FormCiclo({
   );
 }
 
-
-
-
 /* ========================= Helpers locales ========================= */
 function Section({ title, children }: { title: string; children: React.ReactNode; }) {
   return (
@@ -1323,23 +1505,4 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       {children}
     </section>
   );
-}
-
-function abreviarDia(key: string) {
-  const m: Record<string, string> = {
-    lunes: "Lun",
-    martes: "Mar",
-    miercoles: "Mié",
-    jueves: "Jue",
-    viernes: "Vie",
-    sabado: "Sáb",
-    domingo: "Dom",
-  };
-  return m[key] ?? key;
-}
-
-function hhmm(h?: string) {
-  if (!h) return "";
-  const m = h.match(/^(\d{2}):(\d{2})/);
-  return m ? `${m[1]}:${m[2]}` : h;
 }

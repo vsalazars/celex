@@ -1,120 +1,139 @@
 # app/routers/alumno_inscripciones.py
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
 from datetime import date
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session, lazyload
+from sqlalchemy import func
 
-from ..auth import get_db, require_student   # 👈 asegúrate de tener require_student
-from ..models import (
-    Ciclo,
-    Modalidad as ModelModalidad,
-    Turno as ModelTurno,
-    Idioma as ModelIdioma,
-    Nivel as ModelNivel,
-)
-from ..schemas import (
-    CicloListResponse,
-    CicloOut,
-    Idioma as SchemaIdioma,
-    Modalidad as SchemaModalidad,
-    Turno as SchemaTurno,
-    Nivel as SchemaNivel,
-)
+from ..database import get_db
+from ..auth import get_current_user
+from ..models import Ciclo, UserRole as ModelUserRole
+from .. import models as models_mod  # resolver Inscripcion en runtime
 
-router = APIRouter(prefix="/alumno", tags=["alumno"])
+router = APIRouter(prefix="/alumno/inscripciones", tags=["alumno-inscripciones"])
 
-def _to_out(m: Ciclo) -> CicloOut:
-    return CicloOut(
-        id=m.id,
-        codigo=m.codigo,
-        idioma=m.idioma,
-        modalidad=m.modalidad,
-        turno=m.turno,
-        nivel=m.nivel,
-        cupo_total=m.cupo_total,
-        dias=m.dias,
-        hora_inicio=m.hora_inicio,
-        hora_fin=m.hora_fin,
-        inscripcion={"from": m.insc_inicio, "to": m.insc_fin},
-        reinscripcion={"from": m.reinsc_inicio, "to": m.reinsc_fin},
-        curso={"from": m.curso_inicio, "to": m.curso_fin},
-        colocacion={"from": m.coloc_inicio, "to": m.coloc_fin},
-        examenMT=m.examen_mt,
-        examenFinal=m.examen_final,
-        modalidad_asistencia=m.modalidad_asistencia,
-        aula=m.aula,
-        notas=m.notas,
-    )
 
-@router.get("/ciclos", response_model=CicloListResponse, dependencies=[Depends(require_student)])
-def list_ciclos_para_alumno(
+class CreateInscripcionRequest(BaseModel):
+    ciclo_id: int = Field(..., ge=1)
+
+
+# ---------- helpers ----------
+def _get_inscripcion_model():
+    Inscripcion = getattr(models_mod, "Inscripcion", None)
+    if Inscripcion is not None:
+        return Inscripcion
+    for name in dir(models_mod):
+        obj = getattr(models_mod, name)
+        if getattr(obj, "__tablename__", None):
+            try:
+                if "inscrip" in obj.__tablename__:
+                    return obj
+            except Exception:
+                pass
+    return None
+
+
+def require_student(user=Depends(get_current_user)):
+    if user.role != ModelUserRole.student:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo alumnos")
+    return user
+
+
+# ---------- endpoints ----------
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_student)])
+def crear_inscripcion(
+    payload: CreateInscripcionRequest,
     db: Session = Depends(get_db),
-    q: Optional[str] = Query(None),
-    idioma: Optional[SchemaIdioma] = Query(None),
-    modalidad: Optional[SchemaModalidad] = Query(None),
-    turno: Optional[SchemaTurno] = Query(None),
-    nivel: Optional[SchemaNivel] = Query(None),
-    solo_abiertos: bool = Query(True, description="Sólo mostrar ciclos dentro de inscripción/reinscripción"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=100),
+    user=Depends(require_student),
 ):
-    base = db.query(Ciclo)
-
-    if q:
-        like = f"%{q.strip()}%"
-        base = base.filter(Ciclo.codigo.ilike(like))
-    if idioma:
-        base = base.filter(Ciclo.idioma == ModelIdioma(idioma.value))
-    if modalidad:
-        base = base.filter(Ciclo.modalidad == ModelModalidad(modalidad.value))
-    if turno:
-        base = base.filter(Ciclo.turno == ModelTurno(turno.value))
-    if nivel:
-        base = base.filter(Ciclo.nivel == ModelNivel(nivel.value))
-
-    if solo_abiertos:
-        hoy = date.today()
-        base = base.filter(
-            ((Ciclo.insc_inicio <= hoy) & (Ciclo.insc_fin >= hoy)) |
-            ((Ciclo.reinsc_inicio <= hoy) & (Ciclo.reinsc_fin >= hoy))
+    Inscripcion = _get_inscripcion_model()
+    if Inscripcion is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Modelo de Inscripción no definido en app.models. Agrega el modelo (p. ej. 'Inscripcion').",
         )
 
-    total = base.count()
-    pages = (total + page_size - 1) // page_size if total else 1
-    if page > pages and total > 0:
-        page = pages
-
-    items = (
-        base.order_by(Ciclo.curso_inicio.asc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
+    # 1) Trae el ciclo SIN joins y bloquea SOLO la tabla ciclos (evita FOR SHARE en outer join)
+    ciclo = (
+        db.query(Ciclo)
+        .options(lazyload("*"))                 # 👈 desactiva eager joins (joinedload)
+        .filter(Ciclo.id == payload.ciclo_id)
+        .with_for_update(of=Ciclo, nowait=False)  # 👈 FOR UPDATE OF ciclos (seguro con outer joins)
+        .first()
     )
-    return CicloListResponse(
-        items=[_to_out(x) for x in items],
-        total=total, page=page, page_size=page_size, pages=pages
-    )
-
-# 👇 si ya tienes inscripciones, deja esto; si no, puedes implementarlo después.
-from ..models import Inscripcion  # asumiendo que existe
-from ..schemas import InscripcionOut  # si lo tienes
-
-@router.post("/inscripciones", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_student)])
-def crear_inscripcion(ciclo_id: int, db: Session = Depends(get_db), user=Depends(require_student)):
-    ciclo = db.query(Ciclo).filter(Ciclo.id == ciclo_id).first()
     if not ciclo:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
-    # Evitar duplicados del mismo alumno
-    existing = db.query(Inscripcion).filter(
-        Inscripcion.ciclo_id == ciclo_id,
-        Inscripcion.alumno_id == user.id
-    ).first()
-    if existing:
+    # 2) Ventana de inscripción (usa solo insc_* si no manejas reinsc_*)
+    hoy = date.today()
+    if not (ciclo.insc_inicio and ciclo.insc_fin and ciclo.insc_inicio <= hoy <= ciclo.insc_fin):
+        raise HTTPException(status_code=409, detail="Periodo de inscripción no vigente")
+
+    # 3) Evitar duplicado del mismo alumno
+    ya = (
+        db.query(Inscripcion.id)
+        .filter(Inscripcion.ciclo_id == payload.ciclo_id, Inscripcion.alumno_id == user.id)
+        .first()
+    )
+    if ya:
         raise HTTPException(status_code=400, detail="Ya estás inscrito en este ciclo")
 
-    ins = Inscripcion(ciclo_id=ciclo_id, alumno_id=user.id, status="registrada")
+    # 4) Validar cupo actual
+    inscritos = (
+        db.query(func.count(Inscripcion.id))
+        .filter(Inscripcion.ciclo_id == payload.ciclo_id)
+        .scalar()
+        or 0
+    )
+    lugares_disponibles = max(0, (ciclo.cupo_total or 0) - inscritos)
+    if lugares_disponibles <= 0:
+        raise HTTPException(status_code=409, detail="No hay lugares disponibles")
+
+    # 5) Crear inscripción
+    ins = Inscripcion(ciclo_id=payload.ciclo_id, alumno_id=user.id, status="registrada")
     db.add(ins)
     db.commit()
     db.refresh(ins)
     return {"ok": True, "id": ins.id}
+
+
+@router.get("", dependencies=[Depends(require_student)])
+def listar_mis_inscripciones(db: Session = Depends(get_db), user=Depends(require_student)):
+    Inscripcion = _get_inscripcion_model()
+    if Inscripcion is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Modelo de Inscripción no definido en app.models. Agrega el modelo para listar inscripciones.",
+        )
+    rows = db.query(Inscripcion).filter(Inscripcion.alumno_id == user.id).all()
+    return [
+        {
+            "id": x.id,
+            "ciclo_id": getattr(x, "ciclo_id", None),
+            "status": getattr(x, "status", None),
+            "created_at": getattr(x, "created_at", None),
+        }
+        for x in rows
+    ]
+
+
+@router.delete("/{inscripcion_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_student)])
+def cancelar_inscripcion(inscripcion_id: int, db: Session = Depends(get_db), user=Depends(require_student)):
+    Inscripcion = _get_inscripcion_model()
+    if Inscripcion is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Modelo de Inscripción no definido en app.models. Agrega el modelo para cancelar inscripciones.",
+        )
+
+    ins = (
+        db.query(Inscripcion)
+        .filter(Inscripcion.id == inscripcion_id, Inscripcion.alumno_id == user.id)
+        .first()
+    )
+    if not ins:
+        raise HTTPException(status_code=404, detail="Inscripción no encontrada")
+
+    db.delete(ins)
+    db.commit()
+    return

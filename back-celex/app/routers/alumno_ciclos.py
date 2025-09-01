@@ -1,13 +1,14 @@
 # app/routers/alumno_ciclos.py
 from typing import Optional
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, desc, func, literal
 
-from ..auth import get_db, get_current_user  # ajusta si tu módulo de auth expone otro import
+from ..auth import get_db, get_current_user  # deja igual si ya te funciona así
 from ..models import (
     Ciclo,
+    Inscripcion,  # 👈 para contar inscripciones activas
     Modalidad as ModelModalidad,
     Turno as ModelTurno,
     Idioma as ModelIdioma,
@@ -24,8 +25,20 @@ from ..schemas import (
 
 router = APIRouter(prefix="/alumno/ciclos", tags=["alumno-ciclos"])
 
-# Reutilizamos el mapeo a esquema de salida
-def _to_out(m: Ciclo) -> CicloOut:
+
+# =========================
+# Helpers
+# =========================
+def _to_out(m: Ciclo, ocupadas: int | None = None) -> CicloOut:
+    """
+    Mapea el modelo Ciclo a CicloOut, calculando lugares_disponibles
+    cuando se proporciona 'ocupadas'.
+    """
+    g = getattr
+    cupo_total = m.cupo_total or 0
+    ocup = ocupadas or 0
+    disponibles = max(cupo_total - ocup, 0)
+
     return CicloOut(
         id=m.id,
         codigo=m.codigo,
@@ -35,29 +48,41 @@ def _to_out(m: Ciclo) -> CicloOut:
         nivel=m.nivel,
         cupo_total=m.cupo_total,
 
-        dias=m.dias,
+        # 👇 nuevo campo calculado
+        lugares_disponibles=disponibles,
+
+        dias=(m.dias or []),
         hora_inicio=m.hora_inicio,
         hora_fin=m.hora_fin,
 
-        inscripcion={"from": m.insc_inicio, "to": m.insc_fin},
-        reinscripcion={"from": m.reinsc_inicio, "to": m.reinsc_fin},
-        curso={"from": m.curso_inicio, "to": m.curso_fin},
-        colocacion={"from": m.coloc_inicio, "to": m.coloc_fin},
+        # Ventanas de inscripción
+        inscripcion={"from": g(m, "insc_inicio", None), "to": g(m, "insc_fin", None)},
+        reinscripcion={"from": g(m, "reinsc_inicio", None), "to": g(m, "reinsc_fin", None)},
 
-        examenMT=m.examen_mt,
-        examenFinal=m.examen_final,
+        # Fechas de curso / colocación
+        curso={"from": g(m, "curso_inicio", None), "to": g(m, "curso_fin", None)},
+        colocacion={
+            "from": g(m, "colocacion_inicio", g(m, "coloc_inicio", None)),
+            "to": g(m, "colocacion_fin", g(m, "coloc_fin", None)),
+        },
 
-        modalidad_asistencia=m.modalidad_asistencia,
-        aula=m.aula,
+        examenMT=g(m, "examen_mt", None),
+        examenFinal=g(m, "examen_final", None),
 
-        notas=m.notas,
+        modalidad_asistencia=g(m, "modalidad_asistencia", None),
+        aula=g(m, "aula", None),
+
+        notas=g(m, "notas", None),
     )
 
-# Permitir acceso a cualquier usuario autenticado (alumno/docente/coordinador/superuser)
+
 def require_authenticated_user(user=Depends(get_current_user)):
-    # Si tu get_current_user ya lanza 401 si no hay token, no hace falta más
     return user
 
+
+# =========================
+# Rutas
+# =========================
 @router.get(
     "",
     response_model=CicloListResponse,
@@ -93,25 +118,44 @@ def list_ciclos_alumno(
         today = date.today()
         base = base.filter(and_(Ciclo.insc_inicio <= today, today <= Ciclo.insc_fin))
 
+    # ---- Subquery: inscripciones activas por ciclo
+    estados_activos = ("registrada", "pendiente", "confirmada")
+    subq = (
+        db.query(
+            Inscripcion.ciclo_id.label("ciclo_id"),
+            func.count(Inscripcion.id).label("ocupadas"),
+        )
+        .filter(Inscripcion.status.in_(estados_activos))
+        .group_by(Inscripcion.ciclo_id)
+        .subquery()
+    )
+
+    # Join para obtener (Ciclo, ocupadas)
+    q = (
+        base.outerjoin(subq, subq.c.ciclo_id == Ciclo.id)
+            .with_entities(Ciclo, func.coalesce(subq.c.ocupadas, literal(0)).label("ocupadas"))
+    )
+
     total = base.count()
     pages = (total + page_size - 1) // page_size if total else 1
     if page > pages and total > 0:
         page = pages
 
-    items = (
-        base.order_by(Ciclo.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
+    rows = (
+        q.order_by(desc(Ciclo.id))
+         .offset((page - 1) * page_size)
+         .limit(page_size)
+         .all()
     )
 
     return CicloListResponse(
-        items=[_to_out(x) for x in items],
+        items=[_to_out(m, int(ocupadas or 0)) for (m, ocupadas) in rows],
         total=total,
         page=page,
         page_size=page_size,
         pages=pages,
     )
+
 
 @router.get(
     "/{ciclo_id}",
@@ -125,4 +169,13 @@ def get_ciclo_alumno(
     m = db.query(Ciclo).filter(Ciclo.id == ciclo_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
-    return _to_out(m)
+
+    # Contar inscripciones activas para este ciclo
+    estados_activos = ("registrada", "pendiente", "confirmada")
+    ocupadas = (
+        db.query(func.count(Inscripcion.id))
+          .filter(Inscripcion.ciclo_id == ciclo_id, Inscripcion.status.in_(estados_activos))
+          .scalar()
+    ) or 0
+
+    return _to_out(m, int(ocupadas))

@@ -144,3 +144,41 @@ class Ciclo(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+
+class Inscripcion(Base):
+    __tablename__ = "inscripciones"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Alumno que se inscribe
+    alumno_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Ciclo/Grupo al que se inscribe
+    ciclo_id = Column(
+        Integer,
+        ForeignKey("ciclos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Estado sencillo basado en strings (consistente con el router)
+    # Valores típicos: "registrada" | "pendiente" | "confirmada" | "rechazada"
+    status = Column(String(20), nullable=False, default="registrada")
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relaciones (opcionales pero útiles)
+    alumno = relationship("User", backref="inscripciones")
+    ciclo = relationship("Ciclo", backref="inscripciones")
+
+    # Evita duplicados del mismo alumno en el mismo ciclo
+    __table_args__ = (
+        UniqueConstraint("alumno_id", "ciclo_id", name="uq_inscripcion_alumno_ciclo"),
+    )

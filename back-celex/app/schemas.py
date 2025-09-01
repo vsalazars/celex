@@ -260,6 +260,9 @@ class CicloOut(CicloBase):
     id: int
     docente: Optional[DocenteMini] = None
 
+     # 👇 NUEVO: lugares disponibles (calculado en el router)
+    lugares_disponibles: int = Field(0, ge=0)
+
     class Config:
         from_attributes = True
 
