@@ -274,29 +274,16 @@ export async function listCiclosAlumno(params: {
   return apiFetch<CicloListResponse>(url, { auth: true });
 }
 
-/* ===== Inscripciones ===== */
-
-export type InscripcionTipo = "pago" | "exencion";
-
-export type ComprobanteMeta = {
-  filename?: string | null;
-  mimetype?: string | null;
-  size_bytes?: number | null;
-  storage_path?: string | null;
-};
-
-// Extiende InscripcionDTO para reflejar lo que devuelve el back
+// Extiende InscripcionDTO para reflejar lo que ya devuelve el back
 export type InscripcionDTO = {
   id: number;
   ciclo_id: number;
   status: "registrada" | "preinscrita" | "confirmada" | "rechazada" | "cancelada";
-  tipo: InscripcionTipo;                            // 👈 NUEVO
   created_at: string;
   referencia?: string | null;
   importe_centavos?: number | null;
-  comprobante?: ComprobanteMeta | null;
-  comprobante_estudios?: ComprobanteMeta | null;
-  comprobante_exencion?: ComprobanteMeta | null;    // 👈 NUEVO
+  comprobante?: ComprobanteMeta | null;              // ← NUEVO (si quieres mostrarlo)
+  comprobante_estudios?: ComprobanteMeta | null;     // ← NUEVO (si quieres mostrarlo)
   ciclo?: {
     id: number;
     codigo: string;
@@ -314,50 +301,52 @@ export type InscripcionDTO = {
 };
 
 
-// 🔽 Tipos discriminados para crear inscripción
-export type CreateInscripcionPago = {
-  tipo?: "pago";                   // default
+// 🔽 Pon esto junto a tus types de inscripciones (debajo de InscripcionDTO, por ejemplo)
+export type InscritoAlumno = {
+  first_name: string;
+  last_name: string;
+  email: string;
+};
+
+export type InscripcionRow = {
+  id: number;
+  created_at: string; // ISO
+  alumno: InscritoAlumno;
+};
+
+export type ComprobanteMeta = {
+  filename?: string | null;
+  mimetype?: string | null;
+  size_bytes?: number | null;
+  storage_path?: string | null;
+};
+
+/**
+ * Crear inscripción con comprobante (multipart/form-data)
+ * Campos esperados por el backend:
+ * - ciclo_id (int)
+ * - referencia (string)
+ * - importe_centavos (int)
+ * - comprobante (File - PDF/imagen)
+ */
+// 🔁 Reemplaza createInscripcion por esta versión (solo agrega el campo opcional)
+export async function createInscripcion(input: {
   ciclo_id: number;
   referencia: string;
   importe_centavos: number;
-  comprobante: File;
-  comprobante_estudios?: File | null; // obligatorio si el alumno es IPN (lo valida el back)
-};
-
-export type CreateInscripcionExencion = {
-  tipo: "exencion";
-  ciclo_id: number;
-  comprobante_exencion: File;
-};
-
-// Unión: acepta cualquiera de los dos
-export type CreateInscripcionInput = CreateInscripcionPago | CreateInscripcionExencion;
-
-/**
- * Crear inscripción:
- * - Pago (default): referencia, importe_centavos, comprobante, (opcional) comprobante_estudios
- * - Exención: tipo='exencion' + comprobante_exencion
- */
-export async function createInscripcion(input: CreateInscripcionInput): Promise<void> {
+  comprobante: File;                 // pago (obligatorio)
+  comprobante_estudios?: File | null; // estudios (OBLIGATORIO si el alumno es IPN)
+}): Promise<void> {
   const url = buildURL("/alumno/inscripciones");
   const fd = new FormData();
-
-  // Campo común
   fd.append("ciclo_id", String(input.ciclo_id));
+  fd.append("referencia", input.referencia);
+  fd.append("importe_centavos", String(input.importe_centavos));
+  fd.append("comprobante", input.comprobante);
 
-  if (input.tipo === "exencion") {
-    // === Exención ===
-    fd.append("tipo", "exencion");
-    fd.append("comprobante_exencion", input.comprobante_exencion);
-  } else {
-    // === Pago (default) ===
-    fd.append("tipo", "pago");
-    fd.append("referencia", input.referencia);
-    fd.append("importe_centavos", String(input.importe_centavos));
-    fd.append("comprobante", input.comprobante);
-    if (input.comprobante_estudios) {
-      fd.append("comprobante_estudios", input.comprobante_estudios);
-    }
+  // ← NUEVO: solo lo mandamos si viene (tu UI lo enviará cuando el usuario sea IPN)
+  if (input.comprobante_estudios) {
+    fd.append("comprobante_estudios", input.comprobante_estudios);
   }
 
   await apiFetch(url, {
@@ -395,39 +384,4 @@ export async function listInscripcionesCiclo(ciclo_id: number) {
       boleta:     r.alumno?.boleta ?? null,
     },
   }));
-}
-
-export async function downloadArchivoInscripcion(
-  inscripcionId: number,
-  tipo: "comprobante" | "estudios" | "exencion",
-  suggestedName?: string
-) {
-  const url = buildURL(`/alumno/inscripciones/${inscripcionId}/archivo`, { tipo });
-  const res = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-    },
-  });
-  if (!res.ok) {
-    let msg = `Error ${res.status}`;
-    try { const j = await res.json(); msg = j?.detail || msg; } catch {}
-    throw new Error(msg);
-  }
-  const blob = await res.blob();
-
-  // Abrir en nueva pestaña si es PDF/imagen, y además “forzar” descarga si el navegador no lo abre inline
-  const objUrl = URL.createObjectURL(blob);
-  try {
-    // Abrir pestaña
-    window.open(objUrl, "_blank", "noopener,noreferrer");
-  } catch {}
-  // Forzar descarga con nombre sugerido
-  const a = document.createElement("a");
-  a.href = objUrl;
-  a.download = suggestedName || "archivo";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(objUrl);
 }

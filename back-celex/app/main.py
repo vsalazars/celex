@@ -74,17 +74,28 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
 
-    token = create_access_token({"sub": user.email, "email": user.email, "role": user.role})
+    # 👇 JWT payload completo con is_ipn y boleta como strings planas
+    claims = {
+        "sub": user.email,
+        "email": user.email,
+        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+        "is_ipn": bool(user.is_ipn),
+        "boleta": user.boleta or None,
+    }
+
+    token = create_access_token(claims)
+
     return TokenResponse(
         access_token=token,
-        role=user.role,
+        role=claims["role"],
         email=user.email,
         first_name=user.first_name,
         last_name=user.last_name,
         curp=user.curp,
-        is_ipn=bool(user.is_ipn),
+        is_ipn=claims["is_ipn"],
         boleta=user.boleta,
     )
+
 
 @app.get("/health")
 def health():

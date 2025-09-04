@@ -4,12 +4,12 @@ from datetime import date, time, datetime
 
 from pydantic import (
     BaseModel,
-    EmailStr,         # 👈 AGREGA ESTO
+    EmailStr,
     Field,
     field_validator,
     model_validator,
     computed_field,
-    field_serializer, # 👈 ya lo agregamos antes
+    field_serializer,
 )
 
 MAX_COMPROBANTE_BYTES = 5 * 1024 * 1024  # 5 MB
@@ -316,9 +316,10 @@ class CicloLite(BaseModel):
     dias: List[str] = []
     hora_inicio: Optional[time] = None
     hora_fin: Optional[time] = None
-    aula: Optional[str] = None             # 👈 AQUI EL AULA
+    aula: Optional[str] = None
     inscripcion: Optional[dict] = None
     curso: Optional[dict] = None
+    docente_nombre: Optional[str] = None
 
     @field_serializer("hora_inicio", "hora_fin")
     def _ser_time(self, v: Optional[time]):
@@ -328,16 +329,34 @@ class CicloLite(BaseModel):
         from_attributes = True
 
 
+# --- NUEVO: tipo de inscripción (para alinear con el modelo) ---
+class InscripcionTipo(str, Enum):
+    pago = "pago"
+    exencion = "exencion"
+
+
 class InscripcionOut(BaseModel):
     id: int
     ciclo_id: int
-    status: Literal["registrada","preinscrita","confirmada","rechazada","cancelada"]
+    status: Literal["registrada", "preinscrita", "confirmada", "rechazada", "cancelada"]
+
+    # NUEVO: tipo de trámite (pago | exencion)
+    tipo: InscripcionTipo
+
+    # Pago
     referencia: Optional[str] = None
     importe_centavos: Optional[int] = Field(default=None, ge=0)
     comprobante: Optional["ComprobanteMeta"] = None
+
+    # Estudios (si aplica)
+    comprobante_estudios: Optional["ComprobanteMeta"] = None
+
+    # NUEVO: Exención
+    comprobante_exencion: Optional["ComprobanteMeta"] = None
+
     alumno: Optional["AlumnoMini"] = None
     created_at: datetime
-    ciclo: Optional[CicloLite] = None      # 👈 USA EL TOP-LEVEL CicloLite
+    ciclo: Optional[CicloLite] = None
 
     @computed_field
     @property

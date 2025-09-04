@@ -1,16 +1,16 @@
 import enum
 from sqlalchemy import (
     Column, Integer, String, Date, Time, Text, DateTime,
-    Boolean, 
-    CheckConstraint, UniqueConstraint, func
+    Boolean, CheckConstraint, UniqueConstraint, ForeignKey, func
 )
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.types import Enum as SAEnum
 
 Base = declarative_base()
 
 
+# -------------------- Enums base --------------------
 class UserRole(str, enum.Enum):
     student = "student"
     teacher = "teacher"
@@ -18,6 +18,7 @@ class UserRole(str, enum.Enum):
     superuser = "superuser"
 
 
+# -------------------- Modelo User --------------------
 class User(Base):
     __tablename__ = "users"
 
@@ -48,16 +49,7 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
-# imports (asegúrate de tener estos)
-from sqlalchemy import (
-    Column, Integer, String, Text, Date, Time, DateTime,
-    Enum as SAEnum, CheckConstraint, UniqueConstraint, ForeignKey, ARRAY
-)
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-import enum
-
-# ---------------- NUEVO: enums de Ciclo ----------------
+# -------------------- Enums de Ciclo --------------------
 class Modalidad(str, enum.Enum):
     intensivo = "intensivo"
     sabatino  = "sabatino"
@@ -83,7 +75,7 @@ class Nivel(str, enum.Enum):
     C1 = "C1"
     C2 = "C2"
 
-# 👇 Días de clase (guardados como texto en BD, validados con enum en schemas)
+# Días de clase (se guardan como texto en ARRAY)
 class DiaSemana(str, enum.Enum):
     lunes     = "lunes"
     martes    = "martes"
@@ -93,12 +85,13 @@ class DiaSemana(str, enum.Enum):
     sabado    = "sabado"
     domingo   = "domingo"
 
-# 👇 Nueva modalidad de asistencia
+# Modalidad de asistencia
 class ModalidadAsistencia(str, enum.Enum):
     presencial = "presencial"
     virtual    = "virtual"
 
-# ---------------- MODELO Ciclo ----------------
+
+# -------------------- Modelo Ciclo --------------------
 class Ciclo(Base):
     __tablename__ = "ciclos"
     __table_args__ = (
@@ -118,16 +111,16 @@ class Ciclo(Base):
     cupo_total = Column(Integer, nullable=False, default=0)
 
     # Horario
-    dias        = Column(ARRAY(String), nullable=False)  # ejemplo: ['lunes','miercoles']
+    dias        = Column(ARRAY(String), nullable=False)  # ['lunes','miercoles']
     hora_inicio = Column(Time, nullable=False)
     hora_fin    = Column(Time, nullable=False)
 
-    # Fechas de inscripción, curso y colocación (sin reinscripción)
+    # Fechas de inscripción y curso
     insc_inicio  = Column(Date, nullable=False)
     insc_fin     = Column(Date, nullable=False)
     curso_inicio = Column(Date, nullable=False)
     curso_fin    = Column(Date, nullable=False)
-    
+
     # Exámenes (opcionales)
     examen_mt    = Column(Date, nullable=True)
     examen_final = Column(Date, nullable=True)
@@ -136,9 +129,9 @@ class Ciclo(Base):
     modalidad_asistencia = Column(SAEnum(ModalidadAsistencia), nullable=False, default=ModalidadAsistencia.presencial)
     aula                 = Column(String(120), nullable=True)
 
-    # 👇 NUEVO: asignación de docente (opcional) → users.id
+    # Docente asignado (opcional)
     docente_id = Column(Integer, ForeignKey("users.id", onupdate="CASCADE", ondelete="SET NULL"), nullable=True)
-    docente    = relationship("User", foreign_keys=[docente_id], lazy="joined")  # ajusta "User" si tu modelo se llama distinto
+    docente    = relationship("User", foreign_keys=[docente_id], lazy="joined")
 
     notas = Column(Text, nullable=True)
 
@@ -146,7 +139,13 @@ class Ciclo(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+# -------------------- NUEVO: tipo de inscripción --------------------
+class InscripcionTipo(str, enum.Enum):
+    pago = "pago"
+    exencion = "exencion"
 
+
+# -------------------- Modelo Inscripcion --------------------
 class Inscripcion(Base):
     __tablename__ = "inscripciones"
 
@@ -168,24 +167,49 @@ class Inscripcion(Base):
         index=True,
     )
 
-    # Estado sencillo basado en strings (consistente con el router)
-    # Valores: "registrada" | "pendiente" | "confirmada" | "rechazada"
+    # Estado (conservas tu string libre)
+    # "registrada" | "pendiente" | "confirmada" | "rechazada" (o los que uses)
     status = Column(String(20), nullable=False, default="registrada")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    # ====== Datos de pago / comprobante ======
-    referencia = Column(String(100), nullable=True)          # referencia o folio de pago (opcional)
-    importe_centavos = Column(Integer, nullable=True)        # monto en centavos (opcional)
-    comprobante_path = Column(String(255), nullable=True)    # ruta donde se guardó el archivo
-    comprobante_mime = Column(String(100), nullable=True)    # ej. "application/pdf", "image/png"
-    comprobante_size = Column(Integer, nullable=True)        # tamaño en bytes
+    # ====== NUEVO: tipo de trámite (default conserva comportamiento actual) ======
+    tipo = Column(SAEnum(InscripcionTipo), nullable=False, default=InscripcionTipo.pago)
 
-    # Relaciones (opcionales pero útiles)
+    # ====== Pago (lo que ya tenías) ======
+    referencia = Column(String(50), nullable=True)
+    importe_centavos = Column(Integer, nullable=True)
+    comprobante_path = Column(String(255), nullable=True)
+    comprobante_mime = Column(String(100), nullable=True)
+    comprobante_size = Column(Integer, nullable=True)
+
+    # ====== Estudios (snapshot IPN) ======
+    alumno_is_ipn = Column(Boolean, nullable=False, default=False)
+    comprobante_estudios_path = Column(String(255), nullable=True)
+    comprobante_estudios_mime = Column(String(100), nullable=True)
+    comprobante_estudios_size = Column(Integer, nullable=True)
+
+    # ====== NUEVO: Exención ======
+    comprobante_exencion_path = Column(String(255), nullable=True)
+    comprobante_exencion_mime = Column(String(100), nullable=True)
+    comprobante_exencion_size = Column(Integer, nullable=True)
+
+    # Relaciones
     alumno = relationship("User", backref="inscripciones")
     ciclo = relationship("Ciclo", backref="inscripciones")
 
-    # Evita duplicados del mismo alumno en el mismo ciclo
     __table_args__ = (
         UniqueConstraint("alumno_id", "ciclo_id", name="uq_inscripcion_alumno_ciclo"),
+
+        # Si tipo='pago' y es IPN ⇒ debe existir comprobante de estudios
+        CheckConstraint(
+            "(tipo <> 'pago') OR (NOT alumno_is_ipn) OR (comprobante_estudios_path IS NOT NULL)",
+            name="ck_insc_estudios_si_ipn"
+        ),
+
+        # Si tipo='exencion' ⇒ exige comprobante de exención
+        CheckConstraint(
+            "(tipo <> 'exencion') OR (comprobante_exencion_path IS NOT NULL)",
+            name="ck_insc_exencion_requiere_comprobante"
+        ),
     )
