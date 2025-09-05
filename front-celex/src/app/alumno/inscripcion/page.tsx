@@ -203,6 +203,10 @@ export default function AlumnoInscripcionPage() {
     setFileEstudios(null);
     setErrFileEstudios("");
 
+    // NEW: limpiar fecha de pago y su error
+    setFechaPago("");
+    setErrFechaPago("");
+
     setOpenSheet(true);
   };
 
@@ -216,6 +220,10 @@ export default function AlumnoInscripcionPage() {
   const [errReferencia, setErrReferencia] = useState("");
   const [errImporte, setErrImporte] = useState("");
   const [errFile, setErrFile] = useState("");
+
+  // NEW: Fecha de pago (solo para pago)
+  const [fechaPago, setFechaPago] = useState(""); // "YYYY-MM-DD"
+  const [errFechaPago, setErrFechaPago] = useState("");
 
   // Exención
   const [fileExencion, setFileExencion] = useState<File | null>(null);
@@ -299,6 +307,25 @@ export default function AlumnoInscripcionPage() {
         ok = false;
       } else setErrFile("");
 
+      // NEW: validar fecha de pago (requerida y no futura)
+      if (!fechaPago) {
+        setErrFechaPago("Captura la fecha de pago.");
+        ok = false;
+      } else {
+        const dt = new Date(fechaPago + "T00:00:00");
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (Number.isNaN(dt.getTime())) {
+          setErrFechaPago("La fecha no es válida.");
+          ok = false;
+        } else if (dt > today) {
+          setErrFechaPago("La fecha no puede ser futura.");
+          ok = false;
+        } else {
+          setErrFechaPago("");
+        }
+      }
+
       // limpia exención
       setErrFileExencion("");
     } else {
@@ -313,6 +340,7 @@ export default function AlumnoInscripcionPage() {
       setErrReferencia("");
       setErrImporte("");
       setErrFile("");
+      setErrFechaPago("");
     }
 
     // ✅ Solo si es PAGO y es IPN: requiere estudios
@@ -342,6 +370,9 @@ export default function AlumnoInscripcionPage() {
       base.referencia = referencia.trim();
       base.importe_centavos = parseImporteToCentavos(importe)!;
       base.comprobante = file!;
+      // NEW: incluir fecha de pago (YYYY-MM-DD)
+      base.fecha_pago = fechaPago;
+
       // ✅ Adjuntar estudios SOLO en pago y si es IPN
       if (isIPN && fileEstudios) {
         base.comprobante_estudios = fileEstudios;
@@ -372,6 +403,8 @@ export default function AlumnoInscripcionPage() {
         toast.info("Ya estabas inscrito en este ciclo");
       } else if (msg.includes("archivo")) {
         toast.error("El archivo no es válido o excede el tamaño permitido");
+      } else if (msg.includes("fecha") && msg.includes("pago")) {
+        toast.error("Revisa la fecha de pago.");
       } else {
         toast.error(err?.message || "No fue posible completar la inscripción");
       }
@@ -703,6 +736,9 @@ export default function AlumnoInscripcionPage() {
                           if (mode === "exencion") {
                             // en exención no se usa estudios: limpiar
                             setFileEstudios(null);
+                            // NEW: limpiar fecha de pago si se cambia a exención
+                            setFechaPago("");
+                            setErrFechaPago("");
                           }
                         }}
                         className="grid grid-cols-1 sm:grid-cols-2 gap-2"
@@ -722,8 +758,27 @@ export default function AlumnoInscripcionPage() {
                     <div className="mt-3 grid grid-cols-1 gap-2">
                       {paymentMode === "pago" ? (
                         <>
-                          {/* Referencia + Importe */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {/* Referencia + Importe + Fecha de pago */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            {/* NEW: Fecha de pago */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs">Fecha de pago</Label>
+                                {errFechaPago ? (
+                                  <span className="text-[11px] text-red-600">
+                                    {errFechaPago}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <Input
+                                type="date"
+                                value={fechaPago}
+                                onChange={(e) => setFechaPago(e.target.value)}
+                                className="h-9"
+                                max={new Date().toISOString().slice(0, 10)}
+                              />
+                            </div>
+                            
                             <div className="space-y-1">
                               <div className="flex items-center justify-between">
                                 <Label className="text-xs">Referencia</Label>
@@ -758,6 +813,8 @@ export default function AlumnoInscripcionPage() {
                                 className="h-9"
                               />
                             </div>
+
+                                                      
                           </div>
 
                           {/* Comprobante de pago */}

@@ -344,6 +344,7 @@ class InscripcionOut(BaseModel):
     tipo: InscripcionTipo
 
     # Pago
+    fecha_pago: date | None = None  # <-- NUEVO
     referencia: Optional[str] = None
     importe_centavos: Optional[int] = Field(default=None, ge=0)
     comprobante: Optional["ComprobanteMeta"] = None
@@ -358,6 +359,11 @@ class InscripcionOut(BaseModel):
     created_at: datetime
     ciclo: Optional[CicloLite] = None
 
+    # === Nuevos campos de validación ===
+    validated_by_id: Optional[int] = None
+    validated_at: Optional[datetime] = None
+    validation_notes: Optional[str] = None
+
     @computed_field
     @property
     def importe_mxn(self) -> Optional[float]:
@@ -365,3 +371,9 @@ class InscripcionOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- Payload para validar inscripción ---
+class ValidateInscripcionIn(BaseModel):
+    action: Literal["APPROVE", "REJECT"]
+    notes: Optional[str] = Field(None, max_length=500)

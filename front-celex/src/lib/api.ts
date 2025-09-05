@@ -164,7 +164,7 @@ export type CicloDTO = {
   turno: Turno;
   nivel: Nivel;
   cupo_total: number;
-  lugares_disponibles: number;   // 👈 NUEVO
+  lugares_disponibles: number;
   dias: string[];
   hora_inicio: string;
   hora_fin: string;
@@ -285,18 +285,18 @@ export type ComprobanteMeta = {
   storage_path?: string | null;
 };
 
-// Extiende InscripcionDTO para reflejar lo que devuelve el back
 export type InscripcionDTO = {
   id: number;
   ciclo_id: number;
   status: "registrada" | "preinscrita" | "confirmada" | "rechazada" | "cancelada";
-  tipo: InscripcionTipo;                            // 👈 NUEVO
+  tipo: InscripcionTipo;
   created_at: string;
   referencia?: string | null;
   importe_centavos?: number | null;
+  fecha_pago?: string | null;           // <--- NUEVO
   comprobante?: ComprobanteMeta | null;
   comprobante_estudios?: ComprobanteMeta | null;
-  comprobante_exencion?: ComprobanteMeta | null;    // 👈 NUEVO
+  comprobante_exencion?: ComprobanteMeta | null;
   ciclo?: {
     id: number;
     codigo: string;
@@ -305,23 +305,28 @@ export type InscripcionDTO = {
     turno: string;
     nivel?: string | null;
     dias: string[];
-    hora_inicio?: string | null; // "HH:MM"
-    hora_fin?: string | null;    // "HH:MM"
+    hora_inicio?: string | null;
+    hora_fin?: string | null;
     aula?: string | null;
     inscripcion?: { from: string; to: string } | null;
     curso?: { from: string; to: string } | null;
   } | null;
-};
 
+  // === NUEVOS CAMPOS DE VALIDACIÓN ===
+  validated_by_id?: number | null;
+  validated_at?: string | null;
+  validation_notes?: string | null;
+};
 
 // 🔽 Tipos discriminados para crear inscripción
 export type CreateInscripcionPago = {
-  tipo?: "pago";                   // default
+  tipo?: "pago";
   ciclo_id: number;
   referencia: string;
   importe_centavos: number;
+  fecha_pago: string;            // <--- requerido
   comprobante: File;
-  comprobante_estudios?: File | null; // obligatorio si el alumno es IPN (lo valida el back)
+  comprobante_estudios?: File | null;
 };
 
 export type CreateInscripcionExencion = {
@@ -330,41 +335,28 @@ export type CreateInscripcionExencion = {
   comprobante_exencion: File;
 };
 
-// Unión: acepta cualquiera de los dos
 export type CreateInscripcionInput = CreateInscripcionPago | CreateInscripcionExencion;
 
-/**
- * Crear inscripción:
- * - Pago (default): referencia, importe_centavos, comprobante, (opcional) comprobante_estudios
- * - Exención: tipo='exencion' + comprobante_exencion
- */
 export async function createInscripcion(input: CreateInscripcionInput): Promise<void> {
   const url = buildURL("/alumno/inscripciones");
   const fd = new FormData();
-
-  // Campo común
   fd.append("ciclo_id", String(input.ciclo_id));
 
   if (input.tipo === "exencion") {
-    // === Exención ===
     fd.append("tipo", "exencion");
     fd.append("comprobante_exencion", input.comprobante_exencion);
   } else {
-    // === Pago (default) ===
     fd.append("tipo", "pago");
     fd.append("referencia", input.referencia);
     fd.append("importe_centavos", String(input.importe_centavos));
+    fd.append("fecha_pago", input.fecha_pago);  // <--- NUEVO
     fd.append("comprobante", input.comprobante);
     if (input.comprobante_estudios) {
       fd.append("comprobante_estudios", input.comprobante_estudios);
     }
   }
 
-  await apiFetch(url, {
-    method: "POST",
-    body: fd,
-    auth: true,
-  });
+  await apiFetch(url, { method: "POST", body: fd, auth: true });
 }
 
 export async function listMisInscripciones(): Promise<InscripcionDTO[]> {
@@ -378,21 +370,19 @@ export async function cancelarInscripcion(id: number | string): Promise<void> {
   await apiFetch(url, { method: "DELETE", auth: true });
 }
 
-// 🔽 Función para coordinador: lista inscripciones de un ciclo
 export async function listInscripcionesCiclo(ciclo_id: number) {
   const url = buildURL(`/coordinacion/ciclos/${ciclo_id}/inscripciones`);
   const raw = await apiFetch<any>(url, { auth: true });
-
   const rows = Array.isArray(raw) ? raw : raw?.items || [];
   return rows.map((r: any) => ({
     id: r.id,
     created_at: r.created_at,
     alumno: {
       first_name: r.alumno?.first_name ?? null,
-      last_name:  r.alumno?.last_name ?? null,
-      email:      r.alumno?.email ?? null,
-      is_ipn:     !!r.alumno?.is_ipn,
-      boleta:     r.alumno?.boleta ?? null,
+      last_name: r.alumno?.last_name ?? null,
+      email: r.alumno?.email ?? null,
+      is_ipn: !!r.alumno?.is_ipn,
+      boleta: r.alumno?.boleta ?? null,
     },
   }));
 }
@@ -405,9 +395,7 @@ export async function downloadArchivoInscripcion(
   const url = buildURL(`/alumno/inscripciones/${inscripcionId}/archivo`, { tipo });
   const res = await fetch(url, {
     method: "GET",
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-    },
+    headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) {
     let msg = `Error ${res.status}`;
@@ -415,14 +403,65 @@ export async function downloadArchivoInscripcion(
     throw new Error(msg);
   }
   const blob = await res.blob();
-
-  // Abrir en nueva pestaña si es PDF/imagen, y además “forzar” descarga si el navegador no lo abre inline
   const objUrl = URL.createObjectURL(blob);
-  try {
-    // Abrir pestaña
-    window.open(objUrl, "_blank", "noopener,noreferrer");
-  } catch {}
-  // Forzar descarga con nombre sugerido
+  try { window.open(objUrl, "_blank", "noopener,noreferrer"); } catch {}
+  const a = document.createElement("a");
+  a.href = objUrl;
+  a.download = suggestedName || "archivo";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objUrl);
+}
+
+// ================== Coordinador – Validación de inscripciones ==================
+
+export async function listInscripcionesCoord(params: {
+  status?: string;
+  ciclo_id?: number;
+  skip?: number;
+  limit?: number;
+} = {}): Promise<InscripcionDTO[]> {
+  const url = buildURL("/coordinacion/inscripciones", {
+    status: params.status,
+    ciclo_id: params.ciclo_id,
+    skip: params.skip ?? 0,
+    limit: params.limit ?? 50,
+  });
+  return apiFetch<InscripcionDTO[]>(url, { auth: true });
+}
+
+export async function validateInscripcionCoord(
+  id: number,
+  action: "APPROVE" | "REJECT",
+  notes?: string
+): Promise<InscripcionDTO> {
+  const url = buildURL(`/coordinacion/inscripciones/${id}/validate`);
+  return apiFetch<InscripcionDTO>(url, {
+    method: "POST",
+    body: JSON.stringify({ action, notes }),
+    auth: true,
+  });
+}
+
+export async function downloadArchivoInscripcionCoord(
+  inscripcionId: number,
+  tipo: "comprobante" | "estudios" | "exencion",
+  suggestedName?: string
+) {
+  const url = buildURL(`/coordinacion/inscripciones/${inscripcionId}/archivo`, { tipo });
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    let msg = `Error ${res.status}`;
+    try { const j = await res.json(); msg = j?.detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  try { window.open(objUrl, "_blank", "noopener,noreferrer"); } catch {}
   const a = document.createElement("a");
   a.href = objUrl;
   a.download = suggestedName || "archivo";

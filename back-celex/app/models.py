@@ -75,7 +75,6 @@ class Nivel(str, enum.Enum):
     C1 = "C1"
     C2 = "C2"
 
-# Días de clase (se guardan como texto en ARRAY)
 class DiaSemana(str, enum.Enum):
     lunes     = "lunes"
     martes    = "martes"
@@ -85,7 +84,6 @@ class DiaSemana(str, enum.Enum):
     sabado    = "sabado"
     domingo   = "domingo"
 
-# Modalidad de asistencia
 class ModalidadAsistencia(str, enum.Enum):
     presencial = "presencial"
     virtual    = "virtual"
@@ -139,7 +137,7 @@ class Ciclo(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
-# -------------------- NUEVO: tipo de inscripción --------------------
+# -------------------- Tipo de inscripción --------------------
 class InscripcionTipo(str, enum.Enum):
     pago = "pago"
     exencion = "exencion"
@@ -152,51 +150,48 @@ class Inscripcion(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     # Alumno que se inscribe
-    alumno_id = Column(
-        Integer,
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    alumno_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Ciclo/Grupo al que se inscribe
-    ciclo_id = Column(
-        Integer,
-        ForeignKey("ciclos.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    ciclo_id = Column(Integer, ForeignKey("ciclos.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    # Estado (conservas tu string libre)
-    # "registrada" | "pendiente" | "confirmada" | "rechazada" (o los que uses)
+    # Estado
     status = Column(String(20), nullable=False, default="registrada")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    # ====== NUEVO: tipo de trámite (default conserva comportamiento actual) ======
+    # Tipo de trámite
     tipo = Column(SAEnum(InscripcionTipo), nullable=False, default=InscripcionTipo.pago)
 
-    # ====== Pago (lo que ya tenías) ======
+    # Pago
     referencia = Column(String(50), nullable=True)
     importe_centavos = Column(Integer, nullable=True)
+    fecha_pago = Column(Date, nullable=True, index=True)
+
     comprobante_path = Column(String(255), nullable=True)
     comprobante_mime = Column(String(100), nullable=True)
     comprobante_size = Column(Integer, nullable=True)
 
-    # ====== Estudios (snapshot IPN) ======
+    # Estudios (IPN)
     alumno_is_ipn = Column(Boolean, nullable=False, default=False)
     comprobante_estudios_path = Column(String(255), nullable=True)
     comprobante_estudios_mime = Column(String(100), nullable=True)
     comprobante_estudios_size = Column(Integer, nullable=True)
 
-    # ====== NUEVO: Exención ======
+    # Exención
     comprobante_exencion_path = Column(String(255), nullable=True)
     comprobante_exencion_mime = Column(String(100), nullable=True)
     comprobante_exencion_size = Column(Integer, nullable=True)
 
+    # Validación por coordinador
+    validated_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    validated_at = Column(DateTime(timezone=True))
+    validation_notes = Column(Text, nullable=True)
+
     # Relaciones
-    alumno = relationship("User", backref="inscripciones")
+    alumno = relationship("User", foreign_keys=[alumno_id], backref="inscripciones")
     ciclo = relationship("Ciclo", backref="inscripciones")
+    validador = relationship("User", foreign_keys=[validated_by_id])
 
     __table_args__ = (
         UniqueConstraint("alumno_id", "ciclo_id", name="uq_inscripcion_alumno_ciclo"),

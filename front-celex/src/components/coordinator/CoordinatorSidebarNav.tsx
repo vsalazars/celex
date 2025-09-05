@@ -5,6 +5,7 @@ import {
   Layers,
   GraduationCap,
   Users,
+  ClipboardCheck, // 👈 NUEVO ICONO
   BarChart3,
   Settings2,
   Shield,
@@ -18,6 +19,7 @@ export type CoordinatorSection =
   | "groups"
   | "teachers"
   | "students"
+  | "inscripciones"   // 👈 NUEVO
   | "reports"
   | "settings"
   | "security";
@@ -32,13 +34,14 @@ export default function CoordinatorSidebarNav({
   const router = useRouter();
 
   const items: { key: CoordinatorSection; label: string; icon: React.ReactNode }[] = [
-    { key: "overview",  label: "Resumen",       icon: <LayoutDashboard className="h-4 w-4" /> },
-    { key: "teachers",  label: "Docentes",      icon: <GraduationCap className="h-4 w-4" /> },
-    { key: "groups",    label: "Grupos",        icon: <Layers className="h-4 w-4" /> },
-    { key: "students",  label: "Alumnos",       icon: <Users className="h-4 w-4" /> },
-    { key: "reports",   label: "Reportes",      icon: <BarChart3 className="h-4 w-4" /> },
-    { key: "settings",  label: "Configuración", icon: <Settings2 className="h-4 w-4" /> },
-    { key: "security",  label: "Seguridad",     icon: <Shield className="h-4 w-4" /> },
+    { key: "overview",      label: "Resumen",       icon: <LayoutDashboard className="h-4 w-4" /> },
+    { key: "teachers",      label: "Docentes",      icon: <GraduationCap className="h-4 w-4" /> },
+    { key: "groups",        label: "Grupos",        icon: <Layers className="h-4 w-4" /> },
+    { key: "students",      label: "Alumnos",       icon: <Users className="h-4 w-4" /> },
+    { key: "inscripciones", label: "Inscripciones", icon: <ClipboardCheck className="h-4 w-4" /> }, // 👈 NUEVO
+    { key: "reports",       label: "Reportes",      icon: <BarChart3 className="h-4 w-4" /> },
+    { key: "settings",      label: "Configuración", icon: <Settings2 className="h-4 w-4" /> },
+    { key: "security",      label: "Seguridad",     icon: <Shield className="h-4 w-4" /> },
   ];
 
   const handleLogout = () => {

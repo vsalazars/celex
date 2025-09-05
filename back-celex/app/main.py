@@ -16,6 +16,8 @@ from .routers.coordinacion_docentes import router as coordinacion_docentes_route
 from .routers.coordinacion_ciclos import router as coordinacion_ciclos_router
 from .routers.alumno_ciclos import router as alumno_ciclos_router
 from .routers.alumno_inscripciones import router as alumno_inscripciones_router
+from .routers.coordinacion_inscripciones import router as coordinacion_inscripciones_router  # 👈 NUEVO
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -35,6 +37,8 @@ app.include_router(coordinacion_docentes_router)
 app.include_router(coordinacion_ciclos_router)
 app.include_router(alumno_ciclos_router)
 app.include_router(alumno_inscripciones_router)
+app.include_router(coordinacion_inscripciones_router)  # 👈 NUEVO
+
 
 @app.post("/auth/register", response_model=UserOut, status_code=201)
 def register(payload: UserCreate, db: Session = Depends(get_db)):

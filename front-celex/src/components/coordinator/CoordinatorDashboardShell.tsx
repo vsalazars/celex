@@ -9,22 +9,23 @@ import StudentsSection from "./sections/StudentsSection";
 import ReportsSection from "./sections/ReportsSection";
 import SettingsSection from "./sections/SettingsSection";
 import SecuritySection from "./sections/SecuritySection";
+import InscripcionesSection from "@/components/coordinator/sections/InscripcionesSection"; // 👈 NUEVO
 
 export default function CoordinatorDashboardShell() {
   const [active, setActive] = useState<CoordinatorSection>("overview");
 
   return (
     <main className="flex min-h-[calc(100dvh-0px)]">
-    
       <CoordinatorSidebarNav active={active} onChange={setActive} />
       <section className="flex-1 p-6">
-        {active === "overview"  && <OverviewSection />}
-        {active === "groups"    && <GroupsSection />}
-        {active === "teachers"  && <TeachersSection />}
-        {active === "students"  && <StudentsSection />}
-        {active === "reports"   && <ReportsSection />}
-        {active === "settings"  && <SettingsSection />}
-        {active === "security"  && <SecuritySection />}
+        {active === "overview"      && <OverviewSection />}
+        {active === "groups"        && <GroupsSection />}
+        {active === "teachers"      && <TeachersSection />}
+        {active === "students"      && <StudentsSection />}
+        {active === "inscripciones" && <InscripcionesSection />}   {/* 👈 NUEVO */}
+        {active === "reports"       && <ReportsSection />}
+        {active === "settings"      && <SettingsSection />}
+        {active === "security"      && <SecuritySection />}
       </section>
     </main>
   );

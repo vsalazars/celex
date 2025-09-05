@@ -1,10 +1,12 @@
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session, joinedload
+import os
 
-# 👇 AGREGA get_current_user aquí
+# Auth / DB
 from ..auth import get_db, require_coordinator_or_admin, get_current_user
 
+# Modelos
 from ..models import (
     Ciclo,
     User,
@@ -16,6 +18,8 @@ from ..models import (
     ModalidadAsistencia as ModelModalidadAsistencia,
     UserRole as ModelUserRole,
 )
+
+# Schemas
 from ..schemas import (
     CicloCreate,
     CicloUpdate,
@@ -26,9 +30,9 @@ from ..schemas import (
     Idioma as SchemaIdioma,
     Nivel as SchemaNivel,
     ModalidadAsistencia as SchemaModalidadAsistencia,
+    InscripcionOut,
+    ComprobanteMeta,
 )
-
-
 
 router = APIRouter(prefix="/coordinacion/ciclos", tags=["coordinación-ciclos"])
 
@@ -38,6 +42,7 @@ def _periodo_or_none(start, end):
     if start is None or end is None:
         return None
     return {"from": start, "to": end}
+
 
 def _is_teacher(user: User) -> bool:
     """
@@ -55,6 +60,7 @@ def _is_teacher(user: User) -> bool:
         return True
     name = getattr(role, "name", None)
     return isinstance(name, str) and name == "teacher"
+
 
 def _validate_and_set_docente(m: Ciclo, docente_id: Optional[int], db: Session):
     """
@@ -102,7 +108,9 @@ def _to_out(m: Ciclo) -> CicloOut:
         examenFinal=getattr(m, "examen_final", None),
         notas=m.notas,
         docente=(
-            None if not getattr(m, "docente", None) else {
+            None
+            if not getattr(m, "docente", None)
+            else {
                 "id": m.docente.id,
                 "first_name": m.docente.first_name,
                 "last_name": m.docente.last_name,
@@ -110,6 +118,62 @@ def _to_out(m: Ciclo) -> CicloOut:
             }
         ),
     )
+
+
+# --- Helpers para InscripcionOut (incluye metadatos de archivos) ---
+def _meta(path: Optional[str], mime: Optional[str], size: Optional[int]) -> Optional[ComprobanteMeta]:
+    if not path:
+        return None
+    return ComprobanteMeta(
+        filename=os.path.basename(path),
+        mimetype=mime,
+        size_bytes=size,
+        storage_path=path,
+    )
+
+
+def _to_inscripcion_out(r: Inscripcion) -> InscripcionOut:
+    # CicloLite (embed) en el formato que espera tu schema
+    ciclo_dict = None
+    if getattr(r, "ciclo", None):
+        c = r.ciclo
+        ciclo_dict = {
+            "id": c.id,
+            "codigo": c.codigo,
+            "idioma": getattr(c.idioma, "value", str(c.idioma)),
+            "modalidad": getattr(c.modalidad, "value", str(c.modalidad)),
+            "turno": getattr(c.turno, "value", str(c.turno)),
+            "nivel": getattr(c.nivel, "value", (c.nivel or None)),
+            "dias": c.dias or [],
+            "hora_inicio": c.hora_inicio,
+            "hora_fin": c.hora_fin,
+            "aula": c.aula,
+            "inscripcion": {"from": c.insc_inicio, "to": c.insc_fin},
+            "curso": {"from": c.curso_inicio, "to": c.curso_fin},
+            "docente_nombre": (
+                f"{c.docente.first_name} {c.docente.last_name}" if getattr(c, "docente", None) else None
+            ),
+        }
+
+    return InscripcionOut(
+        id=r.id,
+        ciclo_id=r.ciclo_id,
+        status=r.status,
+        tipo=r.tipo,
+        referencia=r.referencia,
+        importe_centavos=r.importe_centavos,
+        comprobante=_meta(r.comprobante_path, r.comprobante_mime, r.comprobante_size),
+        comprobante_estudios=_meta(
+            r.comprobante_estudios_path, r.comprobante_estudios_mime, r.comprobante_estudios_size
+        ),
+        comprobante_exencion=_meta(
+            r.comprobante_exencion_path, r.comprobante_exencion_mime, r.comprobante_exencion_size
+        ),
+        alumno=r.alumno,  # Pydantic lo mapea a AlumnoMini (from_attributes=True)
+        created_at=r.created_at,
+        ciclo=ciclo_dict,
+    )
+
 
 # ------------------- Endpoints -------------------
 @router.get(
@@ -124,7 +188,7 @@ def list_ciclos(
     modalidad: Optional[SchemaModalidad] = Query(None),
     turno: Optional[SchemaTurno] = Query(None),
     nivel: Optional[SchemaNivel] = Query(None),
-    docente_id: Optional[int] = Query(None, description="Filtrar por docente asignado"),  # 👈 nuevo
+    docente_id: Optional[int] = Query(None, description="Filtrar por docente asignado"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
 ):
@@ -143,7 +207,7 @@ def list_ciclos(
     if nivel:
         base = base.filter(Ciclo.nivel == ModelNivel(nivel.value))
 
-    if docente_id is not None:   # 👈 aquí filtras
+    if docente_id is not None:
         base = base.filter(Ciclo.docente_id == docente_id)
 
     total = base.count()
@@ -164,7 +228,6 @@ def list_ciclos(
         page_size=page_size,
         pages=pages,
     )
-
 
 
 @router.get(
@@ -204,12 +267,10 @@ def create_ciclo(payload: CicloCreate, db: Session = Depends(get_db)):
         turno=ModelTurno(payload.turno.value),
         nivel=ModelNivel(payload.nivel.value),
         cupo_total=payload.cupo_total,
-
         # horario
         dias=[d.value for d in payload.dias],
         hora_inicio=payload.hora_inicio,
         hora_fin=payload.hora_fin,
-
         # asistencia (default a 'presencial' si no viene)
         modalidad_asistencia=(
             ModelModalidadAsistencia(payload.modalidad_asistencia.value)
@@ -217,17 +278,14 @@ def create_ciclo(payload: CicloCreate, db: Session = Depends(get_db)):
             else ModelModalidadAsistencia.presencial
         ),
         aula=(getattr(payload, "aula", None) or "").strip() or None,
-
         # periodos / fechas
         insc_inicio=payload.inscripcion.from_,
         insc_fin=payload.inscripcion.to,
         curso_inicio=payload.curso.from_,
         curso_fin=payload.curso.to,
-       
         # exámenes (opcionales)
         examen_mt=getattr(payload, "examenMT", None),
         examen_final=getattr(payload, "examenFinal", None),
-
         notas=(payload.notas or "").strip() or None,
     )
 
@@ -296,7 +354,7 @@ def update_ciclo(ciclo_id: int, payload: CicloUpdate, db: Session = Depends(get_
     if payload.curso is not None:
         m.curso_inicio = payload.curso.from_
         m.curso_fin = payload.curso.to
-  
+
     # exámenes opcionales
     if payload.examenMT is not None:
         m.examen_mt = payload.examenMT
@@ -313,7 +371,12 @@ def update_ciclo(ciclo_id: int, payload: CicloUpdate, db: Session = Depends(get_
     db.commit()
     # eager load docente para salida consistente
     db.refresh(m)
-    m = db.query(Ciclo).options(joinedload(Ciclo.docente)).filter(Ciclo.id == ciclo_id).first()
+    m = (
+        db.query(Ciclo)
+        .options(joinedload(Ciclo.docente))
+        .filter(Ciclo.id == ciclo_id)
+        .first()
+    )
     return _to_out(m)
 
 
@@ -330,69 +393,35 @@ def delete_ciclo(ciclo_id: int, db: Session = Depends(get_db)):
     db.commit()
     return
 
-@router.get("/{ciclo_id}/inscripciones")
+
+# ====== NUEVO: listar inscripciones del ciclo (con metadatos de archivos) ======
+@router.get(
+    "/{ciclo_id}/inscripciones",
+    response_model=List[InscripcionOut],
+    dependencies=[Depends(require_coordinator_or_admin)],
+)
 def list_inscripciones_ciclo(
     ciclo_id: int = Path(..., ge=1),
+    status: Optional[str] = Query(None, description="Filtrar por status"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(60, ge=1, le=200),
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-    page: int = Query(None, ge=1),
-    page_size: int = Query(None, ge=1, le=200),
 ):
-    # Permisos: coordinador o superuser
-    if user.role not in (ModelUserRole.coordinator, ModelUserRole.superuser):
-        raise HTTPException(status_code=403, detail="Solo coordinación")
-
     ciclo = db.query(Ciclo).filter(Ciclo.id == ciclo_id).first()
     if not ciclo:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
     q = (
-        db.query(Inscripcion, User)
-        .join(User, User.id == Inscripcion.alumno_id)
+        db.query(Inscripcion)
+        .options(
+            joinedload(Inscripcion.alumno),
+            joinedload(Inscripcion.ciclo).joinedload(Ciclo.docente),
+        )
         .filter(Inscripcion.ciclo_id == ciclo_id)
-        .order_by(Inscripcion.created_at.asc())
+        .order_by(Inscripcion.created_at.desc())
     )
+    if status:
+        q = q.filter(Inscripcion.status == status)
 
-    # Si te mandan paginado, responde paginado
-    if page and page_size:
-        total = q.count()
-        rows = q.offset((page - 1) * page_size).limit(page_size).all()
-        items = [
-            {
-                "id": ins.id,
-                "created_at": ins.created_at.isoformat(),
-                "alumno": {
-                    "first_name": alumno.first_name,
-                    "last_name": alumno.last_name,
-                    "email": alumno.email,
-                    "is_ipn": bool(getattr(alumno, "is_ipn", False)),
-                    "boleta": getattr(alumno, "boleta", None),
-                },
-            }
-            for ins, alumno in rows
-        ]
-        pages = (total + page_size - 1) // page_size if total else 1
-        return {
-            "items": items,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "pages": pages,
-        }
-
-    # Por defecto: arreglo simple (no paginado)
-    rows = q.all()
-    return [
-        {
-            "id": ins.id,
-            "created_at": ins.created_at.isoformat(),
-            "alumno": {
-                "first_name": alumno.first_name,
-                "last_name": alumno.last_name,
-                "email": alumno.email,
-                "is_ipn": bool(getattr(alumno, "is_ipn", False)),
-                "boleta": getattr(alumno, "boleta", None),
-            },
-        }
-        for ins, alumno in rows
-    ]
+    rows = q.offset(skip).limit(limit).all()
+    return [_to_inscripcion_out(r) for r in rows]
