@@ -73,20 +73,34 @@ def _check_ventana_inscripcion(ciclo: Ciclo):
         raise HTTPException(status_code=409, detail="Periodo de inscripción no vigente")
 
 
+
 def _check_no_duplicado(db: Session, Inscripcion, ciclo_id: int, alumno_id: int):
+    # Solo bloquean las inscripciones activas
+    estados_bloquean = ("registrada", "preinscrita", "confirmada")
     ya = (
         db.query(Inscripcion.id)
-        .filter(Inscripcion.ciclo_id == ciclo_id, Inscripcion.alumno_id == alumno_id)
+        .filter(
+            Inscripcion.ciclo_id == ciclo_id,
+            Inscripcion.alumno_id == alumno_id,
+            Inscripcion.status.in_(estados_bloquean),
+        )
         .first()
     )
     if ya:
-        raise HTTPException(status_code=400, detail="Ya estás inscrito en este ciclo")
+        raise HTTPException(status_code=400, detail="Ya tienes una inscripción activa en este ciclo")
 
 
 def _check_cupo(db: Session, Inscripcion, ciclo: Ciclo):
+    """
+    Verifica el cupo contando únicamente inscripciones activas.
+    """
+    estados_activos = ("registrada", "preinscrita", "confirmada")
     inscritos = (
         db.query(func.count(Inscripcion.id))
-        .filter(Inscripcion.ciclo_id == ciclo.id)
+        .filter(
+            Inscripcion.ciclo_id == ciclo.id,
+            Inscripcion.status.in_(estados_activos),
+        )
         .scalar()
         or 0
     )
@@ -119,6 +133,7 @@ def _map_comprobante_meta(ins) -> Optional[ComprobanteMeta]:
         size_bytes=size,
         storage_path=path,
     )
+
 
 def _map_comprobante_meta_from(ins, base: str) -> Optional[ComprobanteMeta]:
     """
@@ -165,8 +180,10 @@ def _norm_days(dias_val) -> list[str]:
     import re
     return [p.strip() for p in re.split(r"[,\|\s]+", s) if p.strip()]
 
+
 # === NUEVO === Rutas de almacenamiento y helper para resolver a absoluto
 BASE_STORAGE = os.getenv("APP_STORAGE_ROOT", os.path.abspath(os.getcwd()))
+
 
 def _resolve_storage_path(p: str | None) -> str | None:
     """
@@ -180,6 +197,7 @@ def _resolve_storage_path(p: str | None) -> str | None:
         return p
     return os.path.abspath(os.path.join(BASE_STORAGE, p))
 
+
 # === NUEVO === Constantes/helper para guardar archivos de manera segura
 ALLOWED_MIME = {
     "application/pdf",
@@ -188,6 +206,7 @@ ALLOWED_MIME = {
     "image/jpg",
     "image/webp",
 }
+
 
 async def _save_upload(file: UploadFile, env_dir_key: str, default_dir: str, max_mb: int = 5):
     """
@@ -251,6 +270,7 @@ async def crear_inscripcion(
         ciclo_id: int
         referencia: str
         importe_centavos: int
+        fecha_pago: YYYY-MM-DD (no futura)
         comprobante: UploadFile (pdf/jpg/png/webp, <= 5MB) -> status="preinscrita"
         comprobante_estudios: UploadFile (<= 5MB) [OBLIGATORIO si user.is_ipn]
     - multipart/form-data (modo **exencion**):
@@ -360,124 +380,125 @@ async def crear_inscripcion(
             db.refresh(ins)
             return {"ok": True, "id": ins.id}
 
-    # ===== Rama PAGO (comportamiento previo, intacto) =====
-    referencia = (form.get("referencia") or "").strip()
-    if not referencia:
-        raise HTTPException(status_code=422, detail="Referencia requerida")
+        # ===== Rama PAGO (comportamiento previo, intacto) =====
+        referencia = (form.get("referencia") or "").strip()
+        if not referencia:
+            raise HTTPException(status_code=422, detail="Referencia requerida")
 
-    try:
-        importe_centavos = int(form.get("importe_centavos") or 0)
-    except Exception:
-        raise HTTPException(status_code=422, detail="importe_centavos inválido")
-    if importe_centavos <= 0:
-        raise HTTPException(status_code=422, detail="importe_centavos debe ser > 0")
+        try:
+            importe_centavos = int(form.get("importe_centavos") or 0)
+        except Exception:
+            raise HTTPException(status_code=422, detail="importe_centavos inválido")
+        if importe_centavos <= 0:
+            raise HTTPException(status_code=422, detail="importe_centavos debe ser > 0")
 
-    # --- NUEVO: fecha_pago obligatoria y no futura (formato YYYY-MM-DD) ---
-    raw_fecha_pago = (form.get("fecha_pago") or "").strip()
-    if not raw_fecha_pago:
-        raise HTTPException(status_code=422, detail="fecha_pago es requerida")
-    try:
-        fecha_pago_dt = date.fromisoformat(raw_fecha_pago)
-    except Exception:
-        raise HTTPException(status_code=422, detail="fecha_pago inválida (usa YYYY-MM-DD)")
-    if fecha_pago_dt > date.today():
-        raise HTTPException(status_code=422, detail="fecha_pago no puede ser futura")
+        # --- NUEVO: fecha_pago obligatoria y no futura (formato YYYY-MM-DD) ---
+        raw_fecha_pago = (form.get("fecha_pago") or "").strip()
+        if not raw_fecha_pago:
+            raise HTTPException(status_code=422, detail="fecha_pago es requerida")
+        try:
+            fecha_pago_dt = date.fromisoformat(raw_fecha_pago)
+        except Exception:
+            raise HTTPException(status_code=422, detail="fecha_pago inválida (usa YYYY-MM-DD)")
+        if fecha_pago_dt > date.today():
+            raise HTTPException(status_code=422, detail="fecha_pago no puede ser futura")
 
-    file: UploadFile | None = form.get("comprobante")  # type: ignore
-    if not file:
-        raise HTTPException(status_code=422, detail="Comprobante requerido")
+        file: UploadFile | None = form.get("comprobante")  # type: ignore
+        if not file:
+            raise HTTPException(status_code=422, detail="Comprobante requerido")
 
-    allowed = {
-        "application/pdf",
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
-        "image/webp",
-    }
-    if (file.content_type or "").lower() not in allowed:
-        raise HTTPException(status_code=415, detail="Tipo de archivo no permitido (usa PDF/JPG/PNG/WEBP)")
+        allowed = {
+            "application/pdf",
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+            "image/webp",
+        }
+        if (file.content_type or "").lower() not in allowed:
+            raise HTTPException(status_code=415, detail="Tipo de archivo no permitido (usa PDF/JPG/PNG/WEBP)")
 
-    # Guardar archivo (límite 5MB) → **guardar ABSOLUTO**
-    UPLOAD_DIR = os.getenv("PAYMENT_UPLOAD_DIR", "uploads/comprobantes")
-    UPLOAD_DIR = os.path.abspath(UPLOAD_DIR)
-    _ensure_upload_dir(UPLOAD_DIR)
+        # Guardar archivo (límite 5MB) → **guardar ABSOLUTO**
+        UPLOAD_DIR = os.getenv("PAYMENT_UPLOAD_DIR", "uploads/comprobantes")
+        UPLOAD_DIR = os.path.abspath(UPLOAD_DIR)
+        _ensure_upload_dir(UPLOAD_DIR)
 
-    _, ext = os.path.splitext(file.filename or "")
-    ext = (ext or "").lower()
-    if not ext:
-        ext = ".pdf" if file.content_type == "application/pdf" else ".jpg"
-    filename = f"{uuid4().hex}{ext}"
-    full_path = os.path.abspath(os.path.join(UPLOAD_DIR, filename))
+        _, ext = os.path.splitext(file.filename or "")
+        ext = (ext or "").lower()
+        if not ext:
+            ext = ".pdf" if file.content_type == "application/pdf" else ".jpg"
+        filename = f"{uuid4().hex}{ext}"
+        full_path = os.path.abspath(os.path.join(UPLOAD_DIR, filename))
 
-    size = 0
-    max_size = 5 * 1024 * 1024  # 5 MB
-    try:
-        with open(full_path, "wb") as out:
-            while True:
-                chunk = await file.read(1024 * 1024)  # 1MB
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > max_size:
+        size = 0
+        max_size = 5 * 1024 * 1024  # 5 MB
+        try:
+            with open(full_path, "wb") as out:
+                while True:
+                    chunk = await file.read(1024 * 1024)  # 1MB
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > max_size:
+                        try:
+                            out.close()
+                            os.remove(full_path)
+                        except Exception:
+                            pass
+                        raise HTTPException(status_code=413, detail="El archivo excede 5MB")
+                    out.write(chunk)
+        finally:
+            await file.close()
+
+        # Exigir y guardar comprobante de estudios si es IPN
+        file_est: UploadFile | None = form.get("comprobante_estudios")  # type: ignore
+        if es_ipn and not file_est:
+            # limpiar comprobante de pago si fallamos aquí
+            try:
+                os.remove(full_path)
+            except Exception:
+                pass
+            raise HTTPException(status_code=422, detail="Comprobante de estudios requerido para alumnos IPN")
+
+        est_path = est_mime = est_size = None
+        if file_est:
+            est_path, est_mime, est_size = await _save_upload(
+                file_est, env_dir_key="STUDIES_UPLOAD_DIR", default_dir="uploads/estudios", max_mb=5
+            )
+
+        ins = Inscripcion(
+            ciclo_id=ciclo_id,
+            alumno_id=user.id,
+            status="preinscrita",
+            tipo=InscripcionTipo.pago,
+            fecha_pago=fecha_pago_dt,  # <-- NUEVO: asigna la fecha validada
+            referencia=referencia,
+            importe_centavos=importe_centavos,
+            comprobante_path=full_path,
+            comprobante_mime=file.content_type,
+            comprobante_size=size,
+            alumno_is_ipn=es_ipn,
+            comprobante_estudios_path=est_path,
+            comprobante_estudios_mime=est_mime,
+            comprobante_estudios_size=est_size,
+        )
+        db.add(ins)
+        try:
+            db.commit()  # respeta los CHECKs de BD
+        except Exception:
+            db.rollback()
+            # limpieza de archivos en caso de fallo
+            for p in (full_path, est_path):
+                if p:
                     try:
-                        out.close()
-                        os.remove(full_path)
+                        os.remove(p)
                     except Exception:
                         pass
-                    raise HTTPException(status_code=413, detail="El archivo excede 5MB")
-                out.write(chunk)
-    finally:
-        await file.close()
+            raise
+        db.refresh(ins)
+        return {"ok": True, "id": ins.id}
 
-    # Exigir y guardar comprobante de estudios si es IPN
-    file_est: UploadFile | None = form.get("comprobante_estudios")  # type: ignore
-    if es_ipn and not file_est:
-        # limpiar comprobante de pago si fallamos aquí
-        try:
-            os.remove(full_path)
-        except Exception:
-            pass
-        raise HTTPException(status_code=422, detail="Comprobante de estudios requerido para alumnos IPN")
-
-    est_path = est_mime = est_size = None
-    if file_est:
-        est_path, est_mime, est_size = await _save_upload(
-            file_est, env_dir_key="STUDIES_UPLOAD_DIR", default_dir="uploads/estudios", max_mb=5
-        )
-
-    ins = Inscripcion(
-        ciclo_id=ciclo_id,
-        alumno_id=user.id,
-        status="preinscrita",
-        tipo=InscripcionTipo.pago,
-        fecha_pago=fecha_pago_dt,  # <-- NUEVO: asigna la fecha validada
-        referencia=referencia,
-        importe_centavos=importe_centavos,
-        comprobante_path=full_path,
-        comprobante_mime=file.content_type,
-        comprobante_size=size,
-        alumno_is_ipn=es_ipn,
-        comprobante_estudios_path=est_path,
-        comprobante_estudios_mime=est_mime,
-        comprobante_estudios_size=est_size,
-    )
-    db.add(ins)
-    try:
-        db.commit()  # respeta los CHECKs de BD
-    except Exception:
-        db.rollback()
-        # limpieza de archivos en caso de fallo
-        for p in (full_path, est_path):
-            if p:
-                try:
-                    os.remove(p)
-                except Exception:
-                    pass
-        raise
-    db.refresh(ins)
-    return {"ok": True, "id": ins.id}
-
-
+    # Si el Content-Type no es JSON ni multipart
+    raise HTTPException(status_code=415, detail="Content-Type no soportado")
 
 
 # ==========================
@@ -537,8 +558,11 @@ def listar_mis_inscripciones(
 
     rows = (
         db.query(Inscripcion)
-        .options(joinedload(Inscripcion.ciclo))  # asegurar x.ciclo disponible
+        .options(
+            joinedload(Inscripcion.ciclo).joinedload(Ciclo.docente)  # asegurar ciclo y docente
+        )
         .filter(Inscripcion.alumno_id == user.id)
+        .order_by(Inscripcion.created_at.desc())
         .all()
     )
 
@@ -548,13 +572,13 @@ def listar_mis_inscripciones(
 
         # Periodos (ajusta nombres si difieren en tu modelo)
         insc_inicio = getattr(c, "insc_inicio", None)
-        insc_fin    = getattr(c, "insc_fin", None)
+        insc_fin = getattr(c, "insc_fin", None)
         curso_inicio = getattr(c, "curso_inicio", None)
-        curso_fin    = getattr(c, "curso_fin", None)
+        curso_fin = getattr(c, "curso_fin", None)
 
         # Horario
         hora_inicio = getattr(c, "hora_inicio", None)
-        hora_fin    = getattr(c, "hora_fin", None)
+        hora_fin = getattr(c, "hora_fin", None)
 
         # Días normalizados a list[str]
         dias = _norm_days(getattr(c, "dias", None))
@@ -591,18 +615,28 @@ def listar_mis_inscripciones(
                 ciclo_id=x.ciclo_id,
                 status=x.status,
                 created_at=x.created_at,
+
                 # NUEVO: tipo (fallback a 'pago' por si faltara en filas antiguas)
                 tipo=getattr(x, "tipo", "pago"),
+
                 # Pago
                 referencia=getattr(x, "referencia", None),
                 importe_centavos=getattr(x, "importe_centavos", None),
-                fecha_pago=getattr(x, "fecha_pago", None),  # <-- NUEVO
+                fecha_pago=getattr(x, "fecha_pago", None),
 
+                # Archivos
                 comprobante=_map_comprobante_meta(x),
-                # Estudios (IPN)
                 comprobante_estudios=_map_comprobante_meta_from(x, "comprobante_estudios"),
-                # Exención
                 comprobante_exencion=_map_comprobante_meta_from(x, "comprobante_exencion"),
+
+                # Motivo de rechazo y notas (para el front)
+                rechazo_motivo=getattr(x, "rechazo_motivo", None),
+                validation_notes=getattr(x, "validation_notes", None),
+
+                # Validación
+                validated_by_id=getattr(x, "validated_by_id", None),
+                validated_at=getattr(x, "validated_at", None),
+
                 ciclo=ciclo_lite,
             )
         )

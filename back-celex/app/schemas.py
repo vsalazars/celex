@@ -10,7 +10,8 @@ from pydantic import (
     model_validator,
     computed_field,
     field_serializer,
-)
+    constr,
+    )
 
 MAX_COMPROBANTE_BYTES = 5 * 1024 * 1024  # 5 MB
 
@@ -334,6 +335,11 @@ class InscripcionTipo(str, Enum):
     pago = "pago"
     exencion = "exencion"
 
+# Request del coordinador para aprobar/rechazar
+class ValidateInscripcionCoordIn(BaseModel):
+    action: Literal["APPROVE", "REJECT"]
+    motivo: Optional[constr(strip_whitespace=True, min_length=6, max_length=300)] = None
+
 
 class InscripcionOut(BaseModel):
     id: int
@@ -355,14 +361,17 @@ class InscripcionOut(BaseModel):
     # NUEVO: Exención
     comprobante_exencion: Optional["ComprobanteMeta"] = None
 
+    # Motivo / notas de validación (para que el front pueda mostrarlos)
+    rechazo_motivo: Optional[str] = None
+    validation_notes: Optional[str] = None
+
     alumno: Optional["AlumnoMini"] = None
     created_at: datetime
-    ciclo: Optional[CicloLite] = None
+    ciclo: Optional["CicloLite"] = None
 
     # === Nuevos campos de validación ===
     validated_by_id: Optional[int] = None
     validated_at: Optional[datetime] = None
-    validation_notes: Optional[str] = None
 
     @computed_field
     @property
@@ -371,7 +380,6 @@ class InscripcionOut(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 # --- Payload para validar inscripción ---
 class ValidateInscripcionIn(BaseModel):

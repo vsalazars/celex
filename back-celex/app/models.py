@@ -183,6 +183,9 @@ class Inscripcion(Base):
     comprobante_exencion_mime = Column(String(100), nullable=True)
     comprobante_exencion_size = Column(Integer, nullable=True)
 
+     # NUEVO: motivo del rechazo
+    rechazo_motivo = Column(Text, nullable=True, default=None)
+
     # Validación por coordinador
     validated_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     validated_at = Column(DateTime(timezone=True))

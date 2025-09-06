@@ -28,6 +28,18 @@ import {
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
+// === NUEVOS IMPORTS PARA EL MOTIVO DE RECHAZO ===
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+
 
 type StatusFiltro =
   | "todas"
@@ -48,6 +60,14 @@ type PreviewState = {
   mime?: string | null;
   loading?: boolean;
   isPdf?: boolean;
+};
+
+// ====== Rechazo (modal + texto motivo) ======
+type RejectState = {
+  open: boolean;
+  id: number | null;
+  nombre: string;
+  motivo: string;
 };
 
 export default function InscripcionesSection() {
@@ -77,6 +97,19 @@ export default function InscripcionesSection() {
   const [zoom, setZoom] = useState(1);          // imágenes y pdfs (pdf via #zoom)
   const [rotation, setRotation] = useState(0);  // solo imágenes
   const [fit, setFit] = useState<FitMode>("contain"); // solo imágenes
+
+  // ====== Estado para Rechazo ======
+  const [reject, setReject] = useState<RejectState>({
+    open: false,
+    id: null,
+    nombre: "",
+    motivo: "",
+  });
+
+  function openReject(ins: InscripcionDTO) {
+    const nombre = `${ins.alumno?.first_name ?? ""} ${ins.alumno?.last_name ?? ""}`.trim();
+    setReject({ open: true, id: ins.id, nombre, motivo: "" });
+  }
 
   // ====== Cargar ciclos ======
   async function fetchCiclos() {
@@ -110,14 +143,18 @@ export default function InscripcionesSection() {
     }
   }
 
-  // ====== Validar ======
-  async function handleValidate(id: number, action: "APPROVE" | "REJECT") {
+  // ====== Validar (AHORA RECIBE MOTIVO OPCIONAL) ======
+  async function handleValidate(
+    id: number,
+    action: "APPROVE" | "REJECT",
+    motivo?: string
+  ) {
     setValidating(id);
     try {
       await validateInscripcionCoord(
         id,
         action,
-        action === "REJECT" ? "Documentación incompleta" : undefined
+        action === "REJECT" ? motivo : undefined
       );
       toast.success(`Inscripción ${action === "APPROVE" ? "aprobada" : "rechazada"} correctamente`);
       setPreview((p) => (p.ins?.id === id ? { ...p, open: false } : p));
@@ -457,7 +494,12 @@ export default function InscripcionesSection() {
                           {validating === r.id ? <Loader2 className="animate-spin w-4 h-4 mr-1" /> : null}
                           Aprobar
                         </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleValidate(r.id, "REJECT")} disabled={validating === r.id}>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => openReject(r)}
+                          disabled={validating === r.id}
+                        >
                           {validating === r.id ? <Loader2 className="animate-spin w-4 h-4 mr-1" /> : null}
                           Rechazar
                         </Button>
@@ -619,8 +661,12 @@ export default function InscripcionesSection() {
                       {validating === preview.ins!.id ? <Loader2 className="animate-spin w-4 h-4 mr-1" /> : null}
                       Aprobar
                     </Button>
-                    <Button variant="destructive" onClick={() => handleValidate(preview.ins!.id, "REJECT")} disabled={validating === preview.ins!.id}>
-                      {validating === preview.ins!.id ? <Loader2 className="animate-spin w-4 h-4 mr-1" /> : null}
+                    <Button
+                      variant="destructive"
+                      onClick={() => preview.ins && openReject(preview.ins)}
+                      disabled={preview.ins ? validating === preview.ins.id : false}
+                    >
+                      {preview.ins && validating === preview.ins.id ? <Loader2 className="animate-spin w-4 h-4 mr-1" /> : null}
                       Rechazar
                     </Button>
                   </>
@@ -630,6 +676,83 @@ export default function InscripcionesSection() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ====== MODAL DE RECHAZO (motivo) ====== */}
+      <AlertDialog open={reject.open} onOpenChange={(o) => setReject((s) => ({ ...s, open: o }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Motivo de rechazo {reject.nombre ? `· ${reject.nombre}` : ""}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Escribe brevemente el motivo. El alumno lo recibirá como notificación.
+            </p>
+
+            {/* chips rápidos opcionales */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                "Documentación incompleta",
+                "Archivo ilegible",
+                "Comprobante no corresponde al pago",
+                "Datos personales no coinciden",
+              ].map((t) => (
+                <Button
+                  key={t}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setReject((s) => ({ ...s, motivo: s.motivo ? `${s.motivo}; ${t}` : t }))
+                  }
+                >
+                  {t}
+                </Button>
+              ))}
+            </div>
+
+            <Textarea
+              value={reject.motivo}
+              onChange={(e) => setReject((s) => ({ ...s, motivo: e.target.value }))}
+              placeholder="Ej. El comprobante es ilegible y falta la constancia de estudios..."
+              rows={4}
+              autoFocus
+            />
+
+            <div className="text-xs text-muted-foreground text-right">
+              {reject.motivo.length}/300
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setReject({ open: false, id: null, nombre: "", motivo: "" })}
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                !reject.id ||
+                reject.motivo.trim().length < 6 ||
+                (reject.id !== null && validating === reject.id)
+              }
+              onClick={async () => {
+                if (!reject.id) return;
+                const motivo = reject.motivo.trim().slice(0, 300);
+                await handleValidate(reject.id, "REJECT", motivo);
+                setReject({ open: false, id: null, nombre: "", motivo: "" });
+              }}
+            >
+              {reject.id !== null && validating === reject.id ? (
+                <Loader2 className="animate-spin w-4 h-4 mr-2" />
+              ) : null}
+              Enviar rechazo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

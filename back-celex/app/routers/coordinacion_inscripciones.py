@@ -65,8 +65,14 @@ def _to_inscripcion_out(r: models.Inscripcion) -> schemas.InscripcionOut:
         ciclo_id=r.ciclo_id,
         status=r.status,
         tipo=r.tipo,
+        fecha_pago=r.fecha_pago,
         referencia=r.referencia,
         importe_centavos=r.importe_centavos,
+
+        # Motivos / notas de validación
+        rechazo_motivo=r.rechazo_motivo,
+        validation_notes=r.validation_notes,
+
         comprobante=_meta(r.comprobante_path, r.comprobante_mime, r.comprobante_size),
         comprobante_estudios=_meta(
             r.comprobante_estudios_path, r.comprobante_estudios_mime, r.comprobante_estudios_size
@@ -74,10 +80,16 @@ def _to_inscripcion_out(r: models.Inscripcion) -> schemas.InscripcionOut:
         comprobante_exencion=_meta(
             r.comprobante_exencion_path, r.comprobante_exencion_mime, r.comprobante_exencion_size
         ),
-        alumno=r.alumno,  # Pydantic lo mapea a AlumnoMini (from_attributes=True)
+
+        alumno=r.alumno,
         created_at=r.created_at,
         ciclo=ciclo_dict,
+
+        # Auditoría
+        validated_by_id=r.validated_by_id,
+        validated_at=r.validated_at,
     )
+
 
 # --------------------------
 # Listar inscripciones (coordinación)
@@ -117,6 +129,7 @@ def validate_inscripcion(
     db: Session = Depends(get_db),
     user: models.User = Depends(require_coordinator),
 ):
+    # Cargar inscripción con relaciones necesarias
     insc = (
         db.query(models.Inscripcion)
         .options(
@@ -129,19 +142,46 @@ def validate_inscripcion(
     if not insc:
         raise HTTPException(status_code=404, detail="Inscripción no encontrada")
 
+    # Evitar doble validación
     if insc.validated_at is not None:
         raise HTTPException(status_code=409, detail="La inscripción ya fue validada")
 
+    # Compatibilidad: permitir 'motivo' o 'notes' en el payload
+    motivo_raw = (getattr(payload, "motivo", None) or getattr(payload, "notes", None) or "")
+    motivo_clean = motivo_raw.strip()
+
     if payload.action == "APPROVE":
         insc.status = "confirmada"
+        # Al aprobar, limpiamos cualquier motivo anterior
+        if hasattr(insc, "rechazo_motivo"):
+            insc.rechazo_motivo = None
+        # Mantener compatibilidad con tu campo previo
+        if hasattr(insc, "validation_notes"):
+            insc.validation_notes = None
+
     elif payload.action == "REJECT":
         insc.status = "rechazada"
+
+        # Motivo obligatorio y con tamaño razonable
+        if len(motivo_clean) < 6:
+            raise HTTPException(
+                status_code=422,
+                detail="Se requiere un motivo de al menos 6 caracteres",
+            )
+        # Guardar motivo (nuevo campo) y también en notes para compatibilidad si existe
+        if hasattr(insc, "rechazo_motivo"):
+            insc.rechazo_motivo = motivo_clean[:300]
+        if hasattr(insc, "validation_notes"):
+            insc.validation_notes = motivo_clean[:300]
+
     else:
         raise HTTPException(status_code=400, detail="Acción inválida")
 
-    insc.validation_notes = payload.notes
-    insc.validated_by_id = user.id
-    insc.validated_at = datetime.utcnow()
+    # Auditoría de la validación
+    if hasattr(insc, "validated_by_id"):
+        insc.validated_by_id = user.id
+    if hasattr(insc, "validated_at"):
+        insc.validated_at = datetime.utcnow()
 
     db.commit()
     db.refresh(insc)

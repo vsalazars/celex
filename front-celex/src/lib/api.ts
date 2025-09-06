@@ -312,11 +312,15 @@ export type InscripcionDTO = {
     curso?: { from: string; to: string } | null;
   } | null;
 
-  // === NUEVOS CAMPOS DE VALIDACIÓN ===
+  // === CAMPOS DE VALIDACIÓN ===
   validated_by_id?: number | null;
   validated_at?: string | null;
-  validation_notes?: string | null;
+
+  // Motivos de rechazo
+  rechazo_motivo?: string | null;       // 👈 preferido (nuevo)
+  validation_notes?: string | null;     // 👈 compatibilidad
 };
+
 
 // 🔽 Tipos discriminados para crear inscripción
 export type CreateInscripcionPago = {
@@ -434,15 +438,20 @@ export async function listInscripcionesCoord(params: {
 export async function validateInscripcionCoord(
   id: number,
   action: "APPROVE" | "REJECT",
-  notes?: string
+  motivo?: string
 ): Promise<InscripcionDTO> {
   const url = buildURL(`/coordinacion/inscripciones/${id}/validate`);
   return apiFetch<InscripcionDTO>(url, {
     method: "POST",
-    body: JSON.stringify({ action, notes }),
+    body: JSON.stringify({
+      action,
+      motivo,           // 👈 el back valida este campo (min_length=6)
+      notes: motivo,    // 👈 opcional, por compat si tu back aún lo lee
+    }),
     auth: true,
   });
 }
+
 
 export async function downloadArchivoInscripcionCoord(
   inscripcionId: number,

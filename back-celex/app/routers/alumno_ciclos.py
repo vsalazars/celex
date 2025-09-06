@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, func, literal
 
-from ..auth import get_db, get_current_user  # deja igual si ya te funciona así
+from ..database import get_db
+from ..auth import get_current_user
 from ..models import (
     Ciclo,
     Inscripcion,  # 👈 para contar inscripciones activas
@@ -36,7 +37,7 @@ def _to_out(m: Ciclo, ocupadas: int | None = None) -> CicloOut:
     """
     g = getattr
     cupo_total = m.cupo_total or 0
-    ocup = ocupadas or 0
+    ocup = int(ocupadas or 0)
     disponibles = max(cupo_total - ocup, 0)
 
     return CicloOut(
@@ -57,15 +58,11 @@ def _to_out(m: Ciclo, ocupadas: int | None = None) -> CicloOut:
 
         # Ventanas de inscripción
         inscripcion={"from": g(m, "insc_inicio", None), "to": g(m, "insc_fin", None)},
-        reinscripcion={"from": g(m, "reinsc_inicio", None), "to": g(m, "reinsc_fin", None)},
 
-        # Fechas de curso / colocación
+        # Fechas de curso
         curso={"from": g(m, "curso_inicio", None), "to": g(m, "curso_fin", None)},
-        colocacion={
-            "from": g(m, "colocacion_inicio", g(m, "coloc_inicio", None)),
-            "to": g(m, "colocacion_fin", g(m, "coloc_fin", None)),
-        },
 
+        # Exámenes (si existen en tu modelo)
         examenMT=g(m, "examen_mt", None),
         examenFinal=g(m, "examen_final", None),
 
@@ -119,7 +116,7 @@ def list_ciclos_alumno(
         base = base.filter(and_(Ciclo.insc_inicio <= today, today <= Ciclo.insc_fin))
 
     # ---- Subquery: inscripciones activas por ciclo
-    estados_activos = ("registrada", "pendiente", "confirmada")
+    estados_activos = ("registrada", "preinscrita", "confirmada")
     subq = (
         db.query(
             Inscripcion.ciclo_id.label("ciclo_id"),
@@ -131,7 +128,7 @@ def list_ciclos_alumno(
     )
 
     # Join para obtener (Ciclo, ocupadas)
-    q = (
+    query_with_counts = (
         base.outerjoin(subq, subq.c.ciclo_id == Ciclo.id)
             .with_entities(Ciclo, func.coalesce(subq.c.ocupadas, literal(0)).label("ocupadas"))
     )
@@ -142,7 +139,7 @@ def list_ciclos_alumno(
         page = pages
 
     rows = (
-        q.order_by(desc(Ciclo.id))
+        query_with_counts.order_by(desc(Ciclo.id))
          .offset((page - 1) * page_size)
          .limit(page_size)
          .all()
@@ -171,7 +168,7 @@ def get_ciclo_alumno(
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
     # Contar inscripciones activas para este ciclo
-    estados_activos = ("registrada", "pendiente", "confirmada")
+    estados_activos = ("registrada", "preinscrita", "confirmada")
     ocupadas = (
         db.query(func.count(Inscripcion.id))
           .filter(Inscripcion.ciclo_id == ciclo_id, Inscripcion.status.in_(estados_activos))

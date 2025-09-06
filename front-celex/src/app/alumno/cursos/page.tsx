@@ -38,7 +38,6 @@ import {
   Receipt,
   User,
   ShieldCheck,
-  FileDown,
 } from "lucide-react";
 
 /* ========== helpers de formato ========== */
@@ -165,7 +164,6 @@ function ArchivoLink({
   );
 }
 
-
 /* ========== UI helpers ========== */
 function statusMeta(status: InscripcionDTO["status"]) {
   switch (status) {
@@ -193,6 +191,21 @@ function toneClasses(tone: ReturnType<typeof statusMeta>["tone"]) {
     neutral: { badge: "bg-neutral-100 text-neutral-700 border-neutral-200", stripe: "bg-neutral-500/70" },
   } as const;
   return map[tone];
+}
+
+/* === Helper para mostrar el motivo del rechazo (tolerante a nombres) === */
+function getRejectReason(x: any): string | null {
+  // incluye variantes para compatibilidad con back antiguo y nuevo
+  return (
+    x?.rechazo_motivo ??         // preferido (nuevo)
+    x?.motivo_rechazo ??         // variante
+    x?.validation_notes ??       // compat con back existente
+    x?.validation_reason ??      // posible variante
+    x?.motivo ??                 // genérico
+    x?.reject_reason ??          // genérico en inglés
+    x?.observaciones_rechazo ??  // variante
+    null
+  );
 }
 
 /* ========== Tarjeta de inscripción con cards ========== */
@@ -226,6 +239,7 @@ function InscripcionCard({
     null;
 
   const isExencion = (x as any).tipo === "exencion";
+  const rejectReason = x.status === "rechazada" ? getRejectReason(x) : null;
 
   return (
     <article className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm ring-1 ring-black/5 hover:shadow-md transition-shadow">
@@ -359,6 +373,17 @@ function InscripcionCard({
                   <span>{meta.label}</span>
                 </div>
               </div>
+
+              {/* Motivo de rechazo (si aplica) */}
+              {rejectReason && (
+                <div className="rounded-xl border border-red-200 bg-red-50/60 p-3">
+                  <p className="text-[11px] font-semibold text-red-800">Motivo del rechazo</p>
+                  <p className="mt-1 text-xs leading-snug text-red-900/90 whitespace-pre-wrap break-words">
+                    {rejectReason}
+                  </p>
+                </div>
+              )}
+
             </div>
           ) : (
             /* ===== PAGO ===== */
@@ -393,6 +418,16 @@ function InscripcionCard({
                   <span>{meta.label}</span>
                 </div>
               </div>
+
+              {/* Motivo de rechazo (si aplica) */}
+              {rejectReason && (
+                <div className="rounded-xl border border-red-200 bg-red-50/60 p-3">
+                  <p className="text-[11px] font-semibold text-red-800">Motivo del rechazo</p>
+                  <p className="mt-1 text-xs leading-snug text-red-900/90 whitespace-pre-wrap break-words">
+                    {rejectReason}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
