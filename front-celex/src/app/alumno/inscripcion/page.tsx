@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import AlumnoShell from "@/components/alumno/Shell";
 import { toast } from "sonner";
-import { listCiclosAlumno, createInscripcion } from "@/lib/api";
+import {
+  listCiclosAlumno,
+  createInscripcion,
+  listMisInscripciones, // 👈 NEW
+} from "@/lib/api";
 import type { CicloDTO, CicloListResponse, ListCiclosParams } from "@/lib/types";
 
 import { Button } from "@/components/ui/button";
@@ -93,9 +97,9 @@ function capTone(disp: number) {
   }
   return {
     label: "Disponible",
-      badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-200",
-      barClass: "bg-emerald-500",
-      textClass: "text-emerald-700",
+    badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    barClass: "bg-emerald-500",
+    textClass: "text-emerald-700",
   };
 }
 
@@ -163,6 +167,8 @@ function getIsIPNFromToken(): boolean {
   }
 }
 
+const ACTIVE = new Set(["registrada", "preinscrita", "confirmada"]); // 👈 estados que bloquean nueva inscripción
+
 export default function AlumnoInscripcionPage() {
   const router = useRouter();
 
@@ -182,6 +188,16 @@ export default function AlumnoInscripcionPage() {
   const items = data?.items ?? [];
   const canPrev = (data?.page ?? 1) > 1;
   const canNext = !!data && data.page < data.pages;
+
+  // Mis inscripciones activas (para bloquear CTA)
+  const [misInscripciones, setMisInscripciones] = useState<any[]>([]);
+  const ciclosActivos = useMemo(() => {
+    return new Set(
+      (misInscripciones || [])
+        .filter((i) => ACTIVE.has(i.status))
+        .map((i) => i.ciclo_id)
+    );
+  }, [misInscripciones]);
 
   // Ficha lateral (detalle + inscribir)
   const [openSheet, setOpenSheet] = useState(false);
@@ -235,16 +251,12 @@ export default function AlumnoInscripcionPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // NEW: detectar IPN al montar
+  // NEW: detectar IPN al montar y traer mis inscripciones
   useEffect(() => {
-    const token = getToken();
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        console.log("JWT payload:", payload);
-      } catch {}
-    }
     setIsIPN(getIsIPNFromToken());
+    listMisInscripciones()
+      .then(setMisInscripciones)
+      .catch(() => {});
   }, []);
 
   async function fetchList(params: ListCiclosParams) {
@@ -363,6 +375,15 @@ export default function AlumnoInscripcionPage() {
   const onInscribirme = async (c: CicloDTO) => {
     if (!validarFormulario()) return;
 
+    // Si ya está activa, no intentamos inscribir
+    if (ciclosActivos.has(c.id)) {
+      toast.info("Ya tienes una inscripción activa en este grupo.");
+      setOpenSheet(false);
+      setSelected(null);
+      router.push("/alumno/cursos");
+      return;
+    }
+
     // armamos payload según modo
     const base: any = { ciclo_id: c.id };
 
@@ -386,7 +407,22 @@ export default function AlumnoInscripcionPage() {
 
     try {
       setSubmitting(true);
-      await createInscripcion(base);
+      const res = await createInscripcion(base);
+
+      // Idempotencia del backend: si ya existía, llega 200 con bandera
+      if (res?.already_exists) {
+        toast.info("Ya tienes una inscripción activa en este grupo.");
+        // refrescamos mis inscripciones para bloquear el CTA
+        try {
+          const mine = await listMisInscripciones();
+          setMisInscripciones(mine || []);
+        } catch {}
+        setOpenSheet(false);
+        setSelected(null);
+        setSubmitting(false);
+        router.push("/alumno/cursos");
+        return;
+      }
     } catch (err: any) {
       console.error(err);
       const msg = (err?.message || "").toLowerCase();
@@ -399,8 +435,6 @@ export default function AlumnoInscripcionPage() {
         toast.warning("No hay lugares disponibles en este grupo");
       } else if (msg.includes("periodo de inscripción")) {
         toast.warning("El periodo de inscripción no está vigente");
-      } else if (msg.includes("ya estás inscrito")) {
-        toast.info("Ya estabas inscrito en este ciclo");
       } else if (msg.includes("archivo")) {
         toast.error("El archivo no es válido o excede el tamaño permitido");
       } else if (msg.includes("fecha") && msg.includes("pago")) {
@@ -417,6 +451,13 @@ export default function AlumnoInscripcionPage() {
         ? "¡Listo! Quedaste preinscrito. Validaremos tu pago en breve."
         : "¡Listo! Registramos tu solicitud de exención. La revisaremos en breve."
     );
+
+    // refrescamos mis inscripciones para que el CTA quede bloqueado
+    try {
+      const mine = await listMisInscripciones();
+      setMisInscripciones(mine || []);
+    } catch {}
+
     setOpenSheet(false);
     setSelected(null);
     setSubmitting(false);
@@ -428,6 +469,7 @@ export default function AlumnoInscripcionPage() {
   const selTotal = selected?.cupo_total ?? 0;
   const selTone = capTone(selDisp);
   const selSinLugares = selDisp <= 0;
+  const selYaActiva = selected ? ciclosActivos.has(selected.id) : false; // 👈 NEW
 
   return (
     <RequireAuth roles={["student"]}>
@@ -558,6 +600,7 @@ export default function AlumnoInscripcionPage() {
                       c={c as CicloDTO}
                       onDetalle={() => openDetalle(c as CicloDTO)}
                       onInscribir={() => openDetalle(c as CicloDTO)} // abre detalle (con formulario)
+                      yaActiva={ciclosActivos.has(c.id)} // 👈 NEW
                     />
                   ))}
                 </div>
@@ -778,7 +821,7 @@ export default function AlumnoInscripcionPage() {
                                 max={new Date().toISOString().slice(0, 10)}
                               />
                             </div>
-                            
+
                             <div className="space-y-1">
                               <div className="flex items-center justify-between">
                                 <Label className="text-xs">Referencia</Label>
@@ -813,8 +856,6 @@ export default function AlumnoInscripcionPage() {
                                 className="h-9"
                               />
                             </div>
-
-                                                      
                           </div>
 
                           {/* Comprobante de pago */}
@@ -841,8 +882,7 @@ export default function AlumnoInscripcionPage() {
                             />
                             {file ? (
                               <p className="text-[11px] text-neutral-600">
-                                <b>{file.name}</b> ·{" "}
-                                {(file.size / 1024).toFixed(0)} KB
+                                <b>{file.name}</b> · {(file.size / 1024).toFixed(0)} KB
                               </p>
                             ) : null}
                           </div>
@@ -942,9 +982,18 @@ export default function AlumnoInscripcionPage() {
                 </Button>
                 <Button
                   onClick={() => selected && onInscribirme(selected)}
-                  disabled={selSinLugares || submitting}
+                  disabled={selSinLugares || selYaActiva || submitting} // 👈 NEW bloqueo por activa
+                  title={
+                    selYaActiva
+                      ? "Ya tienes una inscripción activa en este grupo"
+                      : selSinLugares
+                      ? "Sin lugares disponibles"
+                      : undefined
+                  }
                 >
-                  {selSinLugares
+                  {selYaActiva
+                    ? "Ya inscrita"
+                    : selSinLugares
                     ? "Sin lugares"
                     : submitting
                     ? "Enviando…"
@@ -966,10 +1015,12 @@ function CardCiclo({
   c,
   onDetalle,
   onInscribir,
+  yaActiva = false, // 👈 NEW
 }: {
   c: CicloDTO;
   onDetalle: () => void;
   onInscribir: () => void;
+  yaActiva?: boolean;
 }) {
   const disp = c.lugares_disponibles ?? 0;
   const total = c.cupo_total ?? 0;
@@ -1017,10 +1068,16 @@ function CardCiclo({
         </Button>
         <Button
           onClick={onInscribir}
-          disabled={sinLugares}
-          title={sinLugares ? "Sin lugares disponibles" : undefined}
+          disabled={sinLugares || yaActiva} // 👈 NEW
+          title={
+            yaActiva
+              ? "Ya tienes una inscripción activa en este grupo"
+              : sinLugares
+              ? "Sin lugares disponibles"
+              : undefined
+          }
         >
-          {sinLugares ? "Sin lugares" : "Inscribirme"}
+          {yaActiva ? "Ya inscrita" : sinLugares ? "Sin lugares" : "Inscribirme"}
         </Button>
       </div>
     </div>

@@ -5,10 +5,11 @@ import os
 from uuid import uuid4
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request, UploadFile, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Request, UploadFile, Query, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, lazyload, joinedload
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from ..database import get_db
 from ..auth import get_current_user
@@ -71,7 +72,6 @@ def _check_ventana_inscripcion(ciclo: Ciclo):
         raise HTTPException(status_code=409, detail="Periodo de inscripción no configurado")
     if not (ciclo.insc_inicio <= hoy <= ciclo.insc_fin):
         raise HTTPException(status_code=409, detail="Periodo de inscripción no vigente")
-
 
 
 def _check_no_duplicado(db: Session, Inscripcion, ciclo_id: int, alumno_id: int):
@@ -252,14 +252,33 @@ async def _save_upload(file: UploadFile, env_dir_key: str, default_dir: str, max
     return full_path, file.content_type, size
 
 
+# === NUEVO === helpers para idempotencia
+def _find_inscripcion(
+    db: Session, Inscripcion, ciclo_id: int, alumno_id: int, only_active: bool = True
+):
+    """
+    Devuelve la inscripción más reciente del par (ciclo, alumno).
+    Si only_active=True, limita a ('registrada','preinscrita','confirmada').
+    """
+    q = db.query(Inscripcion).filter(
+        Inscripcion.ciclo_id == ciclo_id,
+        Inscripcion.alumno_id == alumno_id,
+    )
+    if only_active:
+        estados = ("registrada", "preinscrita", "confirmada")
+        q = q.filter(Inscripcion.status.in_(estados))
+    return q.order_by(Inscripcion.created_at.desc()).first()
+
+
 # ==========================
-# POST: crear inscripción
+# POST: crear inscripción (idempotente)
 # ==========================
 @router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_student)])
 async def crear_inscripcion(
     request: Request,
     db: Session = Depends(get_db),
     user=Depends(require_student),
+    response: Response = None,
 ):
     """
     Acepta:
@@ -278,6 +297,9 @@ async def crear_inscripcion(
         ciclo_id: int
         comprobante_exencion: UploadFile (pdf/jpg/png/webp, <= 5MB)
         (NO requiere referencia/importe ni comprobante_estudios)
+
+    Idempotente: si ya existe una inscripción **activa** para (ciclo, alumno),
+    responde 200 con { already_exists: true, id, status }.
     """
     Inscripcion = _get_inscripcion_model()
     if Inscripcion is None:
@@ -305,7 +327,19 @@ async def crear_inscripcion(
 
         ciclo = _fetch_ciclo_locked(db, ciclo_id)
         _check_ventana_inscripcion(ciclo)
-        _check_no_duplicado(db, Inscripcion, ciclo_id, user.id)
+
+        # Idempotencia: si ya hay activa, devolvemos 200
+        existente = _find_inscripcion(db, Inscripcion, ciclo_id, user.id, only_active=True)
+        if existente:
+            if response:
+                response.status_code = status.HTTP_200_OK
+            return {
+                "ok": True,
+                "id": existente.id,
+                "already_exists": True,
+                "status": existente.status,
+            }
+
         _check_cupo(db, Inscripcion, ciclo)
 
         ins = Inscripcion(
@@ -316,7 +350,23 @@ async def crear_inscripcion(
             tipo=InscripcionTipo.pago,  # default histórico
         )
         db.add(ins)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            # Otra transacción pudo crearla: devuelve la existente
+            existente = _find_inscripcion(db, Inscripcion, ciclo_id, user.id, only_active=True) or \
+                        _find_inscripcion(db, Inscripcion, ciclo_id, user.id, only_active=False)
+            if existente:
+                if response:
+                    response.status_code = status.HTTP_200_OK
+                return {
+                    "ok": True,
+                    "id": existente.id,
+                    "already_exists": True,
+                    "status": getattr(existente, "status", None),
+                }
+            raise
         db.refresh(ins)
         return {"ok": True, "id": ins.id}
 
@@ -339,7 +389,19 @@ async def crear_inscripcion(
 
         ciclo = _fetch_ciclo_locked(db, ciclo_id)
         _check_ventana_inscripcion(ciclo)
-        _check_no_duplicado(db, Inscripcion, ciclo_id, user.id)
+
+        # Idempotencia: si ya hay activa, devolvemos 200 sin procesar archivos
+        existente = _find_inscripcion(db, Inscripcion, ciclo_id, user.id, only_active=True)
+        if existente:
+            if response:
+                response.status_code = status.HTTP_200_OK
+            return {
+                "ok": True,
+                "id": existente.id,
+                "already_exists": True,
+                "status": existente.status,
+            }
+
         _check_cupo(db, Inscripcion, ciclo)
 
         # ===== Rama EXENCIÓN =====
@@ -368,19 +430,31 @@ async def crear_inscripcion(
             db.add(ins)
             try:
                 db.commit()
-            except Exception:
+            except IntegrityError:
                 db.rollback()
-                # limpieza si falló la transacción
+                # limpieza si falló por conflicto
                 try:
                     if ex_path:
                         os.remove(ex_path)
                 except Exception:
                     pass
+                # otra transacción pudo crearla: devuelve la existente
+                existente = _find_inscripcion(db, Inscripcion, ciclo_id, user.id, only_active=True) or \
+                            _find_inscripcion(db, Inscripcion, ciclo_id, user.id, only_active=False)
+                if existente:
+                    if response:
+                        response.status_code = status.HTTP_200_OK
+                    return {
+                        "ok": True,
+                        "id": existente.id,
+                        "already_exists": True,
+                        "status": getattr(existente, "status", None),
+                    }
                 raise
             db.refresh(ins)
             return {"ok": True, "id": ins.id}
 
-        # ===== Rama PAGO (comportamiento previo, intacto) =====
+        # ===== Rama PAGO =====
         referencia = (form.get("referencia") or "").strip()
         if not referencia:
             raise HTTPException(status_code=422, detail="Referencia requerida")
@@ -392,7 +466,7 @@ async def crear_inscripcion(
         if importe_centavos <= 0:
             raise HTTPException(status_code=422, detail="importe_centavos debe ser > 0")
 
-        # --- NUEVO: fecha_pago obligatoria y no futura (formato YYYY-MM-DD) ---
+        # fecha_pago obligatoria y no futura (YYYY-MM-DD)
         raw_fecha_pago = (form.get("fecha_pago") or "").strip()
         if not raw_fecha_pago:
             raise HTTPException(status_code=422, detail="fecha_pago es requerida")
@@ -470,7 +544,7 @@ async def crear_inscripcion(
             alumno_id=user.id,
             status="preinscrita",
             tipo=InscripcionTipo.pago,
-            fecha_pago=fecha_pago_dt,  # <-- NUEVO: asigna la fecha validada
+            fecha_pago=fecha_pago_dt,
             referencia=referencia,
             importe_centavos=importe_centavos,
             comprobante_path=full_path,
@@ -484,7 +558,7 @@ async def crear_inscripcion(
         db.add(ins)
         try:
             db.commit()  # respeta los CHECKs de BD
-        except Exception:
+        except IntegrityError:
             db.rollback()
             # limpieza de archivos en caso de fallo
             for p in (full_path, est_path):
@@ -493,6 +567,18 @@ async def crear_inscripcion(
                         os.remove(p)
                     except Exception:
                         pass
+            # otra transacción pudo crearla: devuelve la existente
+            existente = _find_inscripcion(db, Inscripcion, ciclo_id, user.id, only_active=True) or \
+                        _find_inscripcion(db, Inscripcion, ciclo_id, user.id, only_active=False)
+            if existente:
+                if response:
+                    response.status_code = status.HTTP_200_OK
+                return {
+                    "ok": True,
+                    "id": existente.id,
+                    "already_exists": True,
+                    "status": getattr(existente, "status", None),
+                }
             raise
         db.refresh(ins)
         return {"ok": True, "id": ins.id}
@@ -615,28 +701,17 @@ def listar_mis_inscripciones(
                 ciclo_id=x.ciclo_id,
                 status=x.status,
                 created_at=x.created_at,
-
-                # NUEVO: tipo (fallback a 'pago' por si faltara en filas antiguas)
                 tipo=getattr(x, "tipo", "pago"),
-
-                # Pago
                 referencia=getattr(x, "referencia", None),
                 importe_centavos=getattr(x, "importe_centavos", None),
                 fecha_pago=getattr(x, "fecha_pago", None),
-
-                # Archivos
                 comprobante=_map_comprobante_meta(x),
                 comprobante_estudios=_map_comprobante_meta_from(x, "comprobante_estudios"),
                 comprobante_exencion=_map_comprobante_meta_from(x, "comprobante_exencion"),
-
-                # Motivo de rechazo y notas (para el front)
                 rechazo_motivo=getattr(x, "rechazo_motivo", None),
                 validation_notes=getattr(x, "validation_notes", None),
-
-                # Validación
                 validated_by_id=getattr(x, "validated_by_id", None),
                 validated_at=getattr(x, "validated_at", None),
-
                 ciclo=ciclo_lite,
             )
         )

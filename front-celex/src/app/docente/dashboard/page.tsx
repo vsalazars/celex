@@ -1,9 +1,12 @@
-// app/docente/dashboard/page.tsx
-export default function DocenteDashboard() {
+"use client";
+
+import TeacherGuard from "@/components/guards/TeacherGuard";
+import DocenteDashboardShell from "@/components/docente/DocenteDashboardShell";
+
+export default function DocenteDashboardPage() {
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-semibold">Dashboard Docente</h1>
-      <p className="text-sm text-neutral-600">Bienvenido.</p>
-    </main>
+    <TeacherGuard>
+      <DocenteDashboardShell />
+    </TeacherGuard>
   );
 }

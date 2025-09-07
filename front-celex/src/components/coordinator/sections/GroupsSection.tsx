@@ -6,8 +6,9 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   PlusCircle, Search, Filter, ChevronLeft, ChevronRight,
-  MoreVertical, Pencil, Trash2, Users, GraduationCap, Clock3, CalendarDays, Building2
+  MoreVertical, Pencil, Trash2, Users, GraduationCap, Clock3, CalendarDays, Building2, FileDown
 } from "lucide-react";
+
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -226,6 +227,144 @@ type InscripcionLite = {
     boleta?: string | null;    // 👈 nuevo
   } | null;
 };
+
+
+/* =============== Exportar a PDF (ajustado al ancho de página) =============== */
+// Requiere: npm i jspdf jspdf-autotable
+// Uso: exportInscritosPDF(ciclo, insList)
+
+async function exportInscritosPDF(c: CicloDTO, rows: InscripcionLite[]) {
+  if (!c) return;
+  const { default: jsPDF } = await import("jspdf");
+  const autoTable = (await import("jspdf-autotable")).default as any;
+
+  // Helpers locales
+  const safe = (s?: string | null) => (s?.toString() || "—").trim();
+  const docenteNombre =
+    c.docente && (c.docente.first_name || c.docente.last_name)
+      ? `${c.docente.first_name ?? ""} ${c.docente.last_name ?? ""}`.trim()
+      : "—";
+
+  const docenteEmail = c.docente?.email || "—";
+  const diasTxt = ((c as any).dias ?? []).length
+    ? ((c as any).dias as string[]).map(abreviarDia).join(" • ")
+    : "—";
+  const horarioTxt =
+    (c as any).hora_inicio && (c as any).hora_fin
+      ? `${hhmm((c as any).hora_inicio)}–${hhmm((c as any).hora_fin)}`
+      : "—";
+
+  const cursoTxt = `${c.curso?.from ? dShort(c.curso.from) : "—"} – ${c.curso?.to ? dShort(c.curso.to) : "—"}`;
+  const inscTxt = `${c.inscripcion?.from ? dShort(c.inscripcion.from) : "—"} – ${c.inscripcion?.to ? dShort(c.inscripcion.to) : "—"}`;
+
+  // Documento
+  const doc = new jsPDF({ unit: "pt", format: "a4" }); // usa 'landscape' si quieres más ancho
+  const margin = 48;
+  const pageW = doc.internal.pageSize.getWidth();
+  const innerW = pageW - margin * 2;
+  let y = margin;
+
+  // Encabezado
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text(`Listado de inscritos — ${safe(c.codigo)}`, margin, y);
+  y += 20;
+
+  // Metadatos del ciclo (2 columnas)
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+
+  const leftCol = [
+    `Idioma: ${safe(c.idioma)}`,
+    `Modalidad: ${safe(c.modalidad)}`,
+    `Turno: ${safe(c.turno)}`,
+    `Nivel: ${safe((c as any).nivel as any)}`,
+    `Cupo total: ${safe((c as any).cupo_total as any)}`,
+  ];
+
+  const rightCol = [
+    `Días: ${diasTxt}`,
+    `Horario: ${horarioTxt}`,
+    `Inscripción: ${inscTxt}`,
+    `Curso: ${cursoTxt}`,
+    `Aula / Modalidad asist.: ${safe((c as any).aula)} / ${safe((c as any).modalidad_asistencia)}`,
+  ];
+
+  const lineHeight = 14;
+  const leftX = margin;
+  const rightX = margin + Math.floor(innerW * 0.52); // columna derecha siempre dentro del ancho útil
+
+  leftCol.forEach((t, i) => doc.text(t, leftX, y + i * lineHeight));
+  rightCol.forEach((t, i) => doc.text(t, rightX, y + i * lineHeight));
+  y += leftCol.length * lineHeight + 10;
+
+  // Docente
+  doc.setFont("helvetica", "bold");
+  doc.text("Docente", margin, y);
+  doc.setFont("helvetica", "normal");
+  y += 14;
+  doc.text(`Nombre: ${docenteNombre}`, margin, y);
+  y += 14;
+  doc.text(`Email: ${docenteEmail}`, margin, y);
+  y += 18;
+
+  // Tabla de inscritos (AJUSTADA AL ANCHO DISPONIBLE)
+  const body = rows.map((r, idx) => {
+    const name = `${safe(r.alumno?.first_name)} ${safe(r.alumno?.last_name)}`.trim() || safe(r.alumno?.email);
+    const email = safe(r.alumno?.email);
+    const boleta = safe(r.alumno?.boleta);
+    const tipo = r.alumno?.is_ipn ? "IPN" : "Externo";
+    const creado = dWhen(r.created_at ?? undefined);
+    return [idx + 1, name, email, boleta, tipo, creado];
+  });
+
+  // Porcentajes por columna (suman <= 1.0)
+  const COLS = [0.06, 0.30, 0.28, 0.12, 0.08, 0.16]; // #, Nombre, Email, Boleta, Tipo, Inscrito el
+  const W = COLS.map((f) => Math.floor(innerW * f));
+
+  autoTable(doc, {
+    startY: y,
+    head: [["#", "Nombre", "Email", "Boleta", "Tipo", "Inscrito el"]],
+    body,
+    // Que la tabla NUNCA exceda el ancho útil
+    tableWidth: innerW,
+    margin: { left: margin, right: margin },
+
+    // Envoltura para texto largo y evitar desbordes
+    styles: { fontSize: 9, cellPadding: 6, overflow: "linebreak", cellWidth: "wrap" },
+    headStyles: { fontStyle: "bold" },
+
+    // Anchos proporcionales calculados
+    columnStyles: {
+      0: { halign: "right", cellWidth: W[0] }, // #
+      1: { cellWidth: W[1] },                  // Nombre
+      2: { cellWidth: W[2] },                  // Email
+      3: { cellWidth: W[3] },                  // Boleta
+      4: { halign: "center", cellWidth: W[4] },// Tipo
+      5: { cellWidth: W[5] },                  // Inscrito el
+    },
+
+    didDrawPage: () => {
+      const pageW_ = doc.internal.pageSize.getWidth();
+      const pageH_ = doc.internal.pageSize.getHeight();
+      doc.setFontSize(8);
+      doc.text(
+        `Generado: ${new Date().toLocaleString("es-MX").replace(/\./g, "")}`,
+        margin,
+        pageH_ - 10,
+        { baseline: "bottom" }
+      );
+      const pageNo = `Página ${doc.internal.getNumberOfPages()}`;
+      doc.text(pageNo, pageW_ - margin, pageH_ - 10, { align: "right", baseline: "bottom" });
+    },
+  });
+
+  // Descargar
+  const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const filename = `${safe(c.codigo)}-inscritos-${ymd}.pdf`.replace(/\s+/g, "_");
+  doc.save(filename);
+}
+
 
 /* ========================= MAIN ========================= */
 export default function GroupsSection() {
@@ -675,6 +814,18 @@ export default function GroupsSection() {
               )}
             </div>
           </div>
+         {/* Botón Exportar PDF */}
+          <div className="mt-2 mb-6 flex justify-end">
+            <Button
+              onClick={() => insCiclo && exportInscritosPDF(insCiclo, insList)}
+              disabled={loadingIns || !insList.length || !insCiclo}
+              className="rounded-xl"
+            >
+              <FileDown className="h-4 w-4 mr-2" />
+              Exportar Listado
+            </Button>
+          </div>
+
         </SheetContent>
       </Sheet>
 
@@ -714,6 +865,7 @@ export default function GroupsSection() {
             setValue={setValue}
             teachers={teachers}
           />
+          
         </DialogContent>
       </Dialog>
     </div>
