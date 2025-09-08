@@ -48,32 +48,70 @@ export default function GroupsSection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ========= Helpers PDF =========
+  // ========= Helpers comunes =========
   function fmtDM(isoDate: string) {
     // "YYYY-MM-DD" -> "dd/mm"
     const [y, m, d] = isoDate.split("-").map(Number);
     return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
   }
 
-  // Parse seguro a Date para ordenar correctamente
+  // Parse seguro a Date (local) para ordenar y comparar
   function toDate(value: unknown): Date {
     if (value instanceof Date) return value;
     const s = String(value);
-    // Esperamos "YYYY-MM-DD"
     const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (m) {
       const y = Number(m[1]);
       const mm = Number(m[2]);
       const dd = Number(m[3]);
-      // Fecha en hora local para evitar desfases UTC
       return new Date(y, mm - 1, dd, 0, 0, 0, 0);
     }
-    // Fallback (puede traer ISO completo); new Date maneja otros formatos
     const d = new Date(s);
-    // Si es inválida, caemos a epoch 0 para que no rompa
     return isNaN(d.getTime()) ? new Date(0) : d;
   }
 
+  // Extrae rango de fechas del curso (si existe)
+  function getCursoRange(ciclo: any): { from?: Date; to?: Date } {
+    const from = ciclo?.curso?.from ? toDate(ciclo.curso.from) : undefined;
+    const to = ciclo?.curso?.to ? toDate(ciclo.curso.to) : undefined;
+    return { from, to };
+  }
+
+  // Convierte ciclo.dias (["Lun","Mar",...]/["lunes","martes",...]) a set de weekday JS (0=Dom..6=Sáb)
+  function allowedWeekdaysFromCiclo(ciclo: any): Set<number> | null {
+    const dias: string[] | undefined = ciclo?.dias;
+    if (!dias || !dias.length) return null; // sin restricción
+
+    const map: Record<string, number> = {
+      // abreviaturas
+      "lun": 1, "mar": 2, "mié": 3, "mie": 3, "jue": 4, "vie": 5, "sáb": 6, "sab": 6, "dom": 0,
+      // nombres completos
+      "lunes": 1, "martes": 2, "miércoles": 3, "miercoles": 3, "jueves": 4, "viernes": 5, "sábado": 6, "sabado": 6, "domingo": 0,
+    };
+
+    const set = new Set<number>();
+    for (const d of dias) {
+      const key = d.trim().toLowerCase();
+      if (map[key] !== undefined) set.add(map[key]);
+    }
+    return set.size ? set : null;
+  }
+
+  // Filtro maestro de sesiones por rango y por días permitidos
+  function filtrarSesionesPorRangoYDias(ciclo: any, sesiones: any[]): any[] {
+    const { from, to } = getCursoRange(ciclo);
+    const allowed = allowedWeekdaysFromCiclo(ciclo); // puede ser null (sin restricción)
+
+    return sesiones.filter((s) => {
+      const d = toDate(s.fecha);
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      if (allowed && !allowed.has(d.getDay())) return false;
+      return true;
+    });
+  }
+
+  // ========= Generación del PDF =========
   async function handleDescargarListado(ciclo: CicloLite) {
     try {
       // Trae sesiones (fechas) y alumnos inscritos
@@ -87,10 +125,18 @@ export default function GroupsSection() {
         return;
       }
 
-      // 🔧 Orden real por fecha (timestamp), NO por texto
-      const sesiones = [...sesionesRaw].sort(
+      // 🔧 Orden real por fecha (timestamp)
+      let sesiones = [...sesionesRaw].sort(
         (a, b) => toDate(a.fecha).getTime() - toDate(b.fecha).getTime()
       );
+
+      // 🔧 Filtra por rango [from, to] y por días válidos (evita “un día de más”)
+      sesiones = filtrarSesionesPorRangoYDias(ciclo, sesiones);
+
+      if (!sesiones.length) {
+        alert("No hay sesiones dentro del rango/días del curso.");
+        return;
+      }
 
       // Ordenar alumnos por nombre (asc)
       const alumnosOrdenados: AlumnoEnGrupo[] = [...alumnos].sort((a, b) =>
@@ -106,12 +152,12 @@ export default function GroupsSection() {
       const usableH = pageH - margin * 2;
 
       // Config tabla (todas las fechas en una sola hoja/encabezado por página)
-      const colNumW = 10;   // "#"
-      const colNameBaseW = 80;  // "Nombre" (ajustable si faltara ancho)
-      const headerH = 10;   // alto del header de tabla
-      const rowH = 7;       // alto de fila por alumno
+      const colNumW = 10;        // "#"
+      const colNameBaseW = 80;   // "Nombre" (ajustable si faltara ancho)
+      const headerH = 10;        // alto del header de tabla
+      const rowH = 7;            // alto de fila por alumno
 
-      // Calcular ancho por fecha para que QUEPAN TODAS en una sola página
+      // Calcular ancho por fecha para que QUEPAN TODAS
       const remainingWForDates = usableW - colNumW - colNameBaseW;
       const minColDateW = 6.5; // mínimo razonable
       let colDateW = remainingWForDates / sesiones.length;
@@ -157,7 +203,7 @@ export default function GroupsSection() {
 
         y += 6;
         const linea3 = [
-          `Días: ${ciclo.dias?.join(", ") ?? "—"}`,
+          `Días: ${Array.isArray(ciclo.dias) ? ciclo.dias.join(", ") : "—"}`,
           `Horario: ${ciclo.hora_inicio && ciclo.hora_fin ? `${ciclo.hora_inicio}–${ciclo.hora_fin}` : "—"}`,
           `Aula: ${ciclo.aula ?? "—"}`,
         ].join("   ·   ");
