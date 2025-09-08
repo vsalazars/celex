@@ -1,7 +1,7 @@
 import enum
 from sqlalchemy import (
     Column, Integer, String, Date, Time, Text, DateTime,
-    Boolean, CheckConstraint, UniqueConstraint, ForeignKey, func
+    Boolean, CheckConstraint, UniqueConstraint, ForeignKey, Numeric, func
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import declarative_base, relationship
@@ -210,4 +210,44 @@ class Inscripcion(Base):
             "(tipo <> 'exencion') OR (comprobante_exencion_path IS NOT NULL)",
             name="ck_insc_exencion_requiere_comprobante"
         ),
+    )
+
+
+# -------------------- Modelo Evaluacion --------------------
+class Evaluacion(Base):
+    __tablename__ = "evaluaciones"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    inscripcion_id = Column(Integer, ForeignKey("inscripciones.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    ciclo_id       = Column(Integer, ForeignKey("ciclos.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Medio curso
+    medio_examen   = Column(Integer, nullable=True)   # 0..80
+    medio_continua = Column(Integer, nullable=True)   # 0..20
+
+    # Final de curso
+    final_examen   = Column(Integer, nullable=True)   # 0..60
+    final_continua = Column(Integer, nullable=True)   # 0..20
+    final_tarea    = Column(Integer, nullable=True)   # 0..20
+
+    # Derivados
+    subtotal_medio = Column(Integer, nullable=False, default=0)    # 0..100
+    subtotal_final = Column(Integer, nullable=False, default=0)    # 0..100
+    promedio_final = Column(Numeric(5,2), nullable=False, default=0)  # 0.00..100.00
+
+    updated_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    inscripcion = relationship("Inscripcion", foreign_keys=[inscripcion_id], lazy="joined")
+    ciclo       = relationship("Ciclo", foreign_keys=[ciclo_id], lazy="joined")
+    updated_by  = relationship("User", foreign_keys=[updated_by_id])
+
+    __table_args__ = (
+        CheckConstraint("(medio_examen IS NULL OR (medio_examen BETWEEN 0 AND 80))", name="ck_eval_medio_examen"),
+        CheckConstraint("(medio_continua IS NULL OR (medio_continua BETWEEN 0 AND 20))", name="ck_eval_medio_continua"),
+        CheckConstraint("(final_examen IS NULL OR (final_examen BETWEEN 0 AND 60))", name="ck_eval_final_examen"),
+        CheckConstraint("(final_continua IS NULL OR (final_continua BETWEEN 0 AND 20))", name="ck_eval_final_continua"),
+        CheckConstraint("(final_tarea IS NULL OR (final_tarea BETWEEN 0 AND 20))", name="ck_eval_final_tarea"),
     )

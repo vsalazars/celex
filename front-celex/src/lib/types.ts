@@ -159,3 +159,67 @@ export type CreateCicloInput = {
 export type UpdateCicloInput = Partial<CreateCicloInput> & {
   codigo?: string;
 };
+
+
+// === Docente – Ciclo Lite (para listados) ===
+export type CicloLite = {
+  id: number;
+  codigo: string;
+  idioma: Idioma;
+  nivel: Nivel;
+  modalidad: Modalidad;
+  turno: Turno;
+};
+
+// === Docente – Alumnos en un ciclo/grupo ===
+export type AlumnoEnGrupo = {
+  inscripcion_id: number;          // id de Inscripcion
+  alumno_id: number | null;        // puede venir null según el endpoint
+  alumno_nombre: string;
+  alumno_email?: string;
+  curp?: string;
+  boleta?: string;
+  status?: string;
+
+  // calculado en el front (o devuelto por el back si lo decides)
+  asistenciaPct?: number;          // 0..100
+
+  // ===== Evaluaciones (opcionales si ya existen en back) =====
+  // Medio curso
+  medio_examen?: number | null;    // 0..80
+  medio_continua?: number | null;  // 0..20
+
+  // Final de curso
+  final_examen?: number | null;    // 0..60
+  final_continua?: number | null;  // 0..20
+  final_tarea?: number | null;     // 0..20
+
+  // Derivados (si los trae el back)
+  subtotal_medio?: number;         // 0..100
+  subtotal_final?: number;         // 0..100
+  promedio_final?: number;         // 0..100
+};
+
+// === Docente – Evaluaciones ===
+export type EvaluacionUpsertIn = {
+  medio_examen?: number | null;    // 0..80
+  medio_continua?: number | null;  // 0..20
+  final_examen?: number | null;    // 0..60
+  final_continua?: number | null;  // 0..20
+  final_tarea?: number | null;     // 0..20
+};
+
+export type EvaluacionOut = {
+  inscripcion_id: number;
+  ciclo_id: number;
+
+  medio_examen: number | null;
+  medio_continua: number | null;
+  final_examen: number | null;
+  final_continua: number | null;
+  final_tarea: number | null;
+
+  subtotal_medio: number;          // 0..100
+  subtotal_final: number;          // 0..100
+  promedio_final: number;          // 0..100 (el back lo manda con 2 decimales)
+};

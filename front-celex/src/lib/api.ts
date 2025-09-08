@@ -10,7 +10,8 @@ function isFormDataBody(init?: RequestInit) {
   return typeof FormData !== "undefined" && init?.body instanceof FormData;
 }
 
-async function apiFetch<T = any>(
+// 👇 Exporta apiFetch para poder usarlo desde otros módulos
+export async function apiFetch<T = any>(
   input: string,
   init?: RequestInit & { auth?: boolean }
 ): Promise<T> {
@@ -22,11 +23,11 @@ async function apiFetch<T = any>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  // ⚠️ Importante: NO forzar JSON si mandamos FormData (multipart)
+  // ⚠️ NO forzar JSON si mandamos FormData (multipart)
   if (!isFormDataBody(init) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  // Si alguien puso Content-Type pero el body es FormData, lo quitamos para permitir el boundary
+  // Si el body es FormData y alguien puso Content-Type, quitarlo para permitir el boundary
   if (isFormDataBody(init) && headers.has("Content-Type")) {
     headers.delete("Content-Type");
   }
@@ -55,7 +56,11 @@ async function apiFetch<T = any>(
   catch { return undefined as unknown as T; }
 }
 
-function buildURL(path: string, params?: Record<string, string | number | boolean | undefined>) {
+// 👇 Exporta buildURL para que puedas importarlo como named export
+export function buildURL(
+  path: string,
+  params?: Record<string, string | number | boolean | undefined>
+) {
   const url = new URL(`${API_URL}${path.startsWith("/") ? "" : "/"}${path}`);
   if (params) {
     for (const [k, v] of Object.entries(params)) {

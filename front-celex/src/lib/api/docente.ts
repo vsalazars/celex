@@ -191,3 +191,43 @@ export async function marcarMatriz(
   if (!res.ok) throw new Error(`Error ${res.status} al marcar matriz`);
   return res.json();
 }
+
+
+// ---------------------- Evaluaciones ----------------------
+export async function saveEvaluacion(
+  cicloId: number,
+  inscripcionId: number,
+  payload: EvaluacionUpsertIn
+): Promise<EvaluacionOut> {
+  const url = new URL(`${API_URL}/docente/evaluaciones/ciclos/${cicloId}/alumnos/${inscripcionId}`);
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Error ${res.status} al guardar evaluación: ${detail}`);
+  }
+  return res.json();
+}
+
+export async function listEvaluacionesCiclo(cicloId: number): Promise<EvaluacionOut[]> {
+  const res = await fetch(`${API_URL}/docente/evaluaciones/ciclos/${cicloId}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Error ${res.status} al listar evaluaciones: ${detail}`);
+  }
+  const data = await res.json();
+  // backend devuelve { items: EvaluacionOut[] }
+  return Array.isArray(data) ? data : data?.items ?? [];
+}

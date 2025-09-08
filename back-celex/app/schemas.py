@@ -291,9 +291,11 @@ class AlumnoMini(BaseModel):
     email: Optional[str] = None
     is_ipn: Optional[bool] = None
     boleta: Optional[str] = None
+    curp: Optional[str] = None   # 👈 AÑADIR
 
     class Config:
         from_attributes = True
+
 
 
 class ComprobanteMeta(BaseModel):
@@ -385,3 +387,31 @@ class InscripcionOut(BaseModel):
 class ValidateInscripcionIn(BaseModel):
     action: Literal["APPROVE", "REJECT"]
     notes: Optional[str] = Field(None, max_length=500)
+
+
+
+# --- Evaluaciones (Docente) ---
+from typing import Optional
+from pydantic import BaseModel, Field
+
+class EvaluacionUpsertIn(BaseModel):
+    medio_examen:   Optional[int] = Field(None, ge=0, le=80)
+    medio_continua: Optional[int] = Field(None, ge=0, le=20)
+    final_examen:   Optional[int] = Field(None, ge=0, le=60)
+    final_continua: Optional[int] = Field(None, ge=0, le=20)
+    final_tarea:    Optional[int] = Field(None, ge=0, le=20)
+
+class EvaluacionOut(BaseModel):
+    inscripcion_id: int
+    ciclo_id: int
+    medio_examen:   Optional[int] = None
+    medio_continua: Optional[int] = None
+    final_examen:   Optional[int] = None
+    final_continua: Optional[int] = None
+    final_tarea:    Optional[int] = None
+    subtotal_medio: int
+    subtotal_final: int
+    promedio_final: float
+
+class EvaluacionListOut(BaseModel):
+    items: list[EvaluacionOut]

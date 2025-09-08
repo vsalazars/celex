@@ -19,6 +19,7 @@ from .routers.alumno_inscripciones import router as alumno_inscripciones_router
 from .routers.coordinacion_inscripciones import router as coordinacion_inscripciones_router  # 👈 NUEVO
 from .routers.docente_grupos import router as docente_grupos_router
 from .routers.docente_asistencia import router as docente_asistencia_router
+from .routers.docente_evaluaciones import router as docente_evaluaciones_router  # 👈 nuevo
 
 
 
@@ -43,6 +44,8 @@ app.include_router(alumno_inscripciones_router)
 app.include_router(coordinacion_inscripciones_router)  # 👈 NUEVO
 app.include_router(docente_grupos_router)
 app.include_router(docente_asistencia_router)
+app.include_router(docente_evaluaciones_router)  # 👈 monta endpoints
+
 
 
 

@@ -112,7 +112,15 @@ class AlumnoEnGrupo(BaseModel):
     alumno_email: Optional[str] = None
     alumno_username: Optional[str] = None
     boleta: Optional[str] = None
-    status: Optional[str] = None  # si usas Enum en Inscripcion.status, aquí irá el .value
+    curp: Optional[str] = None            # 👈 NUEVO
+    status: Optional[str] = None          # si usas Enum en Inscripcion.status, aquí irá el .value
+
+    # 👇 Precarga (opcional) de evaluaciones existentes
+    medio_examen: Optional[int] = None
+    medio_continua: Optional[int] = None
+    final_examen: Optional[int] = None
+    final_continua: Optional[int] = None
+    final_tarea: Optional[int] = None
 
 
 # ----------------------------
@@ -163,6 +171,7 @@ def alumnos_de_mi_ciclo(
     """
     Devuelve las inscripciones del ciclo indicado, solo si el ciclo pertenece
     al docente autenticado (o si es superuser).
+    Además, precarga las notas de evaluación existentes si las hay.
     """
     _ensure_teacher(current_user)
 
@@ -182,7 +191,7 @@ def alumnos_de_mi_ciclo(
             raise HTTPException(status_code=403, detail="No puedes ver alumnos de un ciclo ajeno")
 
     # Import tardío para evitar posibles ciclos de importación
-    from ..models import Inscripcion  # type: ignore
+    from ..models import Inscripcion, Evaluacion  # type: ignore
     from sqlalchemy.orm import joinedload as _joinedload
 
     inscripciones = (
@@ -193,6 +202,14 @@ def alumnos_de_mi_ciclo(
         .all()
     )
 
+    # 👇 Traemos evaluaciones existentes para precargar
+    evals = (
+        db.query(Evaluacion)
+        .filter(Evaluacion.ciclo_id == ciclo_id)
+        .all()
+    )
+    eval_by_insc = {e.inscripcion_id: e for e in evals}
+
     out: List[AlumnoEnGrupo] = []
     for ins in inscripciones:
         alumno = getattr(ins, "alumno", None)
@@ -202,6 +219,8 @@ def alumnos_de_mi_ciclo(
         if hasattr(status_val, "value"):
             status_val = status_val.value
 
+        ev = eval_by_insc.get(getattr(ins, "id", None))
+
         out.append(
             AlumnoEnGrupo(
                 inscripcion_id=getattr(ins, "id", None),
@@ -210,7 +229,15 @@ def alumnos_de_mi_ciclo(
                 alumno_email=getattr(alumno, "email", None),
                 alumno_username=getattr(alumno, "username", None),
                 boleta=getattr(ins, "boleta", None) or getattr(alumno, "boleta", None),
+                curp=getattr(alumno, "curp", None),  # 👈 NUEVO
                 status=status_val,
+
+                # 👇 Precarga de evaluación (si existe)
+                medio_examen=getattr(ev, "medio_examen", None),
+                medio_continua=getattr(ev, "medio_continua", None),
+                final_examen=getattr(ev, "final_examen", None),
+                final_continua=getattr(ev, "final_continua", None),
+                final_tarea=getattr(ev, "final_tarea", None),
             )
         )
     return out
