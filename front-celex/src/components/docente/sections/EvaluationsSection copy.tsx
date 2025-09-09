@@ -61,104 +61,83 @@ async function listCursosDocente(): Promise<CursoItem[]> {
 async function getAlumnosConAsistencia(cicloId: number): Promise<AlumnoItem[]> {
   const urlAlumnos = buildURL(`/docente/grupos/${cicloId}/alumnos`);
   const alumnosRaw = await apiFetch(urlAlumnos, { auth: true });
+  const alumnosList = (alumnosRaw?.items ?? alumnosRaw ?? []) as any[];
 
   const urlMatriz = buildURL(`/docente/asistencia/ciclos/${cicloId}/matriz`);
   const matriz = await apiFetch(urlMatriz, { auth: true });
 
-  
-  // ---- 1) Denominador (todas las sesiones; si quieres sólo hasta hoy, filtra aquí)
-  const sesionesConsideradas = (matriz?.sesiones ?? []); // <- usa todas
-  const totalSesiones = sesionesConsideradas.length;
-  const sesionIdSet = new Set<number>(sesionesConsideradas.map((s: any) => s.id));
+  const todasSesiones = Array.isArray(matriz?.sesiones) ? matriz.sesiones : [];
+  const registros = Array.isArray(matriz?.registros) ? matriz.registros : [];
 
-  // ---- 2) Numerador por inscripcion_id desde registros planos
-  const pesoRetardo = 0.5;
+  // ——— Denominador “hasta hoy” ———
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const sesionesVigentes = todasSesiones.filter((s: any) => {
+    const d = new Date(String(s.fecha) + "T00:00:00");
+    return d <= hoy;
+  });
+  const totalSesiones = sesionesVigentes.length || 0;
+
+  // Mapa rápido de sesiones válidas para filtrar registros
+  const sesionIdVigente = new Set<number>(sesionesVigentes.map((s: any) => s.id));
+
+  // ——— Numerador por inscripción ———
   const cuentaOK: Record<number, number> = Object.create(null);
-  for (const r of matriz?.registros ?? []) {
-    if (!sesionIdSet.has(r.sesion_id)) continue;
-    const estado = String(r.estado ?? "").toLowerCase();
+  for (const r of registros) {
+    if (!sesionIdVigente.has(r?.sesion_id)) continue; // ignora futuras
+    const inscId = r?.inscripcion_id;
+    if (inscId == null) continue;
+    const estado = String(r?.estado ?? "").toLowerCase();
     let inc = 0;
     if (estado === "presente" || estado === "justificado") inc = 1;
-    else if (estado === "retardo") inc = pesoRetardo;
-    cuentaOK[r.inscripcion_id] = (cuentaOK[r.inscripcion_id] ?? 0) + inc;
+    else if (estado === "retardo") inc = 0.5;   // penaliza tardanza
+    cuentaOK[inscId] = (cuentaOK[inscId] ?? 0) + inc;
   }
-  const pctPorInsc: Record<number, number> = Object.create(null);
+
+  const pctPorInscripcion: Record<number, number> = Object.create(null);
   for (const k of Object.keys(cuentaOK)) {
     const inscId = Number(k);
-    pctPorInsc[inscId] = totalSesiones ? Math.round((cuentaOK[inscId] / totalSesiones) * 100) : 0;
+    const ok = cuentaOK[inscId] ?? 0;
+    pctPorInscripcion[inscId] = !totalSesiones ? 0 : Math.round((ok / totalSesiones) * 100);
   }
 
- 
-  // ---- 3) Mapas auxiliares para resolver inscripcion_id cuando el endpoint de alumnos no lo trae
-  type AlumMat = { inscripcion_id: number; alumno_id?: number | null; nombre?: string | null };
-  const matAlumnos: AlumMat[] = (matriz?.alumnos ?? []).map((a: any) => ({
-    inscripcion_id: a.inscripcion_id ?? a.id,
-    alumno_id: a.alumno_id ?? null,
-    nombre: a.nombre ?? a.alumno_nombre ?? null,
-  }));
+  // ——— Ensamble de fila AlumnoItem ———
+  return alumnosList.map((a) => {
+    const inscripcionId = a?.inscripcion_id ?? a?.inscripcionId ?? a?.id;
 
-  const inscIdsSet = new Set<number>(matAlumnos.map(a => a.inscripcion_id));
-  const alumnoIdToInsc = new Map<number, number>();
-  for (const a of matAlumnos) {
-    if (a.alumno_id != null) alumnoIdToInsc.set(a.alumno_id, a.inscripcion_id);
-  }
-
-  function resolverInscId(a: any): number | null {
-    const byInsc = a?.inscripcion_id ?? a?.inscripcionId ?? null;
-    if (byInsc != null && inscIdsSet.has(Number(byInsc))) return Number(byInsc);
-
-    const byAlumno =
-      a?.alumno_id ?? a?.alumnoId ?? a?.user_id ?? a?.alumno?.id ?? null;
-    if (byAlumno != null && alumnoIdToInsc.has(Number(byAlumno))) {
-      return Number(alumnoIdToInsc.get(Number(byAlumno)));
-    }
-
-    // (Opcional) heurística por nombre si lo necesitas:
-    // const nombre = (a?.alumno_nombre ?? "").trim().toLowerCase();
-    // if (nombre) {
-    //   const cand = matAlumnos.find(m => (m.nombre ?? "").trim().toLowerCase() === nombre);
-    //   if (cand) return cand.inscripcion_id;
-    // }
-
-    return null;
-  }
-
-  // ---- 4) Construir salida para la tabla
-  const list = (alumnosRaw?.items ?? alumnosRaw ?? []) as any[];
-  const out = list.map((a) => {
-    const resolvedInscId = resolverInscId(a);
-    if (resolvedInscId == null) {
-      console.warn("[ASIS][WARN] No pude resolver inscripcion_id para", a);
-    }
-
-    // nombre/correo/curp defensivo
-    let nombre: string =
-      (typeof a?.alumno_nombre === "string" && a.alumno_nombre.trim()) ? a.alumno_nombre.trim() : "";
+    let nombre =
+      (typeof a?.alumno_nombre === "string" && a.alumno_nombre.trim())
+        ? a.alumno_nombre.trim()
+        : "";
     if (!nombre) {
-      const firstFlat = a?.first_name ?? a?.nombres ?? a?.name ?? null;
-      const lastFlat  = a?.last_name ?? a?.apellidos ?? a?.surname ?? null;
-      const plano = [firstFlat, lastFlat].filter(Boolean).join(" ").trim();
+      const first = a?.first_name ?? a?.nombres ?? a?.name ?? a?.alumno?.first_name ?? a?.alumno?.nombres ?? null;
+      const last  = a?.last_name  ?? a?.apellidos ?? a?.surname ?? a?.alumno?.last_name  ?? a?.alumno?.apellidos ?? null;
+      const plano = [first, last].filter(Boolean).join(" ").trim();
       if (plano) nombre = plano;
     }
-    const correo =
-      a?.alumno_email ??
-      a?.email ??
-      a?.alumno?.email ??
-      "";
-    const curp =
-      a?.curp ??
-      a?.CURP ??
-      a?.alumno_curp ??
-      a?.alumno?.curp ??
-      "";
+    if (!nombre) {
+      const full = a?.nombre_completo ?? a?.alumno?.nombre_completo ?? a?.full_name ?? a?.alumno?.full_name ?? null;
+      if (full) nombre = String(full).trim();
+    }
+    if (!nombre) {
+      const correoPlano = a?.alumno_email ?? a?.email ?? a?.alumno?.email ?? "";
+      const username = correoPlano ? String(correoPlano).split("@")[0] : "";
+      nombre = username
+        ? username.replace(/[._-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+        : "(Sin nombre)";
+    }
 
-    const asistenciaPct =
-      resolvedInscId != null ? (pctPorInsc[resolvedInscId] ?? 0) : 0;
+    const correo =
+      a?.alumno_email ?? a?.email ?? a?.alumno?.email ?? "";
+    const curp =
+      a?.curp ?? a?.CURP ?? a?.alumno_curp ?? a?.alumno?.curp ?? "";
+
+    const asistenciaPct = pctPorInscripcion[inscripcionId] ?? 0;
 
     return {
-      inscripcionId: resolvedInscId ?? (a?.inscripcion_id ?? a?.inscripcionId ?? a?.id ?? 0),
+      inscripcionId,
       alumnoId: a?.alumno_id ?? a?.alumnoId ?? a?.user_id ?? a?.alumno?.id ?? 0,
-      nombre: nombre || (correo ? String(correo).split("@")[0] : "(Sin nombre)"),
+      nombre,
       correo,
       curp,
       asistenciaPct,
@@ -169,9 +148,9 @@ async function getAlumnosConAsistencia(cicloId: number): Promise<AlumnoItem[]> {
       final_tarea:    a?.final_tarea ?? a?.finalTarea ?? null,
     } as AlumnoItem;
   });
-
-  return out;
 }
+
+
 
 
 async function saveEvaluacion(
@@ -337,8 +316,6 @@ export default function DocenteEvaluacionesPage() {
     );
   }
 
-  
-
   return (
     <div className="w-full max-w-full overflow-x-hidden px-2 sm:px-4 lg:px-6 space-y-4">
 
@@ -441,7 +418,6 @@ export default function DocenteEvaluacionesPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  
                   alumnos.map((r) => {
                     const d = draft[r.inscripcionId] ?? {};
                     const savingRow = saving[r.inscripcionId] ?? false;
@@ -456,10 +432,19 @@ export default function DocenteEvaluacionesPage() {
                         </TableCell>
                         <TableCell className="text-sm">{r.correo}</TableCell>
                         <TableCell className="text-center">
-                          <Badge variant={r.asistenciaPct >= 80 ? "default" : r.asistenciaPct >= 60 ? "secondary" : "destructive"}>
-                            {r.asistenciaPct}%
-                          </Badge>
-                        </TableCell>
+                            {r.asistenciaPct >= 80 && (
+                              <Badge variant="default">{r.asistenciaPct}%</Badge>   // verde
+                            )}
+                            {r.asistenciaPct >= 60 && r.asistenciaPct < 80 && (
+                              <Badge className="bg-amber-500 text-white hover:bg-amber-600">
+                                {r.asistenciaPct}%
+                              </Badge>   // amarillo
+                            )}
+                            {r.asistenciaPct < 60 && (
+                              <Badge variant="destructive">{r.asistenciaPct}%</Badge>   // rojo
+                            )}
+                          </TableCell>
+
 
                         {/* Medio curso */}
                         <TableCell className="text-center">

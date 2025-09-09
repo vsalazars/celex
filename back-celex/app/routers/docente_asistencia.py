@@ -1,6 +1,7 @@
 # app/routers/docente_asistencia.py
 from typing import List, Optional
 from datetime import date, timedelta
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session, joinedload
@@ -14,6 +15,18 @@ from ..models_asistencia import AsistenciaSesion, AsistenciaRegistro, Asistencia
 
 router = APIRouter(prefix="/docente/asistencia", tags=["Docente - Asistencia"])
 
+# Logger
+logger = logging.getLogger("celex.asistencia")
+
+logger.setLevel(logging.DEBUG)   # o INFO si no quieres tanto ruido
+logger.propagate = True          # deja que Uvicorn lo imprima
+
+# por si no hay handlers (entorno local, scripts)
+if not logger.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("[%(levelname)s] %(asctime)s %(name)s: %(message)s"))
+    logger.addHandler(_h)
+
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
@@ -21,6 +34,7 @@ def _ensure_teacher(u: User):
     roles_perm = {getattr(UserRole, "teacher", None), getattr(UserRole, "superuser", None)}
     roles_perm = {r for r in roles_perm if r is not None}
     if getattr(u, "role", None) not in roles_perm:
+        logger.warning("Permiso denegado: user_id=%s role=%s", getattr(u, "id", None), getattr(u, "role", None))
         raise HTTPException(status_code=403, detail="Permisos insuficientes (docente o superuser)")
 
 def _ciclo_del_docente(db: Session, ciclo_id: int, docente_id: int, is_super: bool):
@@ -31,13 +45,14 @@ def _ciclo_del_docente(db: Session, ciclo_id: int, docente_id: int, is_super: bo
         .first()
     )
     if not ciclo:
+        logger.info("Ciclo no encontrado: ciclo_id=%s", ciclo_id)
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
     if not is_super and getattr(ciclo, "docente_id", None) != docente_id:
+        logger.warning("No autorizado para ciclo: ciclo_id=%s docente_id=%s user_id=%s", ciclo_id, getattr(ciclo, "docente_id", None), docente_id)
         raise HTTPException(status_code=403, detail="No autorizado para este ciclo")
     return ciclo
 
 def _dias_semana_a_set(dias) -> set[int]:
-    # Convierte enums/textos de días a weekday int (0=lunes ... 6=domingo)
     out = set()
     if not dias:
         return out
@@ -102,6 +117,10 @@ def generar_sesiones(
     is_super = getattr(current_user, "role", None) == getattr(UserRole, "superuser", None)
     ciclo = _ciclo_del_docente(db, ciclo_id, getattr(current_user, "id", None), is_super)
 
+    logger.info("GENERAR sesiones: ciclo_id=%s inicio=%s fin=%s dias=%s user_id=%s",
+                ciclo.id, getattr(ciclo, "curso_inicio", None), getattr(ciclo, "curso_fin", None),
+                list(_dias_semana_a_set(getattr(ciclo, "dias", None))), getattr(current_user, "id", None))
+
     if not ciclo.curso_inicio or not ciclo.curso_fin:
         raise HTTPException(status_code=400, detail="El ciclo no tiene fechas de curso definidas")
 
@@ -109,7 +128,6 @@ def generar_sesiones(
     if not dias_ok:
         raise HTTPException(status_code=400, detail="El ciclo no tiene días de la semana configurados")
 
-    # Construir fechas elegibles
     valores = []
     fecha = ciclo.curso_inicio
     while fecha <= ciclo.curso_fin:
@@ -117,7 +135,6 @@ def generar_sesiones(
             valores.append({"ciclo_id": ciclo.id, "fecha": fecha})
         fecha += timedelta(days=1)
 
-    # Idempotente: ON CONFLICT DO NOTHING
     if valores:
         stmt = pg_insert(AsistenciaSesion.__table__).values(valores)
         stmt = stmt.on_conflict_do_nothing(index_elements=["ciclo_id", "fecha"])
@@ -125,14 +142,20 @@ def generar_sesiones(
             db.execute(stmt)
             db.commit()
         except IntegrityError:
+            logger.exception("ERROR insertando sesiones (ignorable si duplicado): ciclo_id=%s", ciclo.id)
             db.rollback()
 
     sesiones = (
         db.query(AsistenciaSesion)
-        .filter(AsistenciaSesion.ciclo_id == ciclo.id)
+        .filter(
+            AsistenciaSesion.ciclo_id == ciclo.id,
+            AsistenciaSesion.fecha >= ciclo.curso_inicio,
+            AsistenciaSesion.fecha <= ciclo.curso_fin,
+        )
         .order_by(AsistenciaSesion.fecha.asc())
         .all()
     )
+    logger.info("GENERAR sesiones OK: ciclo_id=%s total=%s", ciclo.id, len(sesiones))
     return [SesionDTO(id=s.id, fecha=s.fecha) for s in sesiones]
 
 @router.get("/ciclos/{ciclo_id}/sesiones", response_model=List[SesionDTO], summary="Lista sesiones del ciclo")
@@ -147,12 +170,20 @@ def listar_sesiones(
     is_super = getattr(current_user, "role", None) == getattr(UserRole, "superuser", None)
     _ = _ciclo_del_docente(db, ciclo_id, getattr(current_user, "id", None), is_super)
 
-    q = db.query(AsistenciaSesion).filter(AsistenciaSesion.ciclo_id == ciclo_id)
+    ciclo = _ciclo_del_docente(db, ciclo_id, getattr(current_user, "id", None), is_super)
+
+    q = db.query(AsistenciaSesion).filter(
+        AsistenciaSesion.ciclo_id == ciclo_id,
+        AsistenciaSesion.fecha >= ciclo.curso_inicio,
+        AsistenciaSesion.fecha <= ciclo.curso_fin,
+    )    
+    
     if desde:
         q = q.filter(AsistenciaSesion.fecha >= desde)
     if hasta:
         q = q.filter(AsistenciaSesion.fecha <= hasta)
     sesiones = q.order_by(AsistenciaSesion.fecha.asc()).all()
+    logger.info("LISTAR sesiones: ciclo_id=%s total=%s rango=[%s..%s]", ciclo_id, len(sesiones), desde, hasta)
     return [SesionDTO(id=s.id, fecha=s.fecha) for s in sesiones]
 
 @router.get("/sesiones/{sesion_id}/registros", response_model=List[RegistroDTO], summary="Registros de asistencia por sesión")
@@ -169,13 +200,15 @@ def registros_por_sesion(
         .first()
     )
     if not sesion:
+        logger.info("Sesion no encontrada: sesion_id=%s", sesion_id)
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
     is_super = getattr(current_user, "role", None) == getattr(UserRole, "superuser", None)
     if not is_super and getattr(sesion.ciclo, "docente_id", None) != getattr(current_user, "id", None):
+        logger.warning("No autorizado registros_por_sesion: sesion_id=%s ciclo_id=%s user_id=%s",
+                       sesion_id, getattr(sesion, "ciclo_id", None), getattr(current_user, "id", None))
         raise HTTPException(status_code=403, detail="No autorizado")
 
-    # Asegurar registros para todos los inscritos del ciclo (idempotente)
     inscripciones = (
         db.query(Inscripcion)
         .options(joinedload(Inscripcion.alumno))
@@ -193,15 +226,15 @@ def registros_por_sesion(
                 AsistenciaRegistro(
                     sesion_id=sesion.id,
                     inscripcion_id=ins.id,
-                    estado=AsistenciaEstado.presente,
+                    estado=AsistenciaEstado.presente,  # cambia a .ausente si quieres arrancar en 0%
                     marcado_por_id=getattr(current_user, "id", None),
                 )
             )
     if to_create:
         db.add_all(to_create)
         db.commit()
+        logger.info("REGISTROS creados (faltantes): sesion_id=%s n=%s", sesion_id, len(to_create))
 
-    # Consultar con cargas encadenadas DESDE AsistenciaRegistro
     registros = (
         db.query(AsistenciaRegistro)
         .options(
@@ -212,6 +245,10 @@ def registros_por_sesion(
         .order_by(AsistenciaRegistro.id.asc())
         .all()
     )
+
+    logger.info("REGISTROS listar: sesion_id=%s total=%s", sesion_id, len(registros))
+    for r in registros[:10]:
+        logger.debug("REG sample: sesion=%s insc=%s estado=%s", r.sesion_id, r.inscripcion_id, r.estado)
 
     out: List[RegistroDTO] = []
     for r in registros:
@@ -249,11 +286,16 @@ def marcar_asistencia_lote(
         .first()
     )
     if not sesion:
+        logger.info("Sesion no encontrada (marcar): sesion_id=%s", sesion_id)
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
     is_super = getattr(current_user, "role", None) == getattr(UserRole, "superuser", None)
     if not is_super and getattr(sesion.ciclo, "docente_id", None) != getattr(current_user, "id", None):
+        logger.warning("No autorizado marcar_asistencia_lote: sesion_id=%s ciclo_id=%s user_id=%s",
+                       sesion_id, getattr(sesion, "ciclo_id", None), getattr(current_user, "id", None))
         raise HTTPException(status_code=403, detail="No autorizado")
+
+    logger.info("MARCAR lote: sesion_id=%s items=%s", sesion_id, len(items))
 
     reg_map = {
         r.inscripcion_id: r
@@ -277,8 +319,8 @@ def marcar_asistencia_lote(
     if to_create:
         db.add_all(to_create)
     db.commit()
+    logger.info("MARCAR lote OK: sesion_id=%s creados=%s total_items=%s", sesion_id, len(to_create), len(items))
 
-    # devolver registros actualizados
     return registros_por_sesion(sesion_id, db=db, current_user=current_user)
 
 # -------------------------------------------------------------------
@@ -315,12 +357,13 @@ def matriz_ciclo(
     ciclo = _ciclo_del_docente(db, ciclo_id, getattr(current_user, "id", None), is_super)
 
     if not ciclo.curso_inicio or not ciclo.curso_fin:
+        logger.warning("Ciclo sin fechas definidas: ciclo_id=%s", ciclo_id)
         raise HTTPException(status_code=400, detail="El ciclo no tiene fechas de curso definidas")
     dias_ok = _dias_semana_a_set(getattr(ciclo, "dias", None))
     if not dias_ok:
+        logger.warning("Ciclo sin dias configurados: ciclo_id=%s", ciclo_id)
         raise HTTPException(status_code=400, detail="El ciclo no tiene días de la semana configurados")
 
-    # Asegurar sesiones (idempotente)
     vals = []
     f = ciclo.curso_inicio
     while f <= ciclo.curso_fin:
@@ -335,6 +378,7 @@ def matriz_ciclo(
             db.execute(stmt)
             db.commit()
         except IntegrityError:
+            logger.exception("ERROR insertando sesiones (matriz, duplicados esperados): ciclo_id=%s", ciclo.id)
             db.rollback()
 
     sesiones = (
@@ -352,7 +396,6 @@ def matriz_ciclo(
         .all()
     )
 
-    # Asegurar registros (idempotente por bloque)
     if sesiones and inscs:
         existentes = set(
             (r.sesion_id, r.inscripcion_id)
@@ -368,18 +411,24 @@ def matriz_ciclo(
                     reg_vals.append({
                         "sesion_id": s.id,
                         "inscripcion_id": ins.id,
-                        "estado": AsistenciaEstado.presente,
+                        "estado": AsistenciaEstado.presente,  # cambia a .ausente si quieres empezar en 0%
                         "marcado_por_id": getattr(current_user, "id", None),
                     })
         if reg_vals:
             db.bulk_insert_mappings(AsistenciaRegistro, reg_vals)
             db.commit()
+            logger.info("MATRIZ registros completados: ciclo_id=%s añadidos=%s", ciclo.id, len(reg_vals))
 
     registros = (
         db.query(AsistenciaRegistro)
         .filter(AsistenciaRegistro.sesion_id.in_([s.id for s in sesiones]))
         .all()
     )
+
+    logger.info("MATRIZ DEBUG: ciclo_id=%s sesiones=%s inscripciones=%s registros=%s",
+                ciclo.id, len(sesiones), len(inscs), len(registros))
+    for r in registros[:10]:
+        logger.debug("MZ sample: sesion=%s insc=%s estado=%s", r.sesion_id, r.inscripcion_id, r.estado)
 
     def _name(u: User | None) -> str | None:
         return _alumno_display_name(u)
@@ -425,7 +474,6 @@ def marcar_matriz(
     is_super = getattr(current_user, "role", None) == getattr(UserRole, "superuser", None)
     ciclo = _ciclo_del_docente(db, ciclo_id, getattr(current_user, "id", None), is_super)
 
-    # Validar sesiones pertenecen al ciclo
     sesion_ids = {it.sesion_id for it in payload.items}
     if sesion_ids:
         sesiones = db.query(AsistenciaSesion).filter(AsistenciaSesion.id.in_(list(sesion_ids))).all()
@@ -433,9 +481,11 @@ def marcar_matriz(
         for sid in sesion_ids:
             s = mapa_sesion.get(sid)
             if not s or s.ciclo_id != ciclo.id:
+                logger.warning("Sesion %s no pertenece a ciclo %s", sid, ciclo.id)
                 raise HTTPException(status_code=400, detail=f"Sesión {sid} no pertenece al ciclo")
 
-    # Upsert en memoria
+    logger.info("MATRIZ marcar: ciclo_id=%s items=%s", ciclo_id, len(payload.items))
+
     keys = {(it.sesion_id, it.inscripcion_id) for it in payload.items}
     if keys:
         regs = (
@@ -462,6 +512,6 @@ def marcar_matriz(
         if to_create:
             db.add_all(to_create)
         db.commit()
+        logger.info("MATRIZ marcar OK: ciclo_id=%s creados=%s total_items=%s", ciclo_id, len(to_create), len(payload.items))
 
-    # Devolver matriz actualizada
     return matriz_ciclo(ciclo_id, db=db, current_user=current_user)
