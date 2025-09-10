@@ -10,6 +10,8 @@ import ReportsSection from "./sections/ReportsSection";
 import SettingsSection from "./sections/SettingsSection";
 import SecuritySection from "./sections/SecuritySection";
 import InscripcionesSection from "@/components/coordinator/sections/InscripcionesSection"; // 👈 NUEVO
+import CoordinatorPlacement from "./sections/CoordinatorPlacement"; // 👈 agrega esta línea
+
 
 export default function CoordinatorDashboardShell() {
   const [active, setActive] = useState<CoordinatorSection>("overview");
@@ -23,6 +25,7 @@ export default function CoordinatorDashboardShell() {
         {active === "teachers"      && <TeachersSection />}
         {active === "students"      && <StudentsSection />}
         {active === "inscripciones" && <InscripcionesSection />}   {/* 👈 NUEVO */}
+        {active === "placement"     && <CoordinatorPlacement />}{/* 👈 agrega esta línea */}
         {active === "reports"       && <ReportsSection />}
         {active === "settings"      && <SettingsSection />}
         {active === "security"      && <SecuritySection />}

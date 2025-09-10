@@ -22,7 +22,7 @@ from .routers.docente_asistencia import router as docente_asistencia_router
 from .routers.docente_evaluaciones import router as docente_evaluaciones_router  # 👈 nuevo
 from .routers.alumno_historial import router as alumno_historial_router
 from .routers.public_ciclos import router as public_ciclos_router
-
+from .routers import placement
 
 
 Base.metadata.create_all(bind=engine)
@@ -49,7 +49,7 @@ app.include_router(docente_asistencia_router)
 app.include_router(docente_evaluaciones_router)  # 👈 monta endpoints
 app.include_router(alumno_historial_router)  # ✅
 app.include_router(public_ciclos_router)
-
+app.include_router(placement.router)
 
 
 @app.post("/auth/register", response_model=UserOut, status_code=201)

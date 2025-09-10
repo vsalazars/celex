@@ -455,3 +455,44 @@ class AlumnoHistorialItem(BaseModel):
 
 class AlumnoHistorialResponse(BaseModel):
     items: List[AlumnoHistorialItem]
+
+
+
+class PlacementBase(BaseModel):
+    nombre: str = Field(..., min_length=3, max_length=120)
+    idioma: str
+    modalidad: Optional[str] = None          # presencial | en_linea
+    fecha: Optional[date] = None
+    hora: Optional[time] = None
+    duracion_min: Optional[int] = Field(default=60, ge=10, le=600)
+    cupo_total: Optional[int] = Field(default=0, ge=0)
+    costo: Optional[int] = Field(default=None, ge=0)
+    nivel_objetivo: Optional[str] = None     # A1..C2
+    estado: Optional[str] = "borrador"       # borrador | publicado | cerrado
+    instrucciones: Optional[str] = None
+    link_registro: Optional[str] = None
+    activo: Optional[bool] = True
+
+
+class PlacementCreate(PlacementBase):
+    """Esquema para crear examen de colocación"""
+    pass
+
+
+class PlacementUpdate(PlacementBase):
+    """Esquema para actualizar examen de colocación"""
+    pass
+
+
+class PlacementOut(PlacementBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class PlacementList(BaseModel):
+    items: list[PlacementOut]
+    page: int
+    pages: int
+    total: int

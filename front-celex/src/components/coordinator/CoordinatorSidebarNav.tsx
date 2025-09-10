@@ -10,6 +10,8 @@ import {
   Settings2,
   Shield,
   LogOut,
+  FileSearch, // 👈 NUEVO
+
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import UserInfo from "@/components/coordinator/UserInfo";
@@ -20,6 +22,7 @@ export type CoordinatorSection =
   | "teachers"
   | "students"
   | "inscripciones"   // 👈 NUEVO
+  | "placement"   // 👈 NUEVO
   | "reports"
   | "settings"
   | "security";
@@ -39,6 +42,7 @@ export default function CoordinatorSidebarNav({
     { key: "groups",        label: "Grupos",        icon: <Layers className="h-4 w-4" /> },
     { key: "students",      label: "Alumnos",       icon: <Users className="h-4 w-4" /> },
     { key: "inscripciones", label: "Inscripciones", icon: <ClipboardCheck className="h-4 w-4" /> }, // 👈 NUEVO
+    { key: "placement",     label: "Examen de colocación",  icon: <FileSearch className="h-4 w-4" /> }, // 👈 NUEVO
     { key: "reports",       label: "Reportes",      icon: <BarChart3 className="h-4 w-4" /> },
     { key: "settings",      label: "Configuración", icon: <Settings2 className="h-4 w-4" /> },
     { key: "security",      label: "Seguridad",     icon: <Shield className="h-4 w-4" /> },

@@ -253,3 +253,21 @@ class Evaluacion(Base):
         CheckConstraint("(final_tarea IS NULL OR (final_tarea BETWEEN 0 AND 20))", name="ck_eval_final_tarea"),
     )
 
+
+class PlacementExam(Base):
+    __tablename__ = "placement_exams"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(120), nullable=False, index=True)
+    idioma = Column(String(30), nullable=False, index=True)  # ingles | frances | ...
+    modalidad = Column(String(30), nullable=True)            # presencial | en_linea
+    fecha = Column(Date, nullable=True)
+    hora = Column(Time, nullable=True)
+    duracion_min = Column(Integer, nullable=True, default=60)
+    cupo_total = Column(Integer, nullable=True, default=0)
+    costo = Column(Integer, nullable=True)                   # opcional (en MXN)
+    nivel_objetivo = Column(String(10), nullable=True)       # A1..C2
+    estado = Column(String(20), nullable=False, default="borrador")  # borrador | publicado | cerrado
+    instrucciones = Column(Text, nullable=True)
+    link_registro = Column(String(255), nullable=True)
+    activo = Column(Boolean, nullable=False, default=True)

@@ -497,3 +497,47 @@ export async function listCiclosPublic(params: any = {}) {
   const url = buildURL("/public/ciclos-abiertos", params);
   return apiFetch(url, { auth: false }); // <-- sin Authorization
 }
+
+// src/lib/api.ts
+import type { PlacementListResp, PlacementExam } from "./types";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+export async function listPlacement(params: {
+  page?: number; page_size?: number; q?: string; idioma?: string; estado?: string;
+}) {
+  const u = new URL(`${API_URL}/placement-exams`);
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
+  });
+  const res = await fetch(u.toString(), { cache: "no-store" });
+  if (!res.ok) throw new Error("No se pudo cargar la lista de exámenes");
+  return res.json() as Promise<PlacementListResp>;
+}
+
+export async function createPlacement(payload: Partial<PlacementExam>) {
+  const res = await fetch(`${API_URL}/placement-exams`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("No se pudo crear el examen");
+  return res.json() as Promise<PlacementExam>;
+}
+
+export async function updatePlacement(id: number, payload: Partial<PlacementExam>) {
+  const res = await fetch(`${API_URL}/placement-exams/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("No se pudo actualizar el examen");
+  return res.json() as Promise<PlacementExam>;
+}
+
+export async function deletePlacement(id: number) {
+  const res = await fetch(`${API_URL}/placement-exams/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("No se pudo eliminar el examen");
+}

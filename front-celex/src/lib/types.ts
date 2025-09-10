@@ -260,3 +260,28 @@ export type AlumnoHistorialItem = {
 export type AlumnoHistorialResponse = {
   items: AlumnoHistorialItem[];
 };
+
+
+export type PlacementExam = {
+  id: number;
+  nombre: string;
+  idioma: string;
+  modalidad?: string | null;
+  fecha?: string | null;  // ISO yyyy-mm-dd
+  hora?: string | null;   // HH:MM:SS
+  duracion_min?: number | null;
+  cupo_total?: number | null;
+  costo?: number | null;
+  nivel_objetivo?: string | null;
+  estado?: string | null; // borrador | publicado | cerrado
+  instrucciones?: string | null;
+  link_registro?: string | null;
+  activo?: boolean | null;
+};
+
+export type PlacementListResp = {
+  items: PlacementExam[];
+  page: number;
+  pages: number;
+  total: number;
+};
