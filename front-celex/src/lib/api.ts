@@ -484,3 +484,16 @@ export async function downloadArchivoInscripcionCoord(
   a.remove();
   URL.revokeObjectURL(objUrl);
 }
+
+
+export async function getAlumnoHistorial(): Promise<AlumnoHistorialResponse> {
+  const url = buildURL("/alumno/historial");
+  const res = await apiFetch(url, { auth: true });
+  return res as AlumnoHistorialResponse;
+}
+
+
+export async function listCiclosPublic(params: any = {}) {
+  const url = buildURL("/public/ciclos-abiertos", params);
+  return apiFetch(url, { auth: false }); // <-- sin Authorization
+}

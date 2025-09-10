@@ -113,13 +113,17 @@ export default function LoginSheet({
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button
-          variant="ghost"
-          size="sm"
-          className="gap-2 rounded-full px-5 hover:bg-neutral-100"
+          variant="default"
+          size="lg"
+          className="gap-2 rounded-full px-5 shadow-md hover:shadow-lg"
         >
-          <LogIn className="h-4 w-4" />
+          <LogIn className="h-4 w-4 animate-pulse duration-[6s] delay-[3s]" />
           Iniciar sesión
         </Button>
+
+
+
+
       </SheetTrigger>
 
       <SheetContent side="right" className="w-full sm:max-w-md p-0">
@@ -127,7 +131,7 @@ export default function LoginSheet({
           <div className="w-full max-w-sm px-6">
             <SheetHeader className="text-center">
               <SheetTitle className="font-title text-xl">
-                Bienvenido al CELEX "Cuauhtémoc"
+                Bienvenido al CELEX "Diódoro Antúnez Echegaray"
               </SheetTitle>
               <SheetDescription className="text-neutral-500">
                 Ingresa tu correo y contraseña.

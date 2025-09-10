@@ -415,3 +415,43 @@ class EvaluacionOut(BaseModel):
 
 class EvaluacionListOut(BaseModel):
     items: list[EvaluacionOut]
+
+
+class AlumnoHistorialItem(BaseModel):
+    inscripcion_id: int
+    ciclo_id: int
+    ciclo_codigo: str
+    idioma: str
+    nivel: str
+    modalidad: str
+    turno: str
+    docente_nombre: Optional[str] = None
+
+    # Fechas útiles para mostrar
+    fecha_inicio: Optional[date] = None
+    fecha_fin: Optional[date] = None
+
+    # Asistencia (conteos y %)
+    sesiones_total: int
+    presentes: int
+    ausentes: int
+    retardos: int
+    justificados: int
+    asistencia_pct: float  # p.ej. 87.5
+
+    # Medio (0–100)
+    medio_examen: Optional[float] = None  # 0–80
+    medio_cont: Optional[float] = None    # 0–20
+    medio_subtotal: Optional[float] = None  # suma
+
+    # Final (0–100)
+    final_examen: Optional[float] = None  # 0–60
+    final_cont: Optional[float] = None    # 0–20
+    final_tarea: Optional[float] = None   # 0–20
+    final_subtotal: Optional[float] = None  # suma
+
+    # Promedio final del curso (simple 50/50)
+    promedio: Optional[float] = None
+
+class AlumnoHistorialResponse(BaseModel):
+    items: List[AlumnoHistorialItem]

@@ -93,8 +93,9 @@ export default function RegisterCard() {
   };
 
   return (
-    <div className="relative">
-      <div className="mx-auto w-full max-w-lg rounded-3xl border bg-white p-6 shadow-xl">
+    <div className="relative h-full">
+       <div className="mx-auto w-full max-w-lg h-full rounded-3xl border bg-white p-6 shadow-xl flex flex-col">
+
         <div className="mb-6 flex items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-neutral-900 text-white">
             <UserPlus className="h-6 w-6" />

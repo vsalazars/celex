@@ -6,6 +6,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.types import Enum as SAEnum
+from datetime import datetime
 
 Base = declarative_base()
 
@@ -251,3 +252,4 @@ class Evaluacion(Base):
         CheckConstraint("(final_continua IS NULL OR (final_continua BETWEEN 0 AND 20))", name="ck_eval_final_continua"),
         CheckConstraint("(final_tarea IS NULL OR (final_tarea BETWEEN 0 AND 20))", name="ck_eval_final_tarea"),
     )
+

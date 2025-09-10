@@ -223,3 +223,40 @@ export type EvaluacionOut = {
   subtotal_final: number;          // 0..100
   promedio_final: number;          // 0..100 (el back lo manda con 2 decimales)
 };
+
+
+// --- Historial (Alumno) ---
+export type AlumnoHistorialItem = {
+  inscripcion_id: number;
+  ciclo_id: number;
+  ciclo_codigo: string;
+  idioma: string;
+  nivel: string;
+  modalidad: string;
+  turno: string;
+  docente_nombre?: string | null;
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+
+  sesiones_total: number;
+  presentes: number;
+  ausentes: number;
+  retardos: number;
+  justificados: number;
+  asistencia_pct: number;
+
+  medio_examen?: number | null;    // 0–80
+  medio_cont?: number | null;      // 0–20
+  medio_subtotal?: number | null;  // suma
+
+  final_examen?: number | null;    // 0–60
+  final_cont?: number | null;      // 0–20
+  final_tarea?: number | null;     // 0–20
+  final_subtotal?: number | null;  // suma
+
+  promedio?: number | null;        // 0–100
+};
+
+export type AlumnoHistorialResponse = {
+  items: AlumnoHistorialItem[];
+};

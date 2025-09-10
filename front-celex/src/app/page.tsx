@@ -21,9 +21,13 @@ export default function Page() {
     <main className="min-h-dvh bg-gradient-to-b from-white to-neutral-50">
       <AppHeader onLoginSuccess={(data) => redirectByRole(data.role || "")} />
 
-      <section className="mx-auto grid max-w-6xl grid-cols-1 items-start gap-10 px-4 py-16 md:grid-cols-2">
-        <HeroFeatures />
-        <RegisterCard />
+      <section className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-16 md:grid-cols-2 items-stretch">
+        <div className="h-full">
+          <HeroFeatures />
+        </div>
+        <div className="h-full">
+          <RegisterCard />
+        </div>
       </section>
 
       <AppFooter />
