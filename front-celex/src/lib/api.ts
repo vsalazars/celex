@@ -1,21 +1,54 @@
+// src/lib/api.ts
 import { API_URL } from "./constants";
 import { getToken, clearSession } from "./sessions";
 import type {
-  CoordResp, CreateTeacherInput, Paginated, Teacher
+  CoordResp,
+  CreateTeacherInput,
+  Paginated,
+  Teacher,
+  PlacementExam,
+  PlacementExamCreateDTO,
 } from "./types";
 
 /* ========== Helper ========== */
 function isFormDataBody(init?: RequestInit) {
-  // Navegador / Next client
   return typeof FormData !== "undefined" && init?.body instanceof FormData;
+}
+
+type ApiInit = RequestInit & {
+  auth?: boolean;
+  json?: unknown; // Enviar JSON sin armar body a mano
+};
+
+function normalizeErrorDetail(json: any, fallback: string): string {
+  // FastAPI: detail puede ser string, objeto o lista de objetos
+  if (!json) return fallback;
+  const d = json.detail ?? json.message ?? json.error ?? json;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    // typical 422
+    const parts = d.map((e) => {
+      if (typeof e === "string") return e;
+      if (e?.msg && e?.loc) return `${e.loc.join(".")}: ${e.msg}`;
+      if (e?.msg) return e.msg;
+      try { return JSON.stringify(e); } catch { return String(e); }
+    });
+    return parts.join(" · ");
+  }
+  try { return JSON.stringify(d); } catch { return String(d); }
 }
 
 // 👇 Exporta apiFetch para poder usarlo desde otros módulos
 export async function apiFetch<T = any>(
   input: string,
-  init?: RequestInit & { auth?: boolean }
+  init?: ApiInit
 ): Promise<T> {
   const headers = new Headers(init?.headers || {});
+
+  // Aceptamos json por defecto si no hay preferencia
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json, */*;q=0.1");
+  }
 
   if (init?.auth) {
     const token = getToken();
@@ -23,37 +56,65 @@ export async function apiFetch<T = any>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  // ⚠️ NO forzar JSON si mandamos FormData (multipart)
-  if (!isFormDataBody(init) && !headers.has("Content-Type")) {
+  // Si nos pasaron "json", armamos el body y el Content-Type (a menos que sea FormData)
+  let body: BodyInit | undefined = init?.body;
+  if (!isFormDataBody(init) && init?.json !== undefined) {
+    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    body = JSON.stringify(init.json);
+  }
+
+  // ⚠️ NO forzar JSON si mandamos FormData (multipart) o si ya lo pusimos con json
+  if (!isFormDataBody(init) && !headers.has("Content-Type") && body && init?.json === undefined) {
     headers.set("Content-Type", "application/json");
   }
-  // Si el body es FormData y alguien puso Content-Type, quitarlo para permitir el boundary
   if (isFormDataBody(init) && headers.has("Content-Type")) {
     headers.delete("Content-Type");
   }
 
-  const res = await fetch(input, { ...init, headers, cache: "no-store" });
+  let res: Response;
+  try {
+    res = await fetch(input, { ...init, headers, body, cache: "no-store" });
+  } catch (err: any) {
+    // Aquí cae el famoso "TypeError: Failed to fetch"
+    const detail = err?.message || String(err);
+    throw new Error(
+      `No se pudo conectar con la API (${input}). ` +
+      `Posibles causas: URL inválida, CORS, certificado o mixed content. ` +
+      `Detalle: ${detail}`
+    );
+  }
 
   if (!res.ok) {
     if (res.status === 401) {
       try { clearSession(); } catch {}
       throw new Error("No autorizado. Vuelve a iniciar sesión.");
     }
+
     let detail = `Error ${res.status}`;
     try {
-      const json = await res.json();
-      detail = json?.detail || json?.message || detail;
-    } catch {}
+      const ctype = res.headers.get("content-type") || "";
+      if (ctype.includes("application/json")) {
+        const j = await res.json();
+        detail = normalizeErrorDetail(j, detail);
+      } else {
+        const t = await res.text();
+        if (t) detail = t;
+      }
+    } catch {
+      // swallow
+    }
     throw new Error(detail);
   }
 
   if (res.status === 204) return undefined as unknown as T;
 
+  // Devuelve JSON si hay; si no, texto.
+  const ctype = res.headers.get("content-type") || "";
+  if (ctype.includes("application/json")) {
+    return (await res.json()) as T;
+  }
   const text = await res.text();
-  if (!text) return undefined as unknown as T;
-
-  try { return JSON.parse(text) as T; }
-  catch { return undefined as unknown as T; }
+  return (text as unknown) as T;
 }
 
 // 👇 Exporta buildURL para que puedas importarlo como named export
@@ -61,7 +122,15 @@ export function buildURL(
   path: string,
   params?: Record<string, string | number | boolean | undefined>
 ) {
-  const url = new URL(`${API_URL}${path.startsWith("/") ? "" : "/"}${path}`);
+  if (!API_URL) throw new Error("API_URL no está definida");
+  const base = API_URL.replace(/\/+$/, "");
+  const p = String(path || "").replace(/^\/?/, "/");
+  let url: URL;
+  try {
+    url = new URL(`${base}${p}`);
+  } catch {
+    throw new Error(`URL inválida: base=${base} path=${p}`);
+  }
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null && String(v).length > 0) {
@@ -85,7 +154,7 @@ export async function toggleCoordinatorStatus(id: number, is_active: boolean) {
   const url = buildURL(`/admin/coordinators/${id}/status`);
   return apiFetch(url, {
     method: "PATCH",
-    body: JSON.stringify({ is_active }),
+    json: { is_active }, // usa json
     auth: true,
   });
 }
@@ -96,7 +165,7 @@ export async function createCoordinator(payload: {
   const url = buildURL(`/admin/coordinators`);
   return apiFetch(url, {
     method: "POST",
-    body: JSON.stringify(payload),
+    json: payload, // usa json
     auth: true,
   });
 }
@@ -121,12 +190,12 @@ export async function inviteTeacher(input: CreateTeacherInput): Promise<Teacher>
   const url = buildURL("/coordinacion/docentes/invite");
   return apiFetch<Teacher>(url, {
     method: "POST",
-    body: JSON.stringify({
+    json: {
       first_name: input.first_name.trim(),
       last_name: input.last_name.trim(),
       email: input.email.trim().toLowerCase(),
       curp: input.curp.trim().toUpperCase(),
-    }),
+    },
     auth: true,
   });
 }
@@ -241,12 +310,12 @@ export async function listCiclos(params: ListCiclosParams = {}): Promise<CicloLi
 
 export async function createCiclo(input: CreateCicloInput): Promise<CicloDTO> {
   const url = buildURL("/coordinacion/ciclos");
-  return apiFetch<CicloDTO>(url, { method: "POST", body: JSON.stringify(input), auth: true });
+  return apiFetch<CicloDTO>(url, { method: "POST", json: input, auth: true });
 }
 
 export async function updateCiclo(id: number | string, input: UpdateCicloInput): Promise<CicloDTO> {
   const url = buildURL(`/coordinacion/ciclos/${id}`);
-  return apiFetch<CicloDTO>(url, { method: "PUT", body: JSON.stringify(input), auth: true });
+  return apiFetch<CicloDTO>(url, { method: "PUT", json: input, auth: true });
 }
 
 export async function deleteCiclo(id: number | string): Promise<void> {
@@ -298,7 +367,7 @@ export type InscripcionDTO = {
   created_at: string;
   referencia?: string | null;
   importe_centavos?: number | null;
-  fecha_pago?: string | null;           // <--- NUEVO
+  fecha_pago?: string | null;
   comprobante?: ComprobanteMeta | null;
   comprobante_estudios?: ComprobanteMeta | null;
   comprobante_exencion?: ComprobanteMeta | null;
@@ -317,15 +386,12 @@ export type InscripcionDTO = {
     curso?: { from: string; to: string } | null;
   } | null;
 
-  // === CAMPOS DE VALIDACIÓN ===
   validated_by_id?: number | null;
   validated_at?: string | null;
 
-  // Motivos de rechazo
-  rechazo_motivo?: string | null;       // 👈 preferido (nuevo)
-  validation_notes?: string | null;     // 👈 compatibilidad
+  rechazo_motivo?: string | null;
+  validation_notes?: string | null;
 };
-
 
 // 🔽 Tipos discriminados para crear inscripción
 export type CreateInscripcionPago = {
@@ -333,7 +399,7 @@ export type CreateInscripcionPago = {
   ciclo_id: number;
   referencia: string;
   importe_centavos: number;
-  fecha_pago: string;            // <--- requerido
+  fecha_pago: string;
   comprobante: File;
   comprobante_estudios?: File | null;
 };
@@ -358,7 +424,7 @@ export async function createInscripcion(input: CreateInscripcionInput): Promise<
     fd.append("tipo", "pago");
     fd.append("referencia", input.referencia);
     fd.append("importe_centavos", String(input.importe_centavos));
-    fd.append("fecha_pago", input.fecha_pago);  // <--- NUEVO
+    fd.append("fecha_pago", input.fecha_pago);
     fd.append("comprobante", input.comprobante);
     if (input.comprobante_estudios) {
       fd.append("comprobante_estudios", input.comprobante_estudios);
@@ -448,15 +514,14 @@ export async function validateInscripcionCoord(
   const url = buildURL(`/coordinacion/inscripciones/${id}/validate`);
   return apiFetch<InscripcionDTO>(url, {
     method: "POST",
-    body: JSON.stringify({
+    json: {
       action,
-      motivo,           // 👈 el back valida este campo (min_length=6)
-      notes: motivo,    // 👈 opcional, por compat si tu back aún lo lee
-    }),
+      motivo,        // 👈 back valida este campo (min_length=6)
+      notes: motivo, // 👈 compat si el back aún lo lee
+    },
     auth: true,
   });
 }
-
 
 export async function downloadArchivoInscripcionCoord(
   inscripcionId: number,
@@ -485,6 +550,9 @@ export async function downloadArchivoInscripcionCoord(
   URL.revokeObjectURL(objUrl);
 }
 
+export type AlumnoHistorialResponse = {
+  items: any[];
+};
 
 export async function getAlumnoHistorial(): Promise<AlumnoHistorialResponse> {
   const url = buildURL("/alumno/historial");
@@ -492,18 +560,13 @@ export async function getAlumnoHistorial(): Promise<AlumnoHistorialResponse> {
   return res as AlumnoHistorialResponse;
 }
 
-
 export async function listCiclosPublic(params: any = {}) {
   const url = buildURL("/public/ciclos-abiertos", params);
-  return apiFetch(url, { auth: false }); // <-- sin Authorization
+  return apiFetch(url, { auth: false });
 }
 
+/* ================= Placement Exams ================= */
 
-
-// src/lib/api.ts
-import type { Paginated, PlacementExam, PlacementExamCreateDTO, Idioma } from "./types";
-
-// Base de los endpoints en el backend
 const PLACEMENT_BASE = "/placement-exams";
 
 // ===== Listar con paginación y filtros =====
@@ -515,29 +578,27 @@ export async function listPlacementExams(params?: {
   fecha_from?: string; // "YYYY-MM-DD"
   fecha_to?: string;   // "YYYY-MM-DD"
 }): Promise<Paginated<PlacementExam>> {
-  const s = new URLSearchParams();
-  if (params?.page != null) s.set("page", String(params.page));
-  if (params?.page_size != null) s.set("page_size", String(params.page_size));
-  if (params?.q) s.set("q", params.q);
-  if (params?.idioma) s.set("idioma", params.idioma);
-  if (params?.fecha_from) s.set("fecha_from", params.fecha_from);
-  if (params?.fecha_to) s.set("fecha_to", params.fecha_to);
-
-  return apiFetch<Paginated<PlacementExam>>(
-    `${PLACEMENT_BASE}?${s.toString()}`,
-    { method: "GET", auth: true }
-  );
+  const url = buildURL(PLACEMENT_BASE, {
+    page: params?.page,
+    page_size: params?.page_size,
+    q: params?.q,
+    idioma: params?.idioma,
+    fecha_from: params?.fecha_from,
+    fecha_to: params?.fecha_to,
+  });
+  return apiFetch<Paginated<PlacementExam>>(url, { method: "GET", auth: true });
 }
 
-// Alias para compatibilidad con código viejo que use listPlacement
+// Alias para compatibilidad con código viejo
 export const listPlacement = listPlacementExams;
 
 // ===== Crear nuevo examen =====
 export async function createPlacementExam(payload: PlacementExamCreateDTO): Promise<PlacementExam> {
-  return apiFetch<PlacementExam>(PLACEMENT_BASE, {
-    method: "POST", auth: true,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+  const url = buildURL(PLACEMENT_BASE);
+  return apiFetch<PlacementExam>(url, {
+    method: "POST",
+    auth: true,
+    json: payload, // usa json
   });
 }
 
@@ -546,43 +607,44 @@ export async function updatePlacementExam(
   id: number,
   patch: Partial<PlacementExamCreateDTO>
 ): Promise<PlacementExam> {
-  return apiFetch<PlacementExam>(`${PLACEMENT_BASE}/${id}`, { auth: true,
+  const url = buildURL(`${PLACEMENT_BASE}/${id}`);
+  return apiFetch<PlacementExam>(url, {
+    auth: true,
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patch),
+    json: patch, // usa json
   });
 }
 
 // ===== Eliminar examen =====
 export async function deletePlacementExam(id: number): Promise<void> {
-  await apiFetch<void>(`${PLACEMENT_BASE}/${id}`, { method: "DELETE", auth: true });
+  const url = buildURL(`${PLACEMENT_BASE}/${id}`);
+  await apiFetch<void>(url, { method: "DELETE", auth: true });
 }
 
-
-
 export async function listPlacementPublic(params?: { q?: string; idioma?: string }) {
-  const search = new URLSearchParams(params as any).toString();
-  return apiFetch(`/placement-exams/public${search ? `?${search}` : ""}`);
+  const url = buildURL("/placement-exams/public", params as any);
+  return apiFetch(url);
 }
 
 export async function createPlacementRegistro(examId: number, fd: FormData) {
-  // fd: referencia, importe_centavos, fecha_pago, comprobante (File)
-  return apiFetch(`/placement-exams/${examId}/registros`, { method: "POST", body: fd, auth: true });
+  const url = buildURL(`/placement-exams/${examId}/registros`);
+  return apiFetch(url, { method: "POST", body: fd, auth: true });
 }
 
 export async function listMyPlacementRegistros() {
-  return apiFetch(`/placement-exams/mis-registros`, { auth: true });
+  const url = buildURL(`/placement-exams/mis-registros`);
+  return apiFetch(url, { auth: true });
 }
 
 export async function cancelPlacementRegistro(id: number) {
-  return apiFetch(`/placement-exams/registros/${id}`, { method: "DELETE", auth: true });
+  const url = buildURL(`/placement-exams/registros/${id}`);
+  return apiFetch(url, { method: "DELETE", auth: true });
 }
-
 
 // === NUEVO: helpers para descargas autenticadas (no JSON) ===
 export async function apiFetchBlobResponse(
   input: string,
-  init?: RequestInit & { auth?: boolean }
+  init?: ApiInit
 ): Promise<Response> {
   const headers = new Headers(init?.headers || {});
   if (!headers.has("Accept")) headers.set("Accept", "*/*");
@@ -593,7 +655,17 @@ export async function apiFetchBlobResponse(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(input, { ...init, headers, cache: "no-store" });
+  let res: Response;
+  try {
+    res = await fetch(input, { ...init, headers, cache: "no-store" });
+  } catch (err: any) {
+    const detail = err?.message || String(err);
+    throw new Error(
+      `No se pudo conectar con la API (${input}). ` +
+      `Posibles causas: URL inválida, CORS, certificado o mixed content. ` +
+      `Detalle: ${detail}`
+    );
+  }
 
   if (!res.ok) {
     if (res.status === 401) {
@@ -603,7 +675,7 @@ export async function apiFetchBlobResponse(
     let detail = `Error ${res.status}`;
     try {
       const j = await res.clone().json();
-      detail = j?.detail || j?.message || detail;
+      detail = normalizeErrorDetail(j, detail);
     } catch {
       try {
         const t = await res.clone().text();
@@ -638,7 +710,7 @@ export async function forceDownloadFromResponse(
   URL.revokeObjectURL(objUrl);
 }
 
-// === NUEVO: función específica para el comprobante de placement ===
+// === Descarga de comprobante de placement ===
 export async function downloadPlacementComprobante(
   registroId: number,
   suggestedName?: string

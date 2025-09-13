@@ -658,3 +658,106 @@ class NivelIdiomaUpdate(BaseModel):
     nivel: constr(strip_whitespace=True, min_length=1, max_length=20)
 
 
+
+
+# ==========================
+# Encuestas (Categorías y Preguntas)
+# ==========================
+from typing import Literal, Optional
+from pydantic import BaseModel, Field
+
+# Tipos de pregunta soportados en el front/back
+SurveyQuestionType = Literal["likert_1_5", "yes_no", "open_text", "scale_0_10"]
+
+# -------- Categorías --------
+class SurveyCategoryBase(BaseModel):
+    name: str = Field(..., min_length=3, max_length=200)
+    description: Optional[str] = None
+    active: bool = True
+
+class SurveyCategoryCreate(SurveyCategoryBase):
+    pass
+
+class SurveyCategoryUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=3, max_length=200)
+    description: Optional[str] = None
+    active: Optional[bool] = None
+
+class SurveyCategoryOut(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    order: int
+    active: bool
+    created_at: datetime   # 👈 debe existir
+
+    class Config:
+        orm_mode = True
+
+# -------- Preguntas --------
+class SurveyQuestionBase(BaseModel):
+    category_id: int
+    text: str = Field(..., min_length=5)
+    help_text: Optional[str] = Field(default=None, max_length=500)
+    type: SurveyQuestionType = "likert_1_5"
+    required: bool = True
+    active: bool = True
+
+class SurveyQuestionCreate(SurveyQuestionBase):
+    pass
+
+class SurveyQuestionUpdate(BaseModel):
+    category_id: Optional[int] = None
+    text: Optional[str] = Field(default=None, min_length=5)
+    help_text: Optional[str] = Field(default=None, max_length=500)
+    type: Optional[SurveyQuestionType] = None
+    required: Optional[bool] = None
+    active: Optional[bool] = None
+
+class SurveyQuestionOut(BaseModel):
+    id: int
+    category_id: int
+    text: str
+    help_text: str | None = None
+    type: str
+    required: bool
+    active: bool
+    order: int
+    created_at: datetime   # 👈 debe existir
+
+    class Config:
+        orm_mode = True
+
+# -------- Payload para mover (orden) --------
+class MovePayload(BaseModel):
+    direction: Literal["up", "down"]
+
+
+
+# ==========================
+# Encuestas — Alumno
+# ==========================
+from typing import Dict, Union
+
+SurveyAnswerValue = Union[int, bool, str]
+
+class SurveyAnswerIn(BaseModel):
+    question_id: int
+    value: SurveyAnswerValue
+
+class SurveySubmitIn(BaseModel):
+    inscripcion_id: int
+    answers: List[SurveyAnswerIn]
+    comments: Optional[constr(strip_whitespace=True, min_length=1, max_length=1500)] = None
+
+
+class SurveyCuestionarioOut(BaseModel):
+    submitted: bool
+    categories: List[SurveyCategoryOut]
+    questions: List[SurveyQuestionOut]
+
+class SurveyEstadoOut(BaseModel):
+    # Mapa de inscripcion_id -> bool (true si ya envió)
+    map: Dict[int, bool]
+    # Por compatibilidad extra con tu front (si lo quieres usar)
+    submitted: List[int] = []

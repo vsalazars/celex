@@ -339,3 +339,104 @@ class PlacementRegistro(Base):
         # (Opcional) valida largo razonable del nivel:
         CheckConstraint("(nivel_idioma IS NULL) OR (length(nivel_idioma) BETWEEN 1 AND 20)", name="ck_nivel_idioma_len"),
     )
+
+
+# -------------------- Encuestas: Categorías --------------------
+class SurveyCategory(Base):
+    """
+    Agrupa preguntas de encuesta (ej. 'Didáctica', 'Infraestructura').
+    """
+    __tablename__ = "survey_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    order = Column(Integer, nullable=False, default=0)
+    active = Column(Boolean, nullable=False, default=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)  # 👈 agregado
+
+    questions = relationship("SurveyQuestion", backref="category", cascade="all, delete-orphan")
+
+
+# -------------------- Encuestas: Preguntas --------------------
+class SurveyQuestion(Base):
+    """
+    Pregunta dentro de una categoría de encuesta.
+    Tipos:
+      - likert_1_5
+      - scale_0_10
+      - yes_no
+      - open_text
+    """
+    __tablename__ = "survey_questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    category_id = Column(Integer, ForeignKey("survey_categories.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    text = Column(Text, nullable=False)
+    help_text = Column(Text, nullable=True)
+    type = Column(String(20), nullable=False)  # likert_1_5, yes_no, open_text, scale_0_10
+    required = Column(Boolean, default=False, nullable=False)
+    active = Column(Boolean, default=True, nullable=False)
+    order = Column(Integer, default=0, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)  # 👈 agregado
+
+    answers = relationship("SurveyAnswer", backref="question", cascade="all, delete-orphan")
+
+
+# -------------------- Encuestas: Respuestas del Alumno --------------------
+
+class SurveyResponse(Base):
+    """
+    Una respuesta enviada por un alumno para un ciclo específico.
+    Se amarra a la Inscripción para garantizar 1 respuesta por inscripción.
+    """
+    __tablename__ = "survey_responses"
+    __table_args__ = (
+        UniqueConstraint("inscripcion_id", name="uq_survey_response_inscripcion"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    inscripcion_id = Column(Integer, ForeignKey("inscripciones.id", ondelete="CASCADE"), nullable=False, index=True)
+    ciclo_id       = Column(Integer, ForeignKey("ciclos.id", ondelete="CASCADE"), nullable=False, index=True)
+    alumno_id      = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relaciones
+    inscripcion = relationship("Inscripcion", foreign_keys=[inscripcion_id], lazy="joined")
+    ciclo       = relationship("Ciclo", foreign_keys=[ciclo_id], lazy="joined")
+    alumno      = relationship("User", foreign_keys=[alumno_id], lazy="joined")
+
+    answers     = relationship("SurveyAnswer", backref="response", cascade="all, delete-orphan")
+
+
+class SurveyAnswer(Base):
+    """
+    Una respuesta a una pregunta específica dentro de una SurveyResponse.
+    Tipos soportados:
+      - likert_1_5   → value_int (1..5)
+      - scale_0_10   → value_int (0..10)
+      - yes_no       → value_bool
+      - open_text    → value_text
+    """
+    __tablename__ = "survey_answers"
+    __table_args__ = (
+        UniqueConstraint("response_id", "question_id", name="uq_survey_answer_unique"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    response_id = Column(Integer, ForeignKey("survey_responses.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_id = Column(Integer, ForeignKey("survey_questions.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    value_int  = Column(Integer, nullable=True)
+    value_bool = Column(Boolean, nullable=True)
+    value_text = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+

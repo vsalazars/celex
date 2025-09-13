@@ -10,8 +10,8 @@ import ReportsSection from "./sections/ReportsSection";
 import SettingsSection from "./sections/SettingsSection";
 import SecuritySection from "./sections/SecuritySection";
 import InscripcionesSection from "@/components/coordinator/sections/InscripcionesSection"; // 👈 NUEVO
-import CoordinatorPlacement from "./sections/CoordinatorPlacement"; // 👈 agrega esta línea
-
+import CoordinatorPlacement from "./sections/CoordinatorPlacement"; // 👈 NUEVO
+import SurveySection from "@/components/coordinator/sections/SurveySection"; // 👈 NUEVO (Encuesta)
 
 export default function CoordinatorDashboardShell() {
   const [active, setActive] = useState<CoordinatorSection>("overview");
@@ -20,15 +20,16 @@ export default function CoordinatorDashboardShell() {
     <main className="flex min-h-[calc(100dvh-0px)]">
       <CoordinatorSidebarNav active={active} onChange={setActive} />
       <section className="flex-1 p-6">
-        {active === "overview"      && <OverviewSection />}
-        {active === "groups"        && <GroupsSection />}
-        {active === "teachers"      && <TeachersSection />}
-        {active === "students"      && <StudentsSection />}
-        {active === "inscripciones" && <InscripcionesSection />}   {/* 👈 NUEVO */}
-        {active === "placement"     && <CoordinatorPlacement />}{/* 👈 agrega esta línea */}
-        {active === "reports"       && <ReportsSection />}
-        {active === "settings"      && <SettingsSection />}
-        {active === "security"      && <SecuritySection />}
+        {active === "overview"       && <OverviewSection />}
+        {active === "groups"         && <GroupsSection />}
+        {active === "teachers"       && <TeachersSection />}
+        {active === "students"       && <StudentsSection />}
+        {active === "inscripciones"  && <InscripcionesSection />}   {/* NUEVO */}
+        {active === "placement"      && <CoordinatorPlacement />}   {/* NUEVO */}
+        {active === "encuesta"       && <SurveySection />}          {/* NUEVO */}
+        {active === "reports"        && <ReportsSection />}
+        {active === "settings"       && <SettingsSection />}
+        {active === "security"       && <SecuritySection />}
       </section>
     </main>
   );

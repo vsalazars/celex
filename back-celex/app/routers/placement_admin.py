@@ -3,16 +3,19 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..auth import require_coordinator_or_admin
 from ..models import (
     User,
+    PlacementExam,
     PlacementRegistro,
     PlacementRegistroStatus,
 )
@@ -47,6 +50,12 @@ def _set_registro_status(reg: PlacementRegistro, status_name: str):
         reg.status = status_name.lower()
 
 
+ACTIVE_REG_STATUSES = (
+    PlacementRegistroStatus.PREINSCRITA,
+    PlacementRegistroStatus.VALIDADA,
+)
+
+
 # ==========================
 # Schemas
 # ==========================
@@ -66,6 +75,7 @@ def list_registros_admin(
 ):
     """
     Lista los registros/pagos de un examen para coordinación.
+    Incluye metadatos del comprobante y nivel_idioma (nivel asignado por docente).
     """
     rows = (
         db.query(PlacementRegistro, User)
@@ -94,9 +104,10 @@ def list_registros_admin(
                 "comprobante": _comprobante_to_meta(
                     reg.comprobante_path, reg.comprobante_mime, reg.comprobante_size
                 ),
-                "rechazo_motivo": getattr(reg, "rechazo_motivo", None),  # 👈 nuevo
-
-
+                # 👇 nuevos/alineados
+                "rechazo_motivo": getattr(reg, "rechazo_motivo", None),
+                "validation_notes": getattr(reg, "validation_notes", None),
+                "nivel_idioma": getattr(reg, "nivel_idioma", None),
             }
         )
 
@@ -160,8 +171,9 @@ def validate_registro_admin(
         "fecha_pago": reg.fecha_pago,
         "comprobante": _comprobante_to_meta(reg.comprobante_path, reg.comprobante_mime, reg.comprobante_size),
         "created_at": reg.created_at,
-        "rechazo_motivo": getattr(reg, "rechazo_motivo", None),  # 👈 nuevo
-
+        "rechazo_motivo": getattr(reg, "rechazo_motivo", None),
+        "validation_notes": getattr(reg, "validation_notes", None),
+        "nivel_idioma": getattr(reg, "nivel_idioma", None),
     }
 
 
@@ -188,3 +200,42 @@ def download_comprobante_admin(
         media_type=media_type,
         filename=filename,
     )
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# NUEVO: Stats de cupo/ocupación para coordinación
+# ───────────────────────────────────────────────────────────────────────────────
+@router.get("/{exam_id}/stats-admin")
+def stats_admin(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_coordinator_or_admin),
+) -> Dict[str, int | None]:
+    """
+    Regresa { cupo_total, ocupados, disponibles } del examen.
+    - ocupados: cantidad de registros en PREINSCRITA o VALIDADA
+    """
+    exam = db.get(PlacementExam, exam_id)  # type: ignore[attr-defined]
+    if not exam:
+        raise HTTPException(status_code=404, detail="Examen no encontrado")
+
+    ocupados = (
+        db.query(func.count(PlacementRegistro.id))
+        .filter(
+            PlacementRegistro.exam_id == exam_id,
+            PlacementRegistro.status.in_(ACTIVE_REG_STATUSES),
+        )
+        .scalar()
+        or 0
+    )
+
+    cupo_total = getattr(exam, "cupo_total", None)
+    disponibles = None
+    if isinstance(cupo_total, int):
+        disponibles = max(0, cupo_total - int(ocupados))
+
+    return {
+        "cupo_total": cupo_total,
+        "ocupados": int(ocupados),
+        "disponibles": disponibles,
+    }

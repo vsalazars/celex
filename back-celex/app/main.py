@@ -25,6 +25,8 @@ from .routers.public_ciclos import router as public_ciclos_router
 from .routers import placement
 from .routers.placement_admin import router as placement_admin_router  # 👈 NUEVO
 from app.routers import placement_teacher  # ⬅️ importa
+from .routers.coordinacion_encuestas import router as coordinacion_encuestas_router
+from .routers.alumno_encuestas import router as alumno_encuestas_router  # 👈 NUEVO
 
 
 
@@ -37,8 +39,9 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],  # incluye Authorization
+    allow_headers=["*"],
 )
+
 
 # Monta routers
 app.include_router(admin_router)
@@ -55,6 +58,10 @@ app.include_router(public_ciclos_router)
 app.include_router(placement.router)
 app.include_router(placement_admin_router)  # 👈 NUEVO
 app.include_router(placement_teacher.router)
+app.include_router(coordinacion_encuestas_router)
+app.include_router(alumno_encuestas_router)   # 👈 NUEVO
+
+
 
 
 

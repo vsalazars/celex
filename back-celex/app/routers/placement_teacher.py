@@ -1,10 +1,20 @@
 # routers/placement_teacher.py
+from __future__ import annotations
+
+from typing import List, Tuple
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
-from typing import List
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import PlacementExam, PlacementRegistro, User, UserRole
+from app.models import (
+    PlacementExam,
+    PlacementRegistro,
+    PlacementRegistroStatus,
+    User,
+    UserRole,
+)
 from app.schemas import (
     PlacementExamAsignadoOut,
     PlacementRegistroAlumnoOut,
@@ -15,6 +25,9 @@ from app.auth import get_current_user  # ajusta si tu dependencia se llama disti
 router = APIRouter(prefix="/placement-exams", tags=["placement-teacher"])
 
 
+# ───────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ───────────────────────────────────────────────────────────────────────────────
 def require_teacher_or_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role in (UserRole.teacher, UserRole.superuser, UserRole.coordinator):
         return current_user
@@ -28,6 +41,15 @@ def _iso(dt):
         return None
 
 
+ACTIVE_REG_STATUSES: Tuple[PlacementRegistroStatus, ...] = (
+    PlacementRegistroStatus.PREINSCRITA,
+    PlacementRegistroStatus.VALIDADA,
+)
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Endpoints
+# ───────────────────────────────────────────────────────────────────────────────
 @router.get("/teachers/mis-examenes", response_model=List[PlacementExamAsignadoOut])
 def mis_examenes(
     db: Session = Depends(get_db),
@@ -35,16 +57,29 @@ def mis_examenes(
 ):
     """
     Lista exámenes de colocación asignados al docente autenticado.
-    Usa PlacementExam.docente_id para filtrar.
+    Cuenta inscritos solo en estatus que ocupan lugar (preinscrita/validada).
     """
-    exams = db.query(PlacementExam).filter(PlacementExam.docente_id == me.id).all()
+    exams = (
+        db.query(PlacementExam)
+        .filter(PlacementExam.docente_id == me.id)
+        .order_by(
+            PlacementExam.fecha.asc().nullslast(),
+            PlacementExam.hora.asc().nullslast(),
+            PlacementExam.id.asc(),
+        )
+        .all()
+    )
 
     out: List[PlacementExamAsignadoOut] = []
     for ex in exams:
         inscritos = (
-            db.query(PlacementRegistro)
-            .filter(PlacementRegistro.exam_id == ex.id)
-            .count()
+            db.query(func.count(PlacementRegistro.id))
+            .filter(
+                PlacementRegistro.exam_id == ex.id,
+                PlacementRegistro.status.in_(ACTIVE_REG_STATUSES),
+            )
+            .scalar()
+            or 0
         )
         out.append(
             PlacementExamAsignadoOut(
@@ -55,7 +90,7 @@ def mis_examenes(
                 idioma=getattr(ex, "idioma", None),
                 nivel=getattr(ex, "nivel_objetivo", None),
                 sede=getattr(ex, "salon", None),
-                turno=None,  # si no llevas turno en placement, déjalo None
+                turno=None,  # placement normalmente no lleva turno
                 inscritos=inscritos,
             )
         )
@@ -70,18 +105,24 @@ def registros_por_examen(
     scope: str = Query(default="teacher"),
 ):
     """
-    Lista alumnos inscritos a un examen. Si scope=teacher, valida propiedad.
+    Lista alumnos inscritos a un examen de colocación.
+    - Si scope=teacher: valida que el examen pertenezca al docente (o admin/coordinador).
+    - Devuelve nombre, email, boleta y nivel_asignado (nivel_idioma en la BD).
     """
     exam = db.query(PlacementExam).filter(PlacementExam.id == exam_id).first()
     if not exam:
         raise HTTPException(status_code=404, detail="Examen no encontrado")
 
-    if scope == "teacher" and (exam.docente_id != me.id) and (me.role not in (UserRole.superuser, UserRole.coordinator)):
+    if scope == "teacher" and (exam.docente_id != me.id) and (
+        me.role not in (UserRole.superuser, UserRole.coordinator)
+    ):
         raise HTTPException(status_code=403, detail="No autorizado para ver este examen")
 
     regs = (
         db.query(PlacementRegistro)
+        .options(joinedload(PlacementRegistro.alumno))
         .filter(PlacementRegistro.exam_id == exam_id)
+        .order_by(PlacementRegistro.created_at.asc(), PlacementRegistro.id.asc())
         .all()
     )
 
@@ -90,7 +131,6 @@ def registros_por_examen(
         alumno = r.alumno
         nombre = None
         if alumno:
-            # arma un nombre legible con tus campos
             fn = getattr(alumno, "first_name", None)
             ln = getattr(alumno, "last_name", None)
             if fn or ln:

@@ -1,17 +1,18 @@
 "use client";
 
+import React from "react";
 import {
   LayoutDashboard,
   Layers,
   GraduationCap,
   Users,
-  ClipboardCheck, // 👈 NUEVO ICONO
+  ClipboardCheck,
   BarChart3,
   Settings2,
   Shield,
   LogOut,
-  FileSearch, // 👈 NUEVO
-
+  FileSearch,
+  ListChecks, // 👈 NUEVO (icono para Encuesta)
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import UserInfo from "@/components/coordinator/UserInfo";
@@ -21,8 +22,9 @@ export type CoordinatorSection =
   | "groups"
   | "teachers"
   | "students"
-  | "inscripciones"   // 👈 NUEVO
-  | "placement"   // 👈 NUEVO
+  | "inscripciones"
+  | "placement"
+  | "encuesta"      // 👈 NUEVO
   | "reports"
   | "settings"
   | "security";
@@ -37,15 +39,16 @@ export default function CoordinatorSidebarNav({
   const router = useRouter();
 
   const items: { key: CoordinatorSection; label: string; icon: React.ReactNode }[] = [
-    { key: "overview",      label: "Resumen",       icon: <LayoutDashboard className="h-4 w-4" /> },
-    { key: "teachers",      label: "Docentes",      icon: <GraduationCap className="h-4 w-4" /> },
-    { key: "groups",        label: "Grupos",        icon: <Layers className="h-4 w-4" /> },
-    { key: "students",      label: "Alumnos",       icon: <Users className="h-4 w-4" /> },
-    { key: "inscripciones", label: "Inscripciones", icon: <ClipboardCheck className="h-4 w-4" /> }, // 👈 NUEVO
-    { key: "placement",     label: "Colocación",  icon: <FileSearch className="h-4 w-4" /> }, // 👈 NUEVO
-    { key: "reports",       label: "Reportes",      icon: <BarChart3 className="h-4 w-4" /> },
-    { key: "settings",      label: "Configuración", icon: <Settings2 className="h-4 w-4" /> },
-    { key: "security",      label: "Seguridad",     icon: <Shield className="h-4 w-4" /> },
+    { key: "overview",      label: "Resumen",        icon: <LayoutDashboard className="h-4 w-4" /> },
+    { key: "teachers",      label: "Docentes",       icon: <GraduationCap className="h-4 w-4" /> },
+    { key: "groups",        label: "Grupos",         icon: <Layers className="h-4 w-4" /> },
+    { key: "students",      label: "Alumnos",        icon: <Users className="h-4 w-4" /> },
+    { key: "inscripciones", label: "Inscripciones",  icon: <ClipboardCheck className="h-4 w-4" /> },
+    { key: "placement",     label: "Colocación",     icon: <FileSearch className="h-4 w-4" /> },
+    { key: "encuesta",      label: "Encuesta",       icon: <ListChecks className="h-4 w-4" /> }, // 👈 NUEVO
+    { key: "reports",       label: "Reportes",       icon: <BarChart3 className="h-4 w-4" /> },
+    { key: "settings",      label: "Configuración",  icon: <Settings2 className="h-4 w-4" /> },
+    { key: "security",      label: "Seguridad",      icon: <Shield className="h-4 w-4" /> },
   ];
 
   const handleLogout = () => {
@@ -73,7 +76,9 @@ export default function CoordinatorSidebarNav({
             onClick={() => onChange(it.key)}
             className={[
               "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition",
-              active === it.key ? "bg-neutral-900 text-white" : "hover:bg-neutral-100 text-neutral-700",
+              active === it.key
+                ? "bg-neutral-900 text-white"
+                : "hover:bg-neutral-100 text-neutral-700",
             ].join(" ")}
           >
             {it.icon}

@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import AlumnoShell from "@/components/alumno/Shell";
-import { listMisInscripciones, cancelarInscripcion } from "@/lib/api";
+import {
+  listMisInscripciones,
+  cancelarInscripcion,
+  downloadArchivoInscripcion, // 👈 se usa en ArchivoLink
+} from "@/lib/api";
 import type { InscripcionDTO } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -86,6 +90,80 @@ const fmtMXNfromCentavos = (cent?: number | null) =>
         maximumFractionDigits: 2,
       }).format(cent / 100);
 
+/* ================= ArchivoLink =================
+   Link estilizado para abrir/descargar un archivo de la inscripción
+   --------------------------------------------------------------- */
+// reemplaza el componente ArchivoLink completo por este
+
+type ArchivoMeta = {
+  filename?: string | null;
+  mimetype?: string | null;
+  size_bytes?: number | null;
+  storage_path?: string | null;
+};
+
+function ArchivoLink({
+  inscId,
+  tipo,
+  meta,
+  label,
+}: {
+  inscId: number;
+  tipo: "comprobante" | "estudios" | "exencion";
+  meta?: ArchivoMeta | null;
+  label?: string; // opcional: permitir texto custom
+}) {
+  if (!meta?.filename) {
+    return <p className="font-medium text-neutral-900">—</p>;
+  }
+
+  const prettySize =
+    typeof meta.size_bytes === "number" && meta.size_bytes >= 0
+      ? `${(meta.size_bytes / 1024).toFixed(0)} KB`
+      : undefined;
+
+  const defaultLabel =
+    label ??
+    (tipo === "comprobante"
+      ? "pago"
+      : tipo === "estudios"
+      ? "estudios"
+      : "exención");
+
+  const handleClick = async () => {
+    try {
+      await downloadArchivoInscripcion(inscId, tipo, meta.filename as string);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo abrir el archivo");
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="group inline-flex items-center gap-1.5 text-sky-700 hover:text-sky-800 hover:underline font-medium"
+      title={[meta.filename, prettySize ? `(${prettySize})` : null].filter(Boolean).join(" ")}
+    >
+      <span className="sr-only">{meta.filename}</span>
+      {/** Ícono + texto corto */}
+      <svg
+        className="h-4 w-4 opacity-80 group-hover:opacity-100"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <path d="M21 15v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h7" />
+        <path d="M17 3v4h4" />
+        <path d="M12 11v6" />
+        <path d="M9 14h6" />
+      </svg>
+      <span>{defaultLabel}</span>
+    </button>
+  );
+}
+
 /* ========== UI helpers ========== */
 function statusMeta(status: InscripcionDTO["status"]) {
   switch (status) {
@@ -113,6 +191,21 @@ function toneClasses(tone: ReturnType<typeof statusMeta>["tone"]) {
     neutral: { badge: "bg-neutral-100 text-neutral-700 border-neutral-200", stripe: "bg-neutral-500/70" },
   } as const;
   return map[tone];
+}
+
+/* === Helper para mostrar el motivo del rechazo (tolerante a nombres) === */
+function getRejectReason(x: any): string | null {
+  // incluye variantes para compatibilidad con back antiguo y nuevo
+  return (
+    x?.rechazo_motivo ??         // preferido (nuevo)
+    x?.motivo_rechazo ??         // variante
+    x?.validation_notes ??       // compat con back existente
+    x?.validation_reason ??      // posible variante
+    x?.motivo ??                 // genérico
+    x?.reject_reason ??          // genérico en inglés
+    x?.observaciones_rechazo ??  // variante
+    null
+  );
 }
 
 /* ========== Tarjeta de inscripción con cards ========== */
@@ -145,13 +238,14 @@ function InscripcionCard({
     (x as any)?.ciclo?.teacher ??
     null;
 
-  const isExencion = x.tipo === "exencion";
+  const isExencion = (x as any).tipo === "exencion";
+  const rejectReason = x.status === "rechazada" ? getRejectReason(x) : null;
 
   return (
     <article className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm ring-1 ring-black/5 hover:shadow-md transition-shadow">
       <div className={`absolute inset-y-0 left-0 w-1.5 ${tone.stripe}`} />
 
-      {/* Encabezado: ciclo, estatus, Grupo compacto + calificación */}
+      {/* Encabezado */}
       <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
@@ -160,7 +254,7 @@ function InscripcionCard({
             </h3>
             <Badge className={`rounded-full border px-3 ${tone.badge}`}>{meta.label}</Badge>
 
-            {/* NUEVO: tipo de trámite */}
+            {/* Tipo de trámite */}
             <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px]">
               Trámite: {isExencion ? "Exención" : "Pago"}
             </Badge>
@@ -189,7 +283,12 @@ function InscripcionCard({
               <span>{x.ciclo?.aula ?? "—"}</span>
             </div>
 
-            {/* Docente destacado */}
+            {/* (Opcional) Días abreviados */}
+            <div className="col-span-2 text-xs text-neutral-600">
+              {dias !== "—" ? `Días: ${dias}` : ""}
+            </div>
+
+            {/* Docente */}
             <div className="flex items-center gap-2 col-span-2">
               <User className="h-4 w-4 opacity-70" />
               <Badge variant="secondary" className="text-sm font-medium px-3 py-1 rounded-full">
@@ -257,17 +356,15 @@ function InscripcionCard({
           </div>
 
           {isExencion ? (
-            // ===== EXENCIÓN =====
+            /* ===== EXENCIÓN ===== */
             <div className="space-y-3 text-sm">
               <div>
                 <p className="text-neutral-500 text-xs">Tipo</p>
                 <p className="font-medium text-neutral-900">Exención de pago</p>
               </div>
-              <div>
-                <p className="text-neutral-500 text-xs">Comprobante de exención</p>
-                <p className="font-medium text-neutral-900">
-                  {x.comprobante_exencion?.filename ?? "—"}
-                </p>
+              <div className="space-y-1">
+                <p className="text-neutral-500 text-xs">Comprobante de</p>
+                <ArchivoLink inscId={x.id} tipo="exencion" meta={(x as any).comprobante_exencion as any} />
               </div>
               <div>
                 <p className="text-neutral-500 text-xs">Estado</p>
@@ -276,9 +373,20 @@ function InscripcionCard({
                   <span>{meta.label}</span>
                 </div>
               </div>
+
+              {/* Motivo de rechazo (si aplica) */}
+              {rejectReason && (
+                <div className="rounded-xl border border-red-200 bg-red-50/60 p-3">
+                  <p className="text-[11px] font-semibold text-red-800">Motivo del rechazo</p>
+                  <p className="mt-1 text-xs leading-snug text-red-900/90 whitespace-pre-wrap break-words">
+                    {rejectReason}
+                  </p>
+                </div>
+              )}
+
             </div>
           ) : (
-            // ===== PAGO =====
+            /* ===== PAGO ===== */
             <div className="space-y-3 text-sm">
               <div>
                 <p className="text-neutral-500 text-xs">Referencia</p>
@@ -292,12 +400,17 @@ function InscripcionCard({
                   {fmtMXNfromCentavos(x.importe_centavos)}
                 </p>
               </div>
-              <div>
-                <p className="text-neutral-500 text-xs">Comprobante de pago</p>
-                <p className="font-medium text-neutral-900">
-                  {x.comprobante?.filename ?? "—"}
-                </p>
+              <div className="space-y-1">
+                <p className="text-neutral-500 text-xs">Comprobante de</p>
+                <ArchivoLink inscId={x.id} tipo="comprobante" meta={(x as any).comprobante as any} />
               </div>
+              {/** Mostrar el de estudios cuando exista */}
+              {(x as any).comprobante_estudios && (
+                <div className="space-y-1">
+                  <p className="text-neutral-500 text-xs">Comprobante de</p>
+                  <ArchivoLink inscId={x.id} tipo="estudios" meta={(x as any).comprobante_estudios as any} />
+                </div>
+              )}
               <div>
                 <p className="text-neutral-500 text-xs">Estado</p>
                 <div className="flex items-center gap-2 font-medium text-neutral-900">
@@ -305,6 +418,16 @@ function InscripcionCard({
                   <span>{meta.label}</span>
                 </div>
               </div>
+
+              {/* Motivo de rechazo (si aplica) */}
+              {rejectReason && (
+                <div className="rounded-xl border border-red-200 bg-red-50/60 p-3">
+                  <p className="text-[11px] font-semibold text-red-800">Motivo del rechazo</p>
+                  <p className="mt-1 text-xs leading-snug text-red-900/90 whitespace-pre-wrap break-words">
+                    {rejectReason}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

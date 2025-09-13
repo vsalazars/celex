@@ -1,4 +1,3 @@
-// src/components/coordinator/sections/CoordinatorPlacement.tsx
 "use client";
 
 import * as React from "react";
@@ -64,7 +63,11 @@ const IDIOMAS_OPTS: { value: Idioma; label: string }[] = [
   { value: "portugues", label: "Portugués" },
 ];
 const idiomaLabel = (v: Idioma) => IDIOMAS_OPTS.find(i => i.value === v)?.label ?? v;
-const money = (n: number | null | undefined) => Number(n ?? 0).toFixed(2);
+
+const money = (n: number | null | undefined) =>
+  typeof n === "number"
+    ? n.toLocaleString("es-MX", { style: "currency", currency: "MXN" })
+    : (0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
 const authHeaders = () => {
   try {
@@ -101,6 +104,7 @@ type PlacementRegistroRow = {
   status: string;                     // "preinscrita" | "validada" | "rechazada" | "cancelada"
   created_at: string;                 // ISO
   comprobante?: { filename?: string | null } | null;
+  rechazo_motivo?: string | null;     // 👈 NUEVO: viene del back
 };
 
 /* ======================================================
@@ -309,7 +313,6 @@ export default function CoordinatorPlacement() {
     }
   };
 
-  // ✅ Versión sin window.prompt: recibe el motivo como argumento
   const rejectPago = async (regId: number, motivo: string) => {
     try {
       const res = await fetch(`${API_URL}/placement-exams/registros/${regId}/validate`, {
@@ -689,36 +692,48 @@ export default function CoordinatorPlacement() {
                   <TableHead>Salón</TableHead>
                   <TableHead>Duración</TableHead>
                   <TableHead>Cupo</TableHead>
+                  <TableHead>Disponible</TableHead>{/* 👈 NUEVO */}
                   <TableHead>Costo</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={9}>Cargando…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10}>Cargando…</TableCell></TableRow>
                 ) : items.length === 0 ? (
-                  <TableRow><TableCell colSpan={9}>Sin resultados</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10}>Sin resultados</TableCell></TableRow>
                 ) : (
-                  items.map((it) => (
-                    <TableRow key={it.id}>
-                      <TableCell className="font-medium">{(it as any).codigo ?? it.nombre}</TableCell>
-                      <TableCell><Badge variant="secondary">{idiomaLabel((it as any).idioma)}</Badge></TableCell>
-                      <TableCell>{it.fecha}</TableCell>
-                      <TableCell>{it.hora}</TableCell>
-                      <TableCell>{(it as any).salon ?? "-"}</TableCell>
-                      <TableCell>{it.duracion_min} min</TableCell>
-                      <TableCell>{it.cupo_total}</TableCell>
-                      <TableCell>${money((it as any).costo)}</TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Button variant="outline" size="sm" onClick={() => openPagos(it)}>
-                          Pagos
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={() => onDelete(it.id)}>
-                          Eliminar
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  items.map((it) => {
+                    const codigo = (it as any).codigo ?? it.nombre;
+                    const disponible = (it as any).cupo_disponible; // si el back lo envía
+                    return (
+                      <TableRow key={it.id}>
+                        <TableCell className="font-medium">{codigo}</TableCell>
+                        <TableCell><Badge variant="secondary">{idiomaLabel((it as any).idioma)}</Badge></TableCell>
+                        <TableCell>{it.fecha}</TableCell>
+                        <TableCell>{it.hora}</TableCell>
+                        <TableCell>{(it as any).salon ?? "-"}</TableCell>
+                        <TableCell>{it.duracion_min} min</TableCell>
+                        <TableCell>{it.cupo_total}</TableCell>
+                        <TableCell>
+                          {typeof disponible === "number" ? (
+                            <Badge variant={disponible > 0 ? "secondary" : "destructive"}>
+                              {disponible}
+                            </Badge>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell>{money((it as any).costo)}</TableCell>
+                        <TableCell className="text-right space-x-2">
+                          <Button variant="outline" size="sm" onClick={() => openPagos(it)}>
+                            Pagos
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => onDelete(it.id)}>
+                            Eliminar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -774,21 +789,23 @@ export default function CoordinatorPlacement() {
                   <TableHead>Importe</TableHead>
                   <TableHead>Fecha pago</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Motivo rechazo</TableHead>{/* 👈 NUEVO */}
                   <TableHead>Creado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {payLoading ? (
-                  <TableRow><TableCell colSpan={7}>Cargando…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8}>Cargando…</TableCell></TableRow>
                 ) : payRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={7}>Sin registros</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8}>Sin registros</TableCell></TableRow>
                 ) : (
                   payRows.map((r) => {
                     const nombre =
                       (r.alumno?.first_name?.trim() || "") +
                       (r.alumno?.last_name ? ` ${r.alumno?.last_name}` : "");
                     const status = (r.status || "").toLowerCase();
+                    const motivo = (r.rechazo_motivo ?? "").trim();
                     return (
                       <TableRow key={r.id}>
                         <TableCell className="max-w-[220px]">
@@ -814,6 +831,13 @@ export default function CoordinatorPlacement() {
                           }>
                             {status.charAt(0).toUpperCase() + status.slice(1)}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {motivo ? (
+                            <span className="inline-block max-w-[260px] truncate" title={motivo}>
+                              {motivo}
+                            </span>
+                          ) : "—"}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {new Date(r.created_at).toLocaleString()}

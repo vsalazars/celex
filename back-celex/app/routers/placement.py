@@ -1,7 +1,7 @@
 # app/routers/placement.py
 from __future__ import annotations
 
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import os
 
 from fastapi import (
@@ -15,7 +15,7 @@ from fastapi import (
     Response,
 )
 from fastapi.responses import FileResponse
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
@@ -33,8 +33,7 @@ from ..schemas import (
     PlacementOut,
     PlacementList,
     PlacementRegistroOut,
-    PlacementExamMini,  # 👈 AÑADE ESTO
-
+    PlacementExamMini,  # 👈 usado en /mis-registros
 )
 
 router = APIRouter(prefix="/placement-exams", tags=["placement"])
@@ -54,6 +53,12 @@ ALLOWED_MIME = {
     "image/jpeg",
     "image/webp",
 }
+
+ACTIVE_REG_STATUSES: Tuple[PlacementRegistroStatus, ...] = (
+    PlacementRegistroStatus.PREINSCRITA,
+    PlacementRegistroStatus.VALIDADA,
+)
+
 
 async def _save_upload(file: UploadFile | None, env_dir_key: str, default_dir: str, max_mb: int = 5):
     """
@@ -98,10 +103,64 @@ def _comprobante_to_meta(path: str | None, mime: str | None, size: int | None):
     }
 
 
+def _serialize_exam_with_disponibles(exam: PlacementExam, ocupados: int):
+    disponibles = max(0, (exam.cupo_total or 0) - (ocupados or 0))
+    return {
+        "id": exam.id,
+        "codigo": exam.codigo,
+        "nombre": getattr(exam, "nombre", None),
+        "idioma": exam.idioma,
+        "fecha": getattr(exam, "fecha", None),
+        "hora": getattr(exam, "hora", None),
+        "salon": getattr(exam, "salon", None),
+        "duracion_min": getattr(exam, "duracion_min", 60),
+        "cupo_total": getattr(exam, "cupo_total", 0),
+        "costo": getattr(exam, "costo", None),
+        "docente_id": getattr(exam, "docente_id", None),
+        "instrucciones": getattr(exam, "instrucciones", None),
+        "modalidad": getattr(exam, "modalidad", None),
+        "nivel_objetivo": getattr(exam, "nivel_objetivo", None),
+        "estado": getattr(exam, "estado", None),
+        "link_registro": getattr(exam, "link_registro", None),
+        "activo": getattr(exam, "activo", True),
+        # 👇 nuevos
+        "cupo_disponible": disponibles,
+        "registros_ocupados": int(ocupados or 0),
+    }
+
+
+def _ocupados_subquery(db: Session):
+    """
+    Subquery: cuenta registros por examen con estatus que ocupan lugar.
+    """
+    return (
+        db.query(
+            PlacementRegistro.exam_id.label("exam_id"),
+            func.count(PlacementRegistro.id).label("ocupados"),
+        )
+        .filter(PlacementRegistro.status.in_(ACTIVE_REG_STATUSES))
+        .group_by(PlacementRegistro.exam_id)
+        .subquery()
+    )
+
+
+def _ocupados_for_exam(db: Session, exam_id: int) -> int:
+    return (
+        db.query(func.count(PlacementRegistro.id))
+        .filter(
+            PlacementRegistro.exam_id == exam_id,
+            PlacementRegistro.status.in_(ACTIVE_REG_STATUSES),
+        )
+        .scalar()
+        or 0
+    )
+
+
 # ==========================
 # RUTAS ESTÁTICAS (van primero)
 # ==========================
-@router.get("/public", response_model=PlacementList)
+# ⚠️ Sin response_model para no filtrar campos extra (cupo_disponible)
+@router.get("/public")
 def list_public(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
@@ -116,8 +175,12 @@ def list_public(
     pages = max(1, (total + page_size - 1) // page_size)
     page = min(max(1, page), pages)
 
+    sub = _ocupados_subquery(db)
+
     rows = (
-        q.order_by(
+        q.outerjoin(sub, PlacementExam.id == sub.c.exam_id)
+        .with_entities(PlacementExam, func.coalesce(sub.c.ocupados, 0))
+        .order_by(
             PlacementExam.fecha.asc().nullslast(),
             PlacementExam.hora.asc().nullslast(),
             PlacementExam.id.asc(),
@@ -127,7 +190,8 @@ def list_public(
         .all()
     )
 
-    return {"items": rows, "page": page, "pages": pages, "total": total}
+    items = [_serialize_exam_with_disponibles(exam, ocupados) for exam, ocupados in rows]
+    return {"items": items, "page": page, "pages": pages, "total": total}
 
 
 @router.get("/mis-registros", response_model=List[PlacementRegistroOut])
@@ -184,7 +248,6 @@ def my_registros(
             )
         )
     return out
-
 
 
 @router.get("/registros/{registro_id}/comprobante")
@@ -247,7 +310,8 @@ def list_teachers(db: Session = Depends(get_db)):
     ]
 
 
-@router.get("", response_model=PlacementList)
+# ⚠️ Sin response_model para no filtrar cupo_disponible
+@router.get("")
 def list_placement_exams(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -278,8 +342,12 @@ def list_placement_exams(
     pages = max(1, (total + page_size - 1) // page_size)
     page = min(max(1, page), pages)
 
+    sub = _ocupados_subquery(db)
+
     rows = (
-        query.order_by(
+        query.outerjoin(sub, PlacementExam.id == sub.c.exam_id)
+        .with_entities(PlacementExam, func.coalesce(sub.c.ocupados, 0))
+        .order_by(
             PlacementExam.fecha.desc().nullslast(),
             PlacementExam.hora.desc().nullslast(),
             PlacementExam.id.desc(),
@@ -289,15 +357,19 @@ def list_placement_exams(
         .all()
     )
 
-    return {"items": rows, "page": page, "pages": pages, "total": total}
+    items = [_serialize_exam_with_disponibles(exam, ocupados) for exam, ocupados in rows]
+    return {"items": items, "page": page, "pages": pages, "total": total}
 
 
-@router.get("/{exam_id}", response_model=PlacementOut)
+# ⚠️ Sin response_model para incluir cupo_disponible en el detalle
+@router.get("/{exam_id}")
 def get_placement_exam(exam_id: int, db: Session = Depends(get_db)):
     exam = db.get(PlacementExam, exam_id)  # type: ignore[attr-defined]
     if not exam:
         raise HTTPException(status_code=404, detail="Examen no encontrado")
-    return exam
+
+    ocupados = _ocupados_for_exam(db, exam_id)
+    return _serialize_exam_with_disponibles(exam, ocupados)
 
 
 @router.post("", response_model=PlacementOut, status_code=201)
@@ -348,6 +420,12 @@ async def create_registro(
     exam = db.get(PlacementExam, exam_id)  # type: ignore[attr-defined]
     if not exam or not bool(exam.activo):
         raise HTTPException(status_code=404, detail="Examen no disponible")
+
+    # 1.1) Bloquear sobrecupo
+    ocupados = _ocupados_for_exam(db, exam_id)
+    cupo_total = int(getattr(exam, "cupo_total", 0) or 0)
+    if ocupados >= cupo_total:
+        raise HTTPException(status_code=409, detail="No hay lugares disponibles")
 
     # 2) Leer form-data
     form = await request.form()

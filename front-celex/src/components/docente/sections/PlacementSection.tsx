@@ -37,7 +37,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 // ───────────────────────────────────────────────────────────────────────────────
-// Tipos locales (no dependemos de lib/types)
+// Tipos locales
 interface PlacementExamAsignado {
   id: number | string;
   titulo?: string;
@@ -71,11 +71,15 @@ function getApiUrl(): string {
 }
 
 function getToken(): string | null {
-  return (
-    localStorage.getItem("celex_token") ||
-    localStorage.getItem("token") ||
-    null
-  );
+  try {
+    return (
+      localStorage.getItem("celex_token") ||
+      localStorage.getItem("token") ||
+      null
+    );
+  } catch {
+    return null;
+  }
 }
 
 function formatDate(iso?: string) {
@@ -130,7 +134,6 @@ async function fetchRegistrosPorExamen(examId: string | number): Promise<Registr
   if (!token) throw new Error("UNAUTHORIZED");
   const API = getApiUrl();
 
-  // Intentamos varios posibles endpoints
   const candidates = [
     // Admin/coord style
     `${API}/placement-exams/${examId}/registros-admin`,
@@ -290,10 +293,6 @@ export default function PlacementSection() {
     } finally {
       setRegLoading(false);
     }
-  };
-
-  const handleNivelChange = (registroId: string | number, value: string) => {
-    setNivelUIByRegId((prev) => ({ ...prev, [String(registroId)]: value }));
   };
 
   const handleGuardarNivel = async (r: RegistroAlumno) => {
@@ -466,7 +465,9 @@ export default function PlacementSection() {
                                 <Label className="text-xs text-neutral-500">Nivel a cursar</Label>
                                 <Select
                                   value={seleccionado}
-                                  onValueChange={(v) => setNivelUIByRegId((p) => ({ ...p, [id]: v }))}
+                                  onValueChange={(v) =>
+                                    setNivelUIByRegId((p) => ({ ...p, [id]: v }))
+                                  }
                                   disabled={saving}
                                 >
                                   <SelectTrigger className="w-48">
@@ -501,7 +502,7 @@ export default function PlacementSection() {
             <Separator />
             <SheetFooter className="p-3">
               <div className="text-xs text-neutral-500">
-                © {new Date().getFullYear()} CELEX · CECyT 7 "Cuauhtémoc"
+                © {new Date().getFullYear()} CELEX · CECyT 15 "Diódoro Antúnez"
               </div>
             </SheetFooter>
           </div>
