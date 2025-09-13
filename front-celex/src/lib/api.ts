@@ -498,46 +498,152 @@ export async function listCiclosPublic(params: any = {}) {
   return apiFetch(url, { auth: false }); // <-- sin Authorization
 }
 
+
+
 // src/lib/api.ts
-import type { PlacementListResp, PlacementExam } from "./types";
+import type { Paginated, PlacementExam, PlacementExamCreateDTO, Idioma } from "./types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+// Base de los endpoints en el backend
+const PLACEMENT_BASE = "/placement-exams";
 
-export async function listPlacement(params: {
-  page?: number; page_size?: number; q?: string; idioma?: string; estado?: string;
-}) {
-  const u = new URL(`${API_URL}/placement-exams`);
-  Object.entries(params || {}).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
-  });
-  const res = await fetch(u.toString(), { cache: "no-store" });
-  if (!res.ok) throw new Error("No se pudo cargar la lista de exámenes");
-  return res.json() as Promise<PlacementListResp>;
+// ===== Listar con paginación y filtros =====
+export async function listPlacementExams(params?: {
+  page?: number;
+  page_size?: number;
+  q?: string;
+  idioma?: Idioma;
+  fecha_from?: string; // "YYYY-MM-DD"
+  fecha_to?: string;   // "YYYY-MM-DD"
+}): Promise<Paginated<PlacementExam>> {
+  const s = new URLSearchParams();
+  if (params?.page != null) s.set("page", String(params.page));
+  if (params?.page_size != null) s.set("page_size", String(params.page_size));
+  if (params?.q) s.set("q", params.q);
+  if (params?.idioma) s.set("idioma", params.idioma);
+  if (params?.fecha_from) s.set("fecha_from", params.fecha_from);
+  if (params?.fecha_to) s.set("fecha_to", params.fecha_to);
+
+  return apiFetch<Paginated<PlacementExam>>(
+    `${PLACEMENT_BASE}?${s.toString()}`,
+    { method: "GET", auth: true }
+  );
 }
 
-export async function createPlacement(payload: Partial<PlacementExam>) {
-  const res = await fetch(`${API_URL}/placement-exams`, {
-    method: "POST",
+// Alias para compatibilidad con código viejo que use listPlacement
+export const listPlacement = listPlacementExams;
+
+// ===== Crear nuevo examen =====
+export async function createPlacementExam(payload: PlacementExamCreateDTO): Promise<PlacementExam> {
+  return apiFetch<PlacementExam>(PLACEMENT_BASE, {
+    method: "POST", auth: true,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("No se pudo crear el examen");
-  return res.json() as Promise<PlacementExam>;
 }
 
-export async function updatePlacement(id: number, payload: Partial<PlacementExam>) {
-  const res = await fetch(`${API_URL}/placement-exams/${id}`, {
-    method: "PUT",
+// ===== Actualizar examen existente =====
+export async function updatePlacementExam(
+  id: number,
+  patch: Partial<PlacementExamCreateDTO>
+): Promise<PlacementExam> {
+  return apiFetch<PlacementExam>(`${PLACEMENT_BASE}/${id}`, { auth: true,
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(patch),
   });
-  if (!res.ok) throw new Error("No se pudo actualizar el examen");
-  return res.json() as Promise<PlacementExam>;
 }
 
-export async function deletePlacement(id: number) {
-  const res = await fetch(`${API_URL}/placement-exams/${id}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) throw new Error("No se pudo eliminar el examen");
+// ===== Eliminar examen =====
+export async function deletePlacementExam(id: number): Promise<void> {
+  await apiFetch<void>(`${PLACEMENT_BASE}/${id}`, { method: "DELETE", auth: true });
+}
+
+
+
+export async function listPlacementPublic(params?: { q?: string; idioma?: string }) {
+  const search = new URLSearchParams(params as any).toString();
+  return apiFetch(`/placement-exams/public${search ? `?${search}` : ""}`);
+}
+
+export async function createPlacementRegistro(examId: number, fd: FormData) {
+  // fd: referencia, importe_centavos, fecha_pago, comprobante (File)
+  return apiFetch(`/placement-exams/${examId}/registros`, { method: "POST", body: fd, auth: true });
+}
+
+export async function listMyPlacementRegistros() {
+  return apiFetch(`/placement-exams/mis-registros`, { auth: true });
+}
+
+export async function cancelPlacementRegistro(id: number) {
+  return apiFetch(`/placement-exams/registros/${id}`, { method: "DELETE", auth: true });
+}
+
+
+// === NUEVO: helpers para descargas autenticadas (no JSON) ===
+export async function apiFetchBlobResponse(
+  input: string,
+  init?: RequestInit & { auth?: boolean }
+): Promise<Response> {
+  const headers = new Headers(init?.headers || {});
+  if (!headers.has("Accept")) headers.set("Accept", "*/*");
+
+  if (init?.auth) {
+    const token = getToken();
+    if (!token) throw new Error("Sesión inválida");
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const res = await fetch(input, { ...init, headers, cache: "no-store" });
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      try { clearSession(); } catch {}
+      throw new Error("No autorizado. Vuelve a iniciar sesión.");
+    }
+    let detail = `Error ${res.status}`;
+    try {
+      const j = await res.clone().json();
+      detail = j?.detail || j?.message || detail;
+    } catch {
+      try {
+        const t = await res.clone().text();
+        if (t) detail = t;
+      } catch {}
+    }
+    throw new Error(detail);
+  }
+
+  return res; // el caller hará .blob()
+}
+
+export function inferFilenameFromResponse(resp: Response): string | null {
+  const cd = resp.headers.get("content-disposition") || "";
+  const m = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(cd);
+  if (m?.[1]) return decodeURIComponent(m[1].replace(/\"/g, ""));
+  return null;
+}
+
+export async function forceDownloadFromResponse(
+  resp: Response,
+  fallbackName: string = "archivo"
+) {
+  const blob = await resp.blob();
+  const objUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objUrl;
+  a.download = inferFilenameFromResponse(resp) || fallbackName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objUrl);
+}
+
+// === NUEVO: función específica para el comprobante de placement ===
+export async function downloadPlacementComprobante(
+  registroId: number,
+  suggestedName?: string
+) {
+  const url = buildURL(`/placement-exams/registros/${registroId}/comprobante`);
+  const resp = await apiFetchBlobResponse(url, { auth: true, method: "GET" });
+  await forceDownloadFromResponse(resp, suggestedName || `comprobante_${registroId}`);
 }

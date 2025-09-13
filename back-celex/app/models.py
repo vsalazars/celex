@@ -1,14 +1,16 @@
+# app/models.py
 import enum
 from sqlalchemy import (
     Column, Integer, String, Date, Time, Text, DateTime,
     Boolean, CheckConstraint, UniqueConstraint, ForeignKey, Numeric, func
 )
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import relationship
 from sqlalchemy.types import Enum as SAEnum
 from datetime import datetime
 
-Base = declarative_base()
+# 👇 Usa SIEMPRE el Base único del proyecto
+from .database import Base
 
 
 # -------------------- Enums base --------------------
@@ -254,20 +256,85 @@ class Evaluacion(Base):
     )
 
 
+# -------------------- Modelo PlacementExam --------------------
 class PlacementExam(Base):
     __tablename__ = "placement_exams"
+    __table_args__ = (
+        UniqueConstraint("codigo", name="uq_placement_codigo"),
+        CheckConstraint("cupo_total >= 0", name="ck_place_cupo_nonneg"),
+        CheckConstraint("duracion_min > 0", name="ck_place_duracion_pos"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(120), nullable=False, index=True)
-    idioma = Column(String(30), nullable=False, index=True)  # ingles | frances | ...
-    modalidad = Column(String(30), nullable=True)            # presencial | en_linea
-    fecha = Column(Date, nullable=True)
-    hora = Column(Time, nullable=True)
-    duracion_min = Column(Integer, nullable=True, default=60)
-    cupo_total = Column(Integer, nullable=True, default=0)
-    costo = Column(Integer, nullable=True)                   # opcional (en MXN)
-    nivel_objetivo = Column(String(10), nullable=True)       # A1..C2
-    estado = Column(String(20), nullable=False, default="borrador")  # borrador | publicado | cerrado
+
+    # NUEVOS / ajustados
+    codigo = Column(String(50), nullable=False, index=True)     # único por __table_args__
+    idioma = Column(String(30), nullable=False, index=True)     # ingles | frances | ...
+    fecha = Column(Date, nullable=False)
+    hora = Column(Time, nullable=False)
+
+    salon = Column(String(120), nullable=True)
+    duracion_min = Column(Integer, nullable=False, default=60)
+    cupo_total = Column(Integer, nullable=False, default=0)
+    costo = Column(Integer, nullable=True)                      # MXN opcional (en pesos o centavos según tu decisión global)
+
+    docente_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    docente = relationship("User", foreign_keys=[docente_id], lazy="joined")
+
+    # existentes
+    nombre = Column(String(120), nullable=False, index=True)    # puedes usar nombre=codigo o un título más legible
+    modalidad = Column(String(30), nullable=True)
+    nivel_objetivo = Column(String(10), nullable=True)
+    estado = Column(String(20), nullable=False, default="borrador")
     instrucciones = Column(Text, nullable=True)
     link_registro = Column(String(255), nullable=True)
     activo = Column(Boolean, nullable=False, default=True)
+
+
+# -------------------- Enums y Modelo PlacementRegistro --------------------
+class PlacementRegistroStatus(str, enum.Enum):
+    PREINSCRITA = "preinscrita"
+    VALIDADA    = "validada"
+    RECHAZADA   = "rechazada"
+    CANCELADA   = "cancelada"
+
+
+class PlacementRegistro(Base):
+    __tablename__ = "placement_registros"
+
+    id = Column(Integer, primary_key=True)
+
+    alumno_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    exam_id   = Column(Integer, ForeignKey("placement_exams.id", ondelete="CASCADE"), index=True, nullable=False)
+
+    # Opción A (sigue con varchar en BD): usa String(20)
+    # status = Column(String(20), nullable=False, default="preinscrita")
+
+    # Opción B (ENUM Python; si migras a ENUM nativo o usas native_enum=False)
+    status = Column(SAEnum(PlacementRegistroStatus, native_enum=False), nullable=False, default=PlacementRegistroStatus.PREINSCRITA)
+
+    referencia = Column(String(50), nullable=True)
+    importe_centavos = Column(Integer, nullable=True)
+    fecha_pago = Column(Date, nullable=True)
+
+    comprobante_path = Column(String(255), nullable=True)
+    comprobante_mime = Column(String(100), nullable=True)
+    comprobante_size = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # ✅ NUEVO: campos de validación / rechazo
+    rechazo_motivo   = Column(Text, nullable=True, default=None)
+    validation_notes = Column(Text, nullable=True, default=None)
+    validated_by_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    validated_at     = Column(DateTime(timezone=True), nullable=True)
+
+    # Relaciones
+    alumno = relationship("User", foreign_keys=[alumno_id], backref="placement_registros")
+    exam   = relationship("PlacementExam", foreign_keys=[exam_id], backref="registros")
+    validated_by = relationship("User", foreign_keys=[validated_by_id])  # opcional
+
+    __table_args__ = (
+        UniqueConstraint("alumno_id", "exam_id", name="uq_alumno_exam"),
+        CheckConstraint("(importe_centavos IS NULL) OR (importe_centavos >= 0)", name="ck_pago_no_neg"),
+    )

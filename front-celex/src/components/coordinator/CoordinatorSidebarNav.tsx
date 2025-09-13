@@ -42,7 +42,7 @@ export default function CoordinatorSidebarNav({
     { key: "groups",        label: "Grupos",        icon: <Layers className="h-4 w-4" /> },
     { key: "students",      label: "Alumnos",       icon: <Users className="h-4 w-4" /> },
     { key: "inscripciones", label: "Inscripciones", icon: <ClipboardCheck className="h-4 w-4" /> }, // 👈 NUEVO
-    { key: "placement",     label: "Examen de colocación",  icon: <FileSearch className="h-4 w-4" /> }, // 👈 NUEVO
+    { key: "placement",     label: "Colocación",  icon: <FileSearch className="h-4 w-4" /> }, // 👈 NUEVO
     { key: "reports",       label: "Reportes",      icon: <BarChart3 className="h-4 w-4" /> },
     { key: "settings",      label: "Configuración", icon: <Settings2 className="h-4 w-4" /> },
     { key: "security",      label: "Seguridad",     icon: <Shield className="h-4 w-4" /> },

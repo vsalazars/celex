@@ -1,420 +1,995 @@
+// src/components/coordinator/sections/CoordinatorPlacement.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import * as React from "react";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
+
+import type { Idioma, PlacementExam, Paginated } from "@/lib/types";
+import { API_URL } from "@/lib/constants";
+import { getToken } from "@/lib/sessions";
+
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Table, TableHeader, TableHead, TableRow, TableCell, TableBody,
+} from "@/components/ui/table";
+import {
+  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
+  Form, FormField, FormItem, FormLabel, FormMessage, FormControl,
+} from "@/components/ui/form";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+  Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import {
-  Plus, Pencil, Trash2, CalendarDays, Clock3, Search, FilterX,
-} from "lucide-react";
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+} from "@/components/ui/sheet";
 
-import type { PlacementExam } from "@/lib/types";
-import {
-  listPlacement, createPlacement, updatePlacement, deletePlacement,
-} from "@/lib/api";
+import { Label } from "@/components/ui/label";
 
-/* ===== Helpers ===== */
-const fmtDate = (iso?: string | null) => {
-  if (!iso) return "—";
-  const dt = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(dt.getTime())) return "—";
-  const day = dt.getDate();
-  const month = dt.toLocaleString("es-MX", { month: "short" });
-  const year = dt.getFullYear();
-  return `${day}/${month.charAt(0).toUpperCase() + month.slice(1)}/${year}`;
+/* ======================================================
+                    Validación (Zod)
+   ====================================================== */
+const idiomas: Idioma[] = ["ingles", "frances", "aleman", "italiano", "portugues"];
+
+const createSchema = z.object({
+  codigo: z.string().min(2, "Requerido"),
+  idioma: z.enum([idiomas[0], ...idiomas.slice(1)] as [Idioma, ...Idioma[]]),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Formato YYYY-MM-DD"),
+  hora: z.string().regex(/^\d{2}:\d{2}$/, "Formato HH:mm"),
+  salon: z.string().max(120).optional(),
+  duracion_min: z.coerce.number().int().positive("Minutos > 0"),
+  cupo_total: z.coerce.number().int().nonnegative("Cupo ≥ 0"),
+  costo: z.coerce.number().nonnegative("No puede ser negativo").optional(),
+  docente_id: z.coerce.number().int().optional(),
+  instrucciones: z.string().optional(),
+});
+type CreateFormValues = z.infer<typeof createSchema>;
+
+/* ======================================================
+                       Helpers
+   ====================================================== */
+const IDIOMAS_OPTS: { value: Idioma; label: string }[] = [
+  { value: "ingles", label: "Inglés" },
+  { value: "frances", label: "Francés" },
+  { value: "aleman", label: "Alemán" },
+  { value: "italiano", label: "Italiano" },
+  { value: "portugues", label: "Portugués" },
+];
+const idiomaLabel = (v: Idioma) => IDIOMAS_OPTS.find(i => i.value === v)?.label ?? v;
+const money = (n: number | null | undefined) => Number(n ?? 0).toFixed(2);
+
+const authHeaders = () => {
+  try {
+    const t = typeof getToken === "function" ? getToken() : null;
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  } catch {
+    return {};
+  }
 };
-const fmtTime = (t?: string | null) => (t ? t.slice(0, 5) : "—");
 
-const estados = ["borrador", "publicado", "cerrado"] as const;
-const idiomas = ["ingles", "frances", "aleman", "italiano", "portugues"] as const;
+function inferFilenameFromResponse(resp: Response): string | null {
+  const cd = resp.headers.get("content-disposition") || "";
+  const match = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(cd);
+  if (match?.[1]) return decodeURIComponent(match[1].replace(/\"/g, ""));
+  return null;
+}
 
-type Estado = typeof estados[number];
-type Idioma = typeof idiomas[number];
+/* ======================================================
+                     Tipos de pagos (UI)
+   ====================================================== */
+type RegAlumno = {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  boleta?: string | null;
+} | null;
 
+type PlacementRegistroRow = {
+  id: number;
+  alumno?: RegAlumno;
+  referencia?: string | null;
+  importe_centavos?: number | null;
+  fecha_pago?: string | null;         // "YYYY-MM-DD"
+  status: string;                     // "preinscrita" | "validada" | "rechazada" | "cancelada"
+  created_at: string;                 // ISO
+  comprobante?: { filename?: string | null } | null;
+};
+
+/* ======================================================
+                   Componente principal
+   ====================================================== */
 export default function CoordinatorPlacement() {
-  // Listado / filtros / paginación
-  const [items, setItems] = useState<PlacementExam[]>([]);
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
-  const [q, setQ] = useState("");
-  const [estado, setEstado] = useState<Estado | undefined>();
-  const [idioma, setIdioma] = useState<Idioma | undefined>();
-  const [loading, setLoading] = useState(true);
+  /* ======= Listado de exámenes ======= */
+  const [items, setItems] = React.useState<PlacementExam[]>([]);
+  const [total, setTotal] = React.useState(0);
+  const [page, setPage] = React.useState(1);
+  const [pageSize] = React.useState(10);
+  const [q, setQ] = React.useState("");
+  const [loading, setLoading] = React.useState(true);
 
-  // Formulario
-  const [openForm, setOpenForm] = useState(false);
-  const [editing, setEditing] = useState<PlacementExam | null>(null);
+  /* ======= Docentes (select) ======= */
+  type Teacher = { id: number; name: string };
+  const [teachers, setTeachers] = React.useState<Teacher[]>([]);
+  const [loadingTeachers, setLoadingTeachers] = React.useState(false);
 
-  const hasAnyFilter = useMemo(() => !!(q.trim() || estado || idioma), [q, estado, idioma]);
+  const fetchTeachers = React.useCallback(async () => {
+    setLoadingTeachers(true);
+    try {
+      const res = await fetch(`${API_URL}/placement-exams/teachers`, {
+        headers: { ...authHeaders() },
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = (await res.json()) as Teacher[];
+      setTeachers(data);
+    } catch (e: any) {
+      toast.error(e?.message ?? "No se pudieron cargar docentes");
+      setTeachers([]);
+    } finally {
+      setLoadingTeachers(false);
+    }
+  }, []);
 
-  async function reload(p = page) {
+  const fetchList = React.useCallback(async () => {
     setLoading(true);
     try {
-      const resp = await listPlacement({
-        page: p,
-        page_size: 10,
-        q: q.trim() || undefined,
-        estado,
-        idioma,
+      const url = new URL(`${API_URL}/placement-exams`);
+      url.searchParams.set("page", String(page));
+      url.searchParams.set("page_size", String(pageSize));
+      if (q) url.searchParams.set("q", q);
+
+      const res = await fetch(url.toString(), {
+        headers: { ...authHeaders() },
+        cache: "no-store",
       });
-      setItems(resp.items);
-      setPages(resp.pages);
-      setPage(p);
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Error ${res.status}`);
+      }
+      const data = (await res.json()) as Paginated<PlacementExam>;
+      setItems(data.items ?? []);
+      setTotal(data.total ?? 0);
     } catch (e: any) {
-      toast.error(e.message || "No se pudo cargar la lista");
+      toast.error(e?.message ?? "No se pudo cargar la lista");
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, pageSize, q]);
 
-  useEffect(() => {
-    reload(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, estado, idioma]);
+  React.useEffect(() => {
+    fetchList();
+  }, [fetchList]);
 
-  useEffect(() => {
-    reload(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  /* ======= Crear examen (modal) ======= */
+  const [open, setOpen] = React.useState(false);
 
-  function startCreate() {
-    setEditing(null);
-    setOpenForm(true);
-  }
-  function startEdit(it: PlacementExam) {
-    setEditing(it);
-    setOpenForm(true);
-  }
-  async function onDelete(it: PlacementExam) {
+  const form = useForm<CreateFormValues>({
+    resolver: zodResolver(createSchema),
+    defaultValues: {
+      codigo: "",
+      idioma: "ingles",
+      fecha: "",
+      hora: "",
+      salon: "",
+      duracion_min: 90,
+      cupo_total: 30,
+      costo: 0,
+      docente_id: undefined,
+      instrucciones: "",
+    },
+    mode: "onBlur",
+  });
+
+  React.useEffect(() => {
+    if (open && teachers.length === 0) fetchTeachers();
+  }, [open, teachers.length, fetchTeachers]);
+
+  const [saving, setSaving] = React.useState(false);
+
+  const onCreate = async (values: CreateFormValues) => {
+    setSaving(true);
     try {
-      await deletePlacement(it.id);
+      const payload = {
+        codigo: values.codigo.trim(),
+        nombre: values.codigo.trim(),
+        idioma: values.idioma,
+        fecha: values.fecha,
+        hora: values.hora,
+        salon: values.salon?.trim() || undefined,
+        duracion_min: values.duracion_min,
+        cupo_total: values.cupo_total,
+        costo: values.costo ?? undefined,
+        docente_id: values.docente_id ?? undefined,
+        instrucciones: values.instrucciones?.trim() || undefined,
+      };
+
+      const res = await fetch(`${API_URL}/placement-exams`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Error ${res.status}`);
+      }
+
+      toast.success("Examen de colocación creado");
+      setOpen(false);
+      form.reset();
+      setPage(1);
+      fetchList();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error al crear el examen");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onDelete = async (id: number) => {
+    if (!confirm("¿Eliminar este examen?")) return;
+    try {
+      const res = await fetch(`${API_URL}/placement-exams/${id}`, {
+        method: "DELETE",
+        headers: { ...authHeaders() },
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Error ${res.status}`);
+      }
       toast.success("Examen eliminado");
-      reload();
+      fetchList();
     } catch (e: any) {
-      toast.error(e.message || "No se pudo eliminar");
+      toast.error(e?.message ?? "No se pudo eliminar");
     }
-  }
+  };
 
-  function clearFilters() {
-    setQ("");
-    setEstado(undefined);
-    setIdioma(undefined);
-  }
+  /* ======================================================
+                Validación de pagos: Sheet lateral
+     ====================================================== */
+  const [payOpen, setPayOpen] = React.useState(false);
+  const [payExam, setPayExam] = React.useState<PlacementExam | null>(null);
+  const [payLoading, setPayLoading] = React.useState(false);
+  const [payRows, setPayRows] = React.useState<PlacementRegistroRow[]>([]);
 
-  async function onSubmitForm(form: FormData) {
-    const payload = {
-      nombre: String(form.get("nombre") || "").trim(),
-      idioma: String(form.get("idioma") || "").trim() || "ingles",
-      modalidad: String(form.get("modalidad") || "").trim() || undefined,
-      fecha: String(form.get("fecha") || "") || undefined,
-      hora: String(form.get("hora") || "") || undefined,
-      duracion_min: Number(form.get("duracion_min") || 60),
-      cupo_total: Number(form.get("cupo_total") || 0),
-      costo: form.get("costo") ? Number(form.get("costo")) : undefined,
-      nivel_objetivo: String(form.get("nivel_objetivo") || "").trim() || undefined,
-      estado: String(form.get("estado") || "borrador"),
-      instrucciones: String(form.get("instrucciones") || "").trim() || undefined,
-      link_registro: String(form.get("link_registro") || "").trim() || undefined,
-      activo: form.get("activo") === "on",
-    } as Partial<PlacementExam>;
-
+  const fetchPagos = React.useCallback(async (examId: number) => {
+    setPayLoading(true);
     try {
-      if (!payload.nombre) {
-        toast.error("El nombre es obligatorio");
-        return;
+      const res = await fetch(`${API_URL}/placement-exams/${examId}/registros-admin`, {
+        headers: { ...authHeaders() },
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Error ${res.status}`);
       }
-      if (editing) {
-        await updatePlacement(editing.id, payload);
-        toast.success("Examen actualizado");
-      } else {
-        await createPlacement(payload);
-        toast.success("Examen creado");
-      }
-      setOpenForm(false);
-      setEditing(null);
-      reload();
+      const data = await res.json();
+      const items: PlacementRegistroRow[] = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
+      setPayRows(items);
     } catch (e: any) {
-      toast.error(e.message || "Error al guardar");
+      toast.error(e?.message || "No se pudieron cargar los pagos");
+      setPayRows([]);
+    } finally {
+      setPayLoading(false);
     }
-  }
+  }, []);
 
+  const openPagos = (exam: PlacementExam) => {
+    setPayExam(exam);
+    setPayOpen(true);
+    fetchPagos(exam.id);
+  };
+
+  const canValidate = (s: string) => (s || "").toLowerCase() === "preinscrita";
+
+  const approvePago = async (regId: number) => {
+    try {
+      const res = await fetch(`${API_URL}/placement-exams/registros/${regId}/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ action: "APPROVE" }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Error ${res.status}`);
+      }
+      toast.success("Pago validado");
+      if (payExam) fetchPagos(payExam.id);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo validar el pago");
+    }
+  };
+
+  // ✅ Versión sin window.prompt: recibe el motivo como argumento
+  const rejectPago = async (regId: number, motivo: string) => {
+    try {
+      const res = await fetch(`${API_URL}/placement-exams/registros/${regId}/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ action: "REJECT", motivo }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Error ${res.status}`);
+      }
+      toast.success("Pago rechazado");
+      if (payExam) fetchPagos(payExam.id);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo rechazar el pago");
+    }
+  };
+
+  const downloadComprobanteAdmin = async (regId: number) => {
+    try {
+      const res = await fetch(`${API_URL}/placement-exams/registros/${regId}/comprobante-admin`, {
+        headers: { ...authHeaders(), Accept: "*/*" },
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Error ${res.status}`);
+      }
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = inferFilenameFromResponse(res) || `comprobante_${regId}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objUrl);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo descargar el comprobante");
+    }
+  };
+
+  /* ====== PREVIEW MODAL (Ver comprobante) ====== */
+  const [viewerOpen, setViewerOpen] = React.useState(false);
+  const [viewerUrl, setViewerUrl] = React.useState<string | null>(null);
+  const [viewerMime, setViewerMime] = React.useState<string | null>(null);
+  const [viewerName, setViewerName] = React.useState<string>("comprobante");
+
+  const openViewer = async (regId: number) => {
+    try {
+      const res = await fetch(`${API_URL}/placement-exams/registros/${regId}/comprobante-admin`, {
+        headers: { ...authHeaders(), Accept: "*/*" },
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Error ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const mime = blob.type || res.headers.get("content-type") || "";
+      const name = inferFilenameFromResponse(res) || `comprobante_${regId}`;
+      if (viewerUrl) URL.revokeObjectURL(viewerUrl);
+      setViewerUrl(url);
+      setViewerMime(mime.toLowerCase());
+      setViewerName(name);
+      setViewerOpen(true);
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo abrir el comprobante");
+    }
+  };
+
+  const closeViewer = () => {
+    if (viewerUrl) URL.revokeObjectURL(viewerUrl);
+    setViewerUrl(null);
+    setViewerMime(null);
+    setViewerOpen(false);
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (viewerUrl) URL.revokeObjectURL(viewerUrl);
+    };
+  }, [viewerUrl]);
+
+  /* ====== REJECT MODAL (motivo rechazo) ====== */
+  const [rejectOpen, setRejectOpen] = React.useState(false);
+  const [rejectRegId, setRejectRegId] = React.useState<number | null>(null);
+  const [rejectReason, setRejectReason] = React.useState("");
+  const [rejecting, setRejecting] = React.useState(false);
+
+  const openReject = (regId: number) => {
+    setRejectRegId(regId);
+    setRejectReason("");
+    setRejectOpen(true);
+  };
+
+  const submitReject = async () => {
+    const motivo = rejectReason.trim();
+    if (motivo.length < 6) {
+      toast.error("El motivo debe tener al menos 6 caracteres.");
+      return;
+    }
+    if (!rejectRegId) return;
+    setRejecting(true);
+    try {
+      await rejectPago(rejectRegId, motivo);
+      setRejectOpen(false);
+    } finally {
+      setRejecting(false);
+    }
+  };
+
+  /* ======================================================
+                              UI
+     ====================================================== */
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="rounded-2xl border bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-400" />
-              <Input
-                placeholder="Buscar por nombre / idioma"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                className="h-9 w-[240px] pl-9"
-              />
-            </div>
+    <div className="grid gap-6">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Exámenes de colocación</CardTitle>
 
-            <Select value={estado} onValueChange={(v) => setEstado(v as Estado)}>
-              <SelectTrigger className="h-9 w-40">
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                {estados.map((e) => (
-                  <SelectItem key={e} value={e} className="capitalize">
-                    {e}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Modal para crear examen */}
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>Nuevo examen</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Nuevo examen de colocación</DialogTitle>
+                <DialogDescription>
+                  Captura los datos y guarda para publicar el examen.
+                </DialogDescription>
+              </DialogHeader>
 
-            <Select value={idioma} onValueChange={(v) => setIdioma(v as Idioma)}>
-              <SelectTrigger className="h-9 w-40">
-                <SelectValue placeholder="Idioma" />
-              </SelectTrigger>
-              <SelectContent>
-                {idiomas.map((x) => (
-                  <SelectItem key={x} value={x} className="capitalize">
-                    {x}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onCreate)} className="grid gap-4">
+                  {/* === Fila: código + idioma === */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="codigo"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Código del examen</FormLabel>
+                          <FormControl>
+                            <Input placeholder="EJ: PLC-SEP-2025-01" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="idioma"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Idioma</FormLabel>
+                          <FormControl>
+                            <Select
+                              value={field.value}
+                              onValueChange={(v) => field.onChange(v as Idioma)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecciona idioma" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {IDIOMAS_OPTS.map(opt => (
+                                  <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
+                  {/* === Fila: fecha + hora + salón === */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="fecha"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Fecha</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="hora"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Hora</FormLabel>
+                          <FormControl>
+                            <Input type="time" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="salon"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Salón</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Aula / Sala (opcional)" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {/* duración / cupo / costo */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="duracion_min"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Duración (min)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={field.value}
+                              onChange={(e) => field.onChange(Number(e.target.value))}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="cupo_total"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cupo total</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={field.value}
+                              onChange={(e) => field.onChange(Number(e.target.value))}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="costo"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Costo (MXN)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={0}
+                              step="1"
+                              value={field.value ?? 0}
+                              onChange={(e) => field.onChange(Number(e.target.value))}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {/* docente */}
+                  <FormField
+                    control={form.control}
+                    name="docente_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Docente</FormLabel>
+                        <FormControl>
+                          <Select
+                            value={field.value ? String(field.value) : ""}
+                            onValueChange={(v) => field.onChange(Number(v))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={loadingTeachers ? "Cargando..." : "Selecciona docente (opcional)"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {teachers.map(t => (
+                                <SelectItem key={t.id} value={String(t.id)}>
+                                  {t.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* instrucciones */}
+                  <FormField
+                    control={form.control}
+                    name="instrucciones"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Instrucciones (opcional)</FormLabel>
+                        <FormControl>
+                          <Textarea rows={4} placeholder="Indicaciones para los aspirantes" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <DialogFooter className="gap-2">
+                    <DialogClose asChild>
+                      <Button type="button" variant="outline">Cancelar</Button>
+                    </DialogClose>
+                    <Button type="submit" disabled={saving}>
+                      {saving ? "Guardando…" : "Guardar"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+
+        <CardContent className="grid gap-4">
+          {/* Buscador */}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Buscar por código, nombre o texto…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setPage(1);
+                  fetchList();
+                }
+              }}
+              className="max-w-sm"
+            />
             <Button
-              variant={hasAnyFilter ? "default" : "outline"}
-              className="h-9 rounded-xl"
-              onClick={clearFilters}
+              variant="outline"
+              onClick={() => {
+                setPage(1);
+                fetchList();
+              }}
             >
-              <FilterX className="mr-2 h-4 w-4" />
-              {hasAnyFilter ? "Limpiar filtros" : "Sin filtros"}
+              Buscar
             </Button>
           </div>
 
-          <Dialog open={openForm} onOpenChange={(o) => { setOpenForm(o); if (!o) setEditing(null); }}>
-            <DialogTrigger asChild>
-              <Button onClick={startCreate} className="rounded-xl">
-                <Plus className="mr-2 h-4 w-4" />
-                Nuevo examen
+          {/* Tabla de exámenes */}
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Código</TableHead>
+                  <TableHead>Idioma</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Hora</TableHead>
+                  <TableHead>Salón</TableHead>
+                  <TableHead>Duración</TableHead>
+                  <TableHead>Cupo</TableHead>
+                  <TableHead>Costo</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={9}>Cargando…</TableCell></TableRow>
+                ) : items.length === 0 ? (
+                  <TableRow><TableCell colSpan={9}>Sin resultados</TableCell></TableRow>
+                ) : (
+                  items.map((it) => (
+                    <TableRow key={it.id}>
+                      <TableCell className="font-medium">{(it as any).codigo ?? it.nombre}</TableCell>
+                      <TableCell><Badge variant="secondary">{idiomaLabel((it as any).idioma)}</Badge></TableCell>
+                      <TableCell>{it.fecha}</TableCell>
+                      <TableCell>{it.hora}</TableCell>
+                      <TableCell>{(it as any).salon ?? "-"}</TableCell>
+                      <TableCell>{it.duracion_min} min</TableCell>
+                      <TableCell>{it.cupo_total}</TableCell>
+                      <TableCell>${money((it as any).costo)}</TableCell>
+                      <TableCell className="text-right space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => openPagos(it)}>
+                          Pagos
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => onDelete(it.id)}>
+                          Eliminar
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Paginación simple */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              {items.length ? `Mostrando ${items.length} de ${total}` : `0 de ${total}`}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Anterior
               </Button>
-            </DialogTrigger>
+              <Button
+                variant="outline"
+                disabled={page * pageSize >= total}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-            <DialogContent className="sm:max-w-xl">
-              <DialogHeader>
-                <DialogTitle>{editing ? "Editar examen de colocación" : "Nuevo examen de colocación"}</DialogTitle>
-              </DialogHeader>
+      {/* ====== Sheet lateral de Pagos por examen ====== */}
+      <Sheet open={payOpen} onOpenChange={setPayOpen}>
+        <SheetContent
+          side="left"
+          className="!w-screen sm:!w-[70vw] !max-w-none overflow-y-auto p-4 sm:p-6"
+          style={{ width: "70vw", maxWidth: "70vw" }}
+        >
+          <SheetHeader>
+            <SheetTitle>
+              Pagos — {payExam ? ((payExam as any).codigo ?? payExam.nombre) : "—"}
+            </SheetTitle>
+            <SheetDescription>
+              Valida o rechaza los pagos enviados por los alumnos. Sólo puedes cambiar los que están <strong>preinscrita</strong>.
+            </SheetDescription>
+          </SheetHeader>
 
-              <form action={(fd) => onSubmitForm(fd)} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1 sm:col-span-2">
-                  <Label>Nombre</Label>
-                  <Input name="nombre" defaultValue={editing?.nombre} placeholder="Examen de colocación Agosto" required />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Idioma</Label>
-                  <Select name="idioma" defaultValue={editing?.idioma || "ingles"}>
-                    <SelectTrigger><SelectValue placeholder="Selecciona idioma" /></SelectTrigger>
-                    <SelectContent>
-                      {idiomas.map((x) => (
-                        <SelectItem key={x} value={x} className="capitalize">{x}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Modalidad</Label>
-                  <Input name="modalidad" defaultValue={editing?.modalidad || "presencial"} />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Fecha</Label>
-                  <Input type="date" name="fecha" defaultValue={editing?.fecha ?? undefined} />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Hora</Label>
-                  <Input type="time" name="hora" defaultValue={editing?.hora ? editing.hora.slice(0, 5) : undefined} />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Duración (min)</Label>
-                  <Input type="number" name="duracion_min" min={10} max={600} defaultValue={editing?.duracion_min ?? 60} />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Cupo total</Label>
-                  <Input type="number" name="cupo_total" min={0} defaultValue={editing?.cupo_total ?? 0} />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Costo (MXN)</Label>
-                  <Input type="number" name="costo" min={0} defaultValue={editing?.costo ?? undefined} />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Nivel objetivo</Label>
-                  <Input name="nivel_objetivo" defaultValue={editing?.nivel_objetivo ?? ""} placeholder="A1..C2" />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Estado</Label>
-                  <Select name="estado" defaultValue={editing?.estado || "borrador"}>
-                    <SelectTrigger><SelectValue placeholder="Selecciona estado" /></SelectTrigger>
-                    <SelectContent>
-                      {estados.map((e) => (
-                        <SelectItem key={e} value={e} className="capitalize">{e}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1 sm:col-span-2">
-                  <Label>Link de registro</Label>
-                  <Input name="link_registro" defaultValue={editing?.link_registro ?? ""} placeholder="https://..." />
-                </div>
-
-                <div className="space-y-1 sm:col-span-2">
-                  <Label>Instrucciones</Label>
-                  <Input name="instrucciones" defaultValue={editing?.instrucciones ?? ""} placeholder="Llevar identificación, llegar 10 min antes..." />
-                </div>
-
-                <DialogFooter className="sm:col-span-2 mt-2">
-                  <Button type="submit" className="rounded-xl">Guardar</Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      {/* Tabla */}
-      <div className="rounded-2xl border bg-white">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nombre</TableHead>
-              <TableHead>Idioma</TableHead>
-              <TableHead>Fecha</TableHead>
-              <TableHead>Hora</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead className="w-36"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell colSpan={6}>
-                    <div className="h-6 w-full animate-pulse rounded bg-neutral-100" />
-                  </TableCell>
+          <div className="mt-4 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Alumno</TableHead>
+                  <TableHead>Referencia</TableHead>
+                  <TableHead>Importe</TableHead>
+                  <TableHead>Fecha pago</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Creado</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
-              ))
-            ) : items.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-6 text-center text-sm text-neutral-500">
-                  No hay exámenes con los filtros seleccionados.
-                </TableCell>
-              </TableRow>
-            ) : (
-              items.map((it) => (
-                <TableRow key={it.id}>
-                  <TableCell className="font-medium">{it.nombre}</TableCell>
-                  <TableCell className="capitalize">{it.idioma}</TableCell>
-                  <TableCell>
-                    <span className="inline-flex items-center gap-1">
-                      <CalendarDays className="h-3.5 w-3.5" />
-                      {fmtDate(it.fecha)}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="inline-flex items-center gap-1">
-                      <Clock3 className="h-3.5 w-3.5" />
-                      {fmtTime(it.hora)}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={[
-                        "capitalize",
-                        it.estado === "publicado"
-                          ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                          : it.estado === "cerrado"
-                          ? "bg-red-100 text-red-800 border-red-200"
-                          : "bg-amber-100 text-amber-800 border-amber-200",
-                      ].join(" ")}
-                      variant="outline"
-                    >
-                      {it.estado}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="rounded-xl"
-                        onClick={() => startEdit(it)}
-                        aria-label="Editar"
-                        title="Editar"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="rounded-xl"
-                        onClick={() => onDelete(it)}
-                        aria-label="Eliminar"
-                        title="Eliminar"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+              </TableHeader>
+              <TableBody>
+                {payLoading ? (
+                  <TableRow><TableCell colSpan={7}>Cargando…</TableCell></TableRow>
+                ) : payRows.length === 0 ? (
+                  <TableRow><TableCell colSpan={7}>Sin registros</TableCell></TableRow>
+                ) : (
+                  payRows.map((r) => {
+                    const nombre =
+                      (r.alumno?.first_name?.trim() || "") +
+                      (r.alumno?.last_name ? ` ${r.alumno?.last_name}` : "");
+                    const status = (r.status || "").toLowerCase();
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="max-w-[220px]">
+                          <div className="font-medium truncate">
+                            {nombre.trim() || r.alumno?.email || "—"}
+                          </div>
+                          {r.alumno?.email && (
+                            <div className="text-xs text-muted-foreground truncate">{r.alumno.email}</div>
+                          )}
+                        </TableCell>
+                        <TableCell>{r.referencia ?? "—"}</TableCell>
+                        <TableCell>
+                          {typeof r.importe_centavos === "number"
+                            ? (r.importe_centavos / 100).toLocaleString("es-MX", { style: "currency", currency: "MXN" })
+                            : "—"}
+                        </TableCell>
+                        <TableCell>{r.fecha_pago ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant={
+                            status === "validada" ? "default" :
+                            status === "rechazada" ? "destructive" :
+                            status === "cancelada" ? "outline" : "secondary"
+                          }>
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(r.created_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right space-x-2 whitespace-nowrap">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => openViewer(r.id)}
+                            disabled={!r.comprobante}
+                            title={!r.comprobante ? "Sin comprobante" : "Ver comprobante"}
+                          >
+                            Ver
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => downloadComprobanteAdmin(r.id)}
+                            disabled={!r.comprobante}
+                            title={!r.comprobante ? "Sin comprobante" : "Descargar comprobante"}
+                          >
+                            Descargar
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => approvePago(r.id)}
+                            disabled={!canValidate(r.status)}
+                            title={!canValidate(r.status) ? "Sólo preinscrita" : ""}
+                          >
+                            Aprobar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => openReject(r.id)}
+                            disabled={!canValidate(r.status)}
+                            title={!canValidate(r.status) ? "Sólo preinscrita" : ""}
+                          >
+                            Rechazar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex justify-end gap-2 py-4">
+            {payExam && (
+              <Button
+                variant="outline"
+                onClick={() => fetchPagos(payExam.id)}
+                disabled={payLoading}
+              >
+                Refrescar
+              </Button>
             )}
-          </TableBody>
-        </Table>
-      </div>
+            <Button variant="outline" onClick={() => setPayOpen(false)}>
+              Cerrar
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
-      {/* Paginación */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-neutral-500">
-          Página {page} de {pages}
-        </span>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-xl"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            Anterior
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-xl"
-            disabled={page >= pages}
-            onClick={() => setPage((p) => Math.min(pages, p + 1))}
-          >
-            Siguiente
-          </Button>
-        </div>
-      </div>
+      {/* ====== Modal viewer del comprobante ====== */}
+      <Dialog open={viewerOpen} onOpenChange={(o) => (o ? setViewerOpen(true) : closeViewer())}>
+        <DialogContent className="!max-w-[95vw] !w-[95vw] sm:!max-w-6xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6">
+            <DialogTitle className="truncate">{viewerName}</DialogTitle>
+            <DialogDescription className="flex items-center gap-3">
+              Vista previa del comprobante.{" "}
+              {viewerUrl && (
+                <a
+                  href={viewerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  Abrir en nueva pestaña
+                </a>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-6 pb-6">
+            {viewerUrl ? (
+              viewerMime?.includes("pdf") ? (
+                <iframe
+                  src={viewerUrl}
+                  className="w-full h-[75vh] rounded-md border"
+                  title="comprobante-pdf"
+                />
+              ) : viewerMime?.startsWith("image/") ? (
+                <div className="w-full h-[75vh] flex items-center justify-center bg-muted/30 rounded-md border overflow-auto">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={viewerUrl}
+                    alt="comprobante"
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  Tipo de archivo no previsualizable ({viewerMime || "desconocido"}). Usa{" "}
+                  <button
+                    className="underline"
+                    onClick={() => {
+                      if (!viewerUrl) return;
+                      const a = document.createElement("a");
+                      a.href = viewerUrl;
+                      a.download = viewerName || "comprobante";
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                    }}
+                  >
+                    descargar
+                  </button>.
+                </div>
+              )
+            ) : (
+              <div className="text-sm text-muted-foreground">Cargando…</div>
+            )}
+          </div>
+
+          <div className="px-6 pb-6">
+            <DialogClose asChild>
+              <Button onClick={closeViewer}>Cerrar</Button>
+            </DialogClose>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ====== Modal de motivo de rechazo ====== */}
+      <Dialog open={rejectOpen} onOpenChange={(o) => setRejectOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rechazar pago</DialogTitle>
+            <DialogDescription>
+              Escribe el motivo del rechazo (mínimo 6 caracteres). Este mensaje puede ser visible para el alumno.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-2">
+            <Label htmlFor="reject-reason">Motivo</Label>
+            <Textarea
+              id="reject-reason"
+              rows={4}
+              autoFocus
+              placeholder="Ej. El comprobante no corresponde al importe indicado…"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+            />
+            <div className="text-xs text-muted-foreground">
+              {Math.max(0, 6 - rejectReason.trim().length)} caracteres para el mínimo
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={submitReject}
+              disabled={rejecting || rejectReason.trim().length < 6}
+            >
+              {rejecting ? "Rechazando…" : "Rechazar pago"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

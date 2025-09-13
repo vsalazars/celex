@@ -23,6 +23,8 @@ from .routers.docente_evaluaciones import router as docente_evaluaciones_router 
 from .routers.alumno_historial import router as alumno_historial_router
 from .routers.public_ciclos import router as public_ciclos_router
 from .routers import placement
+from .routers.placement_admin import router as placement_admin_router  # 👈 NUEVO
+
 
 
 Base.metadata.create_all(bind=engine)
@@ -50,7 +52,14 @@ app.include_router(docente_evaluaciones_router)  # 👈 monta endpoints
 app.include_router(alumno_historial_router)  # ✅
 app.include_router(public_ciclos_router)
 app.include_router(placement.router)
+app.include_router(placement_admin_router)  # 👈 NUEVO
 
+
+# 👇 añade este hook de startup
+@app.on_event("startup")
+def _create_db_if_needed():
+    # Sólo para desarrollo: crea todas las tablas si no existen
+    Base.metadata.create_all(bind=engine)
 
 @app.post("/auth/register", response_model=UserOut, status_code=201)
 def register(payload: UserCreate, db: Session = Depends(get_db)):

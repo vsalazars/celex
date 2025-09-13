@@ -457,38 +457,98 @@ class AlumnoHistorialResponse(BaseModel):
     items: List[AlumnoHistorialItem]
 
 
+# ========= Inputs (strings con patrón) =========
+class PlacementBaseIn(BaseModel):
+    codigo: str = Field(..., min_length=2, max_length=50)
+    idioma: str = Field(..., min_length=3, max_length=30)
 
-class PlacementBase(BaseModel):
-    nombre: str = Field(..., min_length=3, max_length=120)
-    idioma: str
-    modalidad: Optional[str] = None          # presencial | en_linea
-    fecha: Optional[date] = None
-    hora: Optional[time] = None
-    duracion_min: Optional[int] = Field(default=60, ge=10, le=600)
-    cupo_total: Optional[int] = Field(default=0, ge=0)
-    costo: Optional[int] = Field(default=None, ge=0)
-    nivel_objetivo: Optional[str] = None     # A1..C2
-    estado: Optional[str] = "borrador"       # borrador | publicado | cerrado
+    # strings con patrón para validar desde el front
+    fecha: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    hora: str  = Field(..., pattern=r"^\d{2}:\d{2}(:\d{2})?$")
+
+    salon: Optional[str] = Field(None, max_length=120)
+
+    duracion_min: int = Field(60, gt=0)
+    cupo_total:   int = Field(0, ge=0)
+    costo: Optional[int] = None
+
+    docente_id: Optional[int] = None
     instrucciones: Optional[str] = None
+
+    # opcionales/legacy
+    nombre: Optional[str] = None
+    modalidad: Optional[str] = None
+    nivel_objetivo: Optional[str] = None
+    estado: Optional[str] = None
     link_registro: Optional[str] = None
     activo: Optional[bool] = True
 
 
-class PlacementCreate(PlacementBase):
-    """Esquema para crear examen de colocación"""
+class PlacementCreate(PlacementBaseIn):
     pass
 
 
-class PlacementUpdate(PlacementBase):
-    """Esquema para actualizar examen de colocación"""
-    pass
+class PlacementUpdate(BaseModel):
+    # todos opcionales (parciales), aún como strings para el input
+    codigo: Optional[str] = Field(None, min_length=2, max_length=50)
+    idioma: Optional[str] = Field(None, min_length=3, max_length=30)
+    fecha: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    hora:  Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}(:\d{2})?$")
+    salon: Optional[str] = Field(None, max_length=120)
+
+    duracion_min: Optional[int] = Field(None, gt=0)
+    cupo_total:   Optional[int] = Field(None, ge=0)
+    costo: Optional[int] = None
+
+    docente_id: Optional[int] = None
+    instrucciones: Optional[str] = None
+
+    nombre: Optional[str] = None
+    modalidad: Optional[str] = None
+    nivel_objetivo: Optional[str] = None
+    estado: Optional[str] = None
+    link_registro: Optional[str] = None
+    activo: Optional[bool] = None
 
 
-class PlacementOut(PlacementBase):
+# ========= Output (date/time desde la BD) =========
+class PlacementOut(BaseModel):
     id: int
 
+    codigo: str
+    nombre: Optional[str] = None
+    idioma: str
+
+    # aquí sí usamos tipos nativos que regresan de SQLAlchemy
+    fecha: Optional[date] = None
+    hora:  Optional[time] = None
+
+    salon: Optional[str] = None
+
+    duracion_min: int
+    cupo_total:   int
+    costo: Optional[int] = None
+
+    docente_id: Optional[int] = None
+    instrucciones: Optional[str] = None
+
+    modalidad: Optional[str] = None
+    nivel_objetivo: Optional[str] = None
+    estado: Optional[str] = None
+    link_registro: Optional[str] = None
+    activo: Optional[bool] = True
+
+    # Serializadores para devolver strings al front
+    @field_serializer("fecha")
+    def _ser_fecha(self, v: Optional[date], _info):
+        return v.strftime("%Y-%m-%d") if v else None
+
+    @field_serializer("hora")
+    def _ser_hora(self, v: Optional[time], _info):
+        return v.strftime("%H:%M") if v else None
+
     class Config:
-        from_attributes = True
+        from_attributes = True  # (orm_mode en v1)
 
 
 class PlacementList(BaseModel):
@@ -496,3 +556,30 @@ class PlacementList(BaseModel):
     page: int
     pages: int
     total: int
+
+
+
+class PlacementRegistroCreate(BaseModel):
+    referencia: constr(strip_whitespace=True, min_length=1, max_length=50)
+    importe_centavos: int = Field(ge=0)
+    fecha_pago: constr(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+class ComprobanteMeta(BaseModel):
+    filename: Optional[str] = None
+    mimetype: Optional[str] = None
+    size_bytes: Optional[int] = Field(default=None, ge=0)
+    storage_path: Optional[str] = None
+    class Config: from_attributes = True
+
+class PlacementRegistroOut(BaseModel):
+    id: int
+    exam_id: int
+    status: str
+    referencia: Optional[str]
+    importe_centavos: Optional[int]
+    fecha_pago: Optional[date]
+    comprobante: Optional[ComprobanteMeta]
+    created_at: datetime
+    rechazo_motivo: Optional[str] = None
+
+    class Config: from_attributes = True

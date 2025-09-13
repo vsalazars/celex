@@ -7,6 +7,7 @@ import {
   History,
   User,
   HelpCircle,
+  GraduationCap, // 👈 podemos usar este ícono para "Placement"
 } from "lucide-react";
 import NavLink from "./NavLink";
 
@@ -17,13 +18,14 @@ const links = [
   { href: "/alumno/pagos", label: "Pagos", icon: <CreditCard className="h-4 w-4" /> },
   { href: "/alumno/historial", label: "Historial", icon: <History className="h-4 w-4" /> },
   { href: "/alumno/perfil", label: "Perfil", icon: <User className="h-4 w-4" /> },
+  { href: "/alumno/placement", label: "Colocación", icon: <GraduationCap className="h-4 w-4" /> }, // 👈 NUEVO
   { href: "/alumno/ayuda", label: "Ayuda", icon: <HelpCircle className="h-4 w-4" /> },
 ];
 
 export default function AlumnoSidebar({
   onNavigate,
 }: {
-  onNavigate?: () => void; // para cerrar el drawer en móvil
+  onNavigate?: () => void;
 }) {
   return (
     <aside className="h-full w-full p-3">

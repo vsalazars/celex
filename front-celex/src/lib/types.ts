@@ -285,3 +285,16 @@ export type PlacementListResp = {
   pages: number;
   total: number;
 };
+
+type PlacementRegistro = {
+  id: number;
+  exam_id: number;
+  status: string;
+  referencia?: string | null;
+  importe_centavos?: number | null;
+  fecha_pago?: string | null;
+  comprobante?: ComprobanteMeta | null;
+  created_at: string;
+  exam?: Partial<PlacementExam> | null;
+  rechazo_motivo?: string | null; // 👈 AÑADIR
+};
