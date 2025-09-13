@@ -11,7 +11,7 @@ from pydantic import (
     computed_field,
     field_serializer,
     constr,
-    )
+)
 
 MAX_COMPROBANTE_BYTES = 5 * 1024 * 1024  # 5 MB
 
@@ -291,11 +291,10 @@ class AlumnoMini(BaseModel):
     email: Optional[str] = None
     is_ipn: Optional[bool] = None
     boleta: Optional[str] = None
-    curp: Optional[str] = None   # 👈 AÑADIR
+    curp: Optional[str] = None  # 👈 AÑADIDO
 
     class Config:
         from_attributes = True
-
 
 
 class ComprobanteMeta(BaseModel):
@@ -332,10 +331,11 @@ class CicloLite(BaseModel):
         from_attributes = True
 
 
-# --- NUEVO: tipo de inscripción (para alinear con el modelo) ---
+# --- Tipo de inscripción (alineado a modelo) ---
 class InscripcionTipo(str, Enum):
     pago = "pago"
     exencion = "exencion"
+
 
 # Request del coordinador para aprobar/rechazar
 class ValidateInscripcionCoordIn(BaseModel):
@@ -348,30 +348,30 @@ class InscripcionOut(BaseModel):
     ciclo_id: int
     status: Literal["registrada", "preinscrita", "confirmada", "rechazada", "cancelada"]
 
-    # NUEVO: tipo de trámite (pago | exencion)
+    # tipo (pago | exencion)
     tipo: InscripcionTipo
 
     # Pago
-    fecha_pago: date | None = None  # <-- NUEVO
+    fecha_pago: date | None = None
     referencia: Optional[str] = None
     importe_centavos: Optional[int] = Field(default=None, ge=0)
-    comprobante: Optional["ComprobanteMeta"] = None
+    comprobante: Optional[ComprobanteMeta] = None
 
     # Estudios (si aplica)
-    comprobante_estudios: Optional["ComprobanteMeta"] = None
+    comprobante_estudios: Optional[ComprobanteMeta] = None
 
-    # NUEVO: Exención
-    comprobante_exencion: Optional["ComprobanteMeta"] = None
+    # Exención (si aplica)
+    comprobante_exencion: Optional[ComprobanteMeta] = None
 
-    # Motivo / notas de validación (para que el front pueda mostrarlos)
+    # Motivos / notas de validación
     rechazo_motivo: Optional[str] = None
     validation_notes: Optional[str] = None
 
-    alumno: Optional["AlumnoMini"] = None
+    alumno: Optional[AlumnoMini] = None
     created_at: datetime
-    ciclo: Optional["CicloLite"] = None
+    ciclo: Optional[CicloLite] = None
 
-    # === Nuevos campos de validación ===
+    # Validación
     validated_by_id: Optional[int] = None
     validated_at: Optional[datetime] = None
 
@@ -383,23 +383,23 @@ class InscripcionOut(BaseModel):
     class Config:
         from_attributes = True
 
-# --- Payload para validar inscripción ---
+
+# Payload para validar inscripción
 class ValidateInscripcionIn(BaseModel):
     action: Literal["APPROVE", "REJECT"]
     notes: Optional[str] = Field(None, max_length=500)
 
 
-
-# --- Evaluaciones (Docente) ---
-from typing import Optional
-from pydantic import BaseModel, Field
-
+# ==========================
+# Evaluaciones (Docente)
+# ==========================
 class EvaluacionUpsertIn(BaseModel):
     medio_examen:   Optional[int] = Field(None, ge=0, le=80)
     medio_continua: Optional[int] = Field(None, ge=0, le=20)
     final_examen:   Optional[int] = Field(None, ge=0, le=60)
     final_continua: Optional[int] = Field(None, ge=0, le=20)
     final_tarea:    Optional[int] = Field(None, ge=0, le=20)
+
 
 class EvaluacionOut(BaseModel):
     inscripcion_id: int
@@ -412,6 +412,7 @@ class EvaluacionOut(BaseModel):
     subtotal_medio: int
     subtotal_final: int
     promedio_final: float
+
 
 class EvaluacionListOut(BaseModel):
     items: list[EvaluacionOut]
@@ -453,11 +454,14 @@ class AlumnoHistorialItem(BaseModel):
     # Promedio final del curso (simple 50/50)
     promedio: Optional[float] = None
 
+
 class AlumnoHistorialResponse(BaseModel):
     items: List[AlumnoHistorialItem]
 
 
-# ========= Inputs (strings con patrón) =========
+# ==========================
+# Placement (inputs/outputs base)
+# ==========================
 class PlacementBaseIn(BaseModel):
     codigo: str = Field(..., min_length=2, max_length=50)
     idioma: str = Field(..., min_length=3, max_length=30)
@@ -511,7 +515,6 @@ class PlacementUpdate(BaseModel):
     activo: Optional[bool] = None
 
 
-# ========= Output (date/time desde la BD) =========
 class PlacementOut(BaseModel):
     id: int
 
@@ -519,7 +522,7 @@ class PlacementOut(BaseModel):
     nombre: Optional[str] = None
     idioma: str
 
-    # aquí sí usamos tipos nativos que regresan de SQLAlchemy
+    # nativos desde la BD; serializamos a str
     fecha: Optional[date] = None
     hora:  Optional[time] = None
 
@@ -538,7 +541,6 @@ class PlacementOut(BaseModel):
     link_registro: Optional[str] = None
     activo: Optional[bool] = True
 
-    # Serializadores para devolver strings al front
     @field_serializer("fecha")
     def _ser_fecha(self, v: Optional[date], _info):
         return v.strftime("%Y-%m-%d") if v else None
@@ -548,7 +550,7 @@ class PlacementOut(BaseModel):
         return v.strftime("%H:%M") if v else None
 
     class Config:
-        from_attributes = True  # (orm_mode en v1)
+        from_attributes = True
 
 
 class PlacementList(BaseModel):
@@ -558,18 +560,37 @@ class PlacementList(BaseModel):
     total: int
 
 
-
 class PlacementRegistroCreate(BaseModel):
     referencia: constr(strip_whitespace=True, min_length=1, max_length=50)
     importe_centavos: int = Field(ge=0)
     fecha_pago: constr(pattern=r"^\d{4}-\d{2}-\d{2}$")
 
-class ComprobanteMeta(BaseModel):
-    filename: Optional[str] = None
-    mimetype: Optional[str] = None
-    size_bytes: Optional[int] = Field(default=None, ge=0)
-    storage_path: Optional[str] = None
-    class Config: from_attributes = True
+
+# app/schemas.py (añadir cerca de PlacementOut / PlacementRegistroOut)
+
+class PlacementExamMini(BaseModel):
+    id: int
+    codigo: str
+    nombre: Optional[str] = None
+    idioma: Optional[str] = None
+    fecha: Optional[date] = None
+    hora:  Optional[time] = None
+    salon: Optional[str] = None
+    cupo_total: Optional[int] = None
+    costo: Optional[int] = None
+    activo: Optional[bool] = None
+
+    @field_serializer("fecha")
+    def _ser_fecha(self, v: Optional[date], _info):
+        return v.strftime("%Y-%m-%d") if v else None
+
+    @field_serializer("hora")
+    def _ser_hora(self, v: Optional[time], _info):
+        return v.strftime("%H:%M") if v else None
+
+    class Config:
+        from_attributes = True
+
 
 class PlacementRegistroOut(BaseModel):
     id: int
@@ -581,5 +602,59 @@ class PlacementRegistroOut(BaseModel):
     comprobante: Optional[ComprobanteMeta]
     created_at: datetime
     rechazo_motivo: Optional[str] = None
+    validation_notes: Optional[str] = None  # <- ya lo usas en el front
 
-    class Config: from_attributes = True
+    # 👇 NUEVOS para alinear con el front
+    nivel_idioma: Optional[str] = None
+    exam: Optional[PlacementExamMini] = None
+
+    @field_serializer("fecha_pago")
+    def _ser_fecha_pago(self, v: Optional[date], _info):
+        return v.strftime("%Y-%m-%d") if v else None
+
+    class Config:
+        from_attributes = True
+
+
+# ==========================
+# Placement — Docente (NUEVO)
+# ==========================
+class PlacementExamAsignadoOut(BaseModel):
+    """
+    Resumen para listar exámenes de colocación asignados al docente.
+    """
+    id: int | str
+    titulo: Optional[str] = None     # alias legible (puede mapear a nombre/codigo)
+    fecha: Optional[str] = None      # ISO yyyy-mm-dd (serializa en el router)
+    modalidad: Optional[str] = None
+    idioma: Optional[str] = None
+    nivel: Optional[str] = None
+    sede: Optional[str] = None
+    turno: Optional[str] = None
+    inscritos: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PlacementRegistroAlumnoOut(BaseModel):
+    """
+    Registro por alumno dentro de un examen de colocación.
+    """
+    id: int | str
+    alumno_nombre: Optional[str] = None
+    alumno_email: Optional[EmailStr] = None
+    alumno_boleta: Optional[str] = None
+    nivel_asignado: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class NivelIdiomaUpdate(BaseModel):
+    """
+    Payload para actualizar el nivel del alumno en un registro de colocación.
+    """
+    nivel: constr(strip_whitespace=True, min_length=1, max_length=20)
+
+

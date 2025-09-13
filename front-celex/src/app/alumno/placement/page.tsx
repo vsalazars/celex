@@ -54,6 +54,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+
 
 /* ================= Base API desde env ================= */
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
@@ -109,6 +111,11 @@ type PlacementRegistro = {
   motivo_rechazo?: string | null;
   validation_notes?: string | null;
   reject_reason?: string | null;
+
+  // 👇 NUEVO: nivel asignado por el docente (varios alias posibles)
+  nivel_idioma?: string | null;
+  nivel_asignado?: string | null;
+  nivel?: string | null;
 };
 
 
@@ -309,6 +316,15 @@ function PlacementContent() {
     }
   };
 
+  function nivelTone(n: string) {
+    const k = n.toUpperCase();
+    if (k === "A1" || k === "A2") return "secondary"; // verdes/azules claros
+    if (k === "B1" || k === "B2") return "default";   // gris/primario
+    if (k === "C1" || k === "C2") return "destructive"; // rojo para destacar avanzado
+    return "outline"; // fallback
+  }
+
+
   return (
     <>
       {/* ——— Barra de acciones: botón que abre el sheet ——— */}
@@ -419,6 +435,7 @@ function PlacementContent() {
                       <TableHead>Fecha pago</TableHead>
                       <TableHead>Referencia</TableHead>
                       <TableHead>Importe</TableHead>
+                      <TableHead>Nivel asignado</TableHead>{/* 👈 NUEVA */}
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
@@ -438,6 +455,24 @@ function PlacementContent() {
                                 currency: "MXN",
                               })
                             : "—"}
+                        </TableCell>
+
+                        {/* 👇 Nueva celda: muestra el nivel normalizado */}
+                        <TableCell>
+                          {(() => {
+                            const nivel = getNivelAsignado(r);
+                            return nivel === "—" ? (
+                              <Badge variant="outline" className="text-xs">—</Badge>
+                            ) : (
+                              <Badge
+                                variant={nivelTone(nivel)}
+                                className="text-xs tracking-wide"
+                                title="Asignado por el docente"
+                              >
+                                {nivel}
+                              </Badge>
+                            );
+                          })()}
                         </TableCell>
 
                         <TableCell>
@@ -489,96 +524,96 @@ function PlacementContent() {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-3">
-              <div>
-                <Label className="text-xs text-muted-foreground">Examen</Label>
-                <div className="text-sm font-medium">
-                  {selected
-                    ? `${selected.codigo || selected.nombre} · ${
-                        selected.fecha || "—"
-                      } ${selected.hora || ""}`
-                    : "—"}
-                </div>
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="referencia">Referencia</Label>
-                  <Input
-                    id="referencia"
-                    placeholder="Ej. 123ABC"
-                    value={referencia}
-                    onChange={(e) => setReferencia(e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="importe">Importe (pesos MXN)</Label>
-                  <Input
-                    id="importe"
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min="0"
-                    placeholder="Ej. 500 o 500.50"
-                    value={importePesos}
-                    onChange={(e) => setImportePesos(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="fecha_pago">Fecha de pago</Label>
-                  <Input
-                    id="fecha_pago"
-                    type="date"
-                    value={fechaPago}
-                    onChange={(e) => setFechaPago(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="comprobante">Comprobante</Label>
-                  <Input
-                    id="comprobante"
-                    type="file"
-                    ref={fileRef}
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    required
-                  />
-                </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid gap-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">Examen</Label>
+              <div className="text-sm font-medium">
+                {selected
+                  ? `${selected.codigo || selected.nombre} · ${
+                      selected.fecha || "—"
+                    } ${selected.hora || ""}`
+                  : "—"}
               </div>
             </div>
 
-            {submitErr && <p className="text-sm text-red-600">{submitErr}</p>}
-            {successMsg && (
-              <p className="text-sm text-green-600">{successMsg}</p>
-            )}
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="referencia">Referencia</Label>
+                <Input
+                  id="referencia"
+                  placeholder="Ej. 123ABC"
+                  value={referencia}
+                  onChange={(e) => setReferencia(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="importe">Importe (pesos MXN)</Label>
+                <Input
+                  id="importe"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  placeholder="Ej. 500 o 500.50"
+                  value={importePesos}
+                  onChange={(e) => setImportePesos(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
 
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setOpenDialog(false)}
-                disabled={submitting}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando…
-                  </>
-                ) : (
-                  "Enviar inscripción"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="fecha_pago">Fecha de pago</Label>
+                <Input
+                  id="fecha_pago"
+                  type="date"
+                  value={fechaPago}
+                  onChange={(e) => setFechaPago(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="comprobante">Comprobante</Label>
+                <Input
+                  id="comprobante"
+                  type="file"
+                  ref={fileRef}
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          {submitErr && <p className="text-sm text-red-600">{submitErr}</p>}
+          {successMsg && (
+            <p className="text-sm text-green-600">{successMsg}</p>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setOpenDialog(false)}
+              disabled={submitting}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando…
+                </>
+              ) : (
+                "Enviar inscripción"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
         </DialogContent>
       </Dialog>
     </>
@@ -677,6 +712,17 @@ function getRejectionReason(r: any): string {
   return "";
 }
 
+/* Normaliza el nivel asignado desde varias llaves posibles */
+function getNivelAsignado(r: PlacementRegistro): string {
+  const raw =
+    r.nivel_idioma ??
+    r.nivel_asignado ??
+    r.nivel ??
+    (r as any)?.alumno_nivel ??
+    null;
+  if (!raw) return "—";
+  return String(raw).trim().toUpperCase();
+}
 
 /* ===== Celda de status con depuración ===== */
 function StatusCell({ registro }: { registro: PlacementRegistro }) {

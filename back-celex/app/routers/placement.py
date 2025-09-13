@@ -16,7 +16,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..auth import get_current_user
@@ -33,6 +33,8 @@ from ..schemas import (
     PlacementOut,
     PlacementList,
     PlacementRegistroOut,
+    PlacementExamMini,  # 👈 AÑADE ESTO
+
 )
 
 router = APIRouter(prefix="/placement-exams", tags=["placement"])
@@ -133,14 +135,36 @@ def my_registros(
     db: Session = Depends(get_db),
     user: User = Depends(require_student),
 ):
+    # Cargamos el examen asociado para cada registro (join eager)
     regs = (
         db.query(PlacementRegistro)
+        .options(joinedload(PlacementRegistro.exam))
         .filter(PlacementRegistro.alumno_id == user.id)
         .order_by(PlacementRegistro.created_at.desc())
         .all()
     )
+
     out: List[PlacementRegistroOut] = []
     for r in regs:
+        # Meta del comprobante (si existe)
+        comp_meta = _comprobante_to_meta(r.comprobante_path, r.comprobante_mime, r.comprobante_size)
+
+        # Mini examen para el front
+        exam_mini = None
+        if r.exam:
+            exam_mini = PlacementExamMini(
+                id=r.exam.id,
+                codigo=r.exam.codigo,
+                nombre=getattr(r.exam, "nombre", None),
+                idioma=r.exam.idioma,
+                fecha=getattr(r.exam, "fecha", None),
+                hora=getattr(r.exam, "hora", None),
+                salon=getattr(r.exam, "salon", None),
+                cupo_total=getattr(r.exam, "cupo_total", None),
+                costo=getattr(r.exam, "costo", None),
+                activo=getattr(r.exam, "activo", None),
+            )
+
         out.append(
             PlacementRegistroOut(
                 id=r.id,
@@ -149,13 +173,18 @@ def my_registros(
                 referencia=r.referencia,
                 importe_centavos=r.importe_centavos,
                 fecha_pago=r.fecha_pago,
-                comprobante=_comprobante_to_meta(r.comprobante_path, r.comprobante_mime, r.comprobante_size),  # type: ignore[arg-type]
+                comprobante=comp_meta,  # type: ignore[arg-type]
                 created_at=r.created_at,
-                rechazo_motivo=getattr(r, "rechazo_motivo", None),  # 👈 aquí
+                rechazo_motivo=getattr(r, "rechazo_motivo", None),
+                validation_notes=getattr(r, "validation_notes", None),
 
+                # 👇 Alineados con el front:
+                nivel_idioma=getattr(r, "nivel_idioma", None),
+                exam=exam_mini,
             )
         )
     return out
+
 
 
 @router.get("/registros/{registro_id}/comprobante")

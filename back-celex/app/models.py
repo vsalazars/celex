@@ -307,10 +307,6 @@ class PlacementRegistro(Base):
     alumno_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     exam_id   = Column(Integer, ForeignKey("placement_exams.id", ondelete="CASCADE"), index=True, nullable=False)
 
-    # Opción A (sigue con varchar en BD): usa String(20)
-    # status = Column(String(20), nullable=False, default="preinscrita")
-
-    # Opción B (ENUM Python; si migras a ENUM nativo o usas native_enum=False)
     status = Column(SAEnum(PlacementRegistroStatus, native_enum=False), nullable=False, default=PlacementRegistroStatus.PREINSCRITA)
 
     referencia = Column(String(50), nullable=True)
@@ -323,7 +319,10 @@ class PlacementRegistro(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    # ✅ NUEVO: campos de validación / rechazo
+    # ✅ NUEVO: nivel asignado al alumno para este examen (ej. A1, B2, INTERMEDIO…)
+    nivel_idioma = Column(String(20), nullable=True, index=True)  # <-- NUEVO
+
+    # Campos de validación / rechazo
     rechazo_motivo   = Column(Text, nullable=True, default=None)
     validation_notes = Column(Text, nullable=True, default=None)
     validated_by_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -332,9 +331,11 @@ class PlacementRegistro(Base):
     # Relaciones
     alumno = relationship("User", foreign_keys=[alumno_id], backref="placement_registros")
     exam   = relationship("PlacementExam", foreign_keys=[exam_id], backref="registros")
-    validated_by = relationship("User", foreign_keys=[validated_by_id])  # opcional
+    validated_by = relationship("User", foreign_keys=[validated_by_id])
 
     __table_args__ = (
         UniqueConstraint("alumno_id", "exam_id", name="uq_alumno_exam"),
         CheckConstraint("(importe_centavos IS NULL) OR (importe_centavos >= 0)", name="ck_pago_no_neg"),
+        # (Opcional) valida largo razonable del nivel:
+        CheckConstraint("(nivel_idioma IS NULL) OR (length(nivel_idioma) BETWEEN 1 AND 20)", name="ck_nivel_idioma_len"),
     )

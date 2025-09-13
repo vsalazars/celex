@@ -24,6 +24,7 @@ from .routers.alumno_historial import router as alumno_historial_router
 from .routers.public_ciclos import router as public_ciclos_router
 from .routers import placement
 from .routers.placement_admin import router as placement_admin_router  # 👈 NUEVO
+from app.routers import placement_teacher  # ⬅️ importa
 
 
 
@@ -53,6 +54,8 @@ app.include_router(alumno_historial_router)  # ✅
 app.include_router(public_ciclos_router)
 app.include_router(placement.router)
 app.include_router(placement_admin_router)  # 👈 NUEVO
+app.include_router(placement_teacher.router)
+
 
 
 # 👇 añade este hook de startup

@@ -296,5 +296,15 @@ type PlacementRegistro = {
   comprobante?: ComprobanteMeta | null;
   created_at: string;
   exam?: Partial<PlacementExam> | null;
-  rechazo_motivo?: string | null; // 👈 AÑADIR
+
+  // posibles campos que puede mandar el back:
+  rechazo_motivo?: string | null;
+  motivo_rechazo?: string | null;
+  validation_notes?: string | null;
+  reject_reason?: string | null;
+
+  // 👇 NUEVO: nivel asignado por el docente (cualquiera de estas claves)
+  nivel_idioma?: string | null;
+  nivel_asignado?: string | null;
+  nivel?: string | null;
 };

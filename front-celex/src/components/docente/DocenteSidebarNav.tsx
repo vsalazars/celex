@@ -10,6 +10,7 @@ import {
   Shield,
   LogOut,
   User,
+  Target, // 👈 ícono para Colocación
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import UserInfo from "./UserInfo";
@@ -17,7 +18,8 @@ import UserInfo from "./UserInfo";
 export type TeacherSection =
   | "overview"
   | "groups"
-  | "attendance" // 👈 nueva sección
+  | "attendance" // 👈 existente
+  | "placement"  // 👈 NUEVO
   | "materials"
   | "evaluations"
   | "settings"
@@ -35,6 +37,7 @@ export default function DocenteSidebarNav({
   const items: { key: TeacherSection; label: string; icon: ReactNode }[] = [
     { key: "overview", label: "Resumen", icon: <LayoutDashboard className="h-4 w-4" /> },
     { key: "groups", label: "Mis grupos", icon: <Layers className="h-4 w-4" /> },
+    { key: "placement", label: "Colocación", icon: <Target className="h-4 w-4" /> }, // 👈 NUEVO
     { key: "materials", label: "Materiales", icon: <FileStack className="h-4 w-4" /> },
     { key: "evaluations", label: "Evaluaciones", icon: <ClipboardCheck className="h-4 w-4" /> },
     { key: "settings", label: "Configuración", icon: <Settings2 className="h-4 w-4" /> },
@@ -88,7 +91,7 @@ export default function DocenteSidebarNav({
       </nav>
 
       <div className="mt-6 px-2 text-[11px] text-neutral-400">
-        © {new Date().getFullYear()} CELEX · CECyT 7 "Cuauhtémoc"
+        © {new Date().getFullYear()} CELEX · CECyT 15 "Diódoro Antúnez"
       </div>
     </aside>
   );
