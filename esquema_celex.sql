@@ -687,7 +687,8 @@ CREATE TABLE public.survey_responses (
     inscripcion_id integer NOT NULL,
     ciclo_id integer NOT NULL,
     alumno_id integer NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    comments text
 );
 
 

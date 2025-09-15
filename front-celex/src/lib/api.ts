@@ -719,3 +719,232 @@ export async function downloadPlacementComprobante(
   const resp = await apiFetchBlobResponse(url, { auth: true, method: "GET" });
   await forceDownloadFromResponse(resp, suggestedName || `comprobante_${registroId}`);
 }
+
+
+
+
+
+/* ==================== Reportes (Coordinación) ==================== */
+/** Tipos específicos de reportes para no chocar con CicloDTO, etc. */
+export type ReportCicloLite = {
+  id: number | string;
+  codigo: string;
+  idioma?: string | null;
+  anio?: number | null;
+};
+
+export type ReportGrupoLite = {
+  id: number | string;
+  nombre: string;
+};
+
+export type ReportAlumnoInscrito = {
+  inscripcion_id: number | string;
+  boleta?: string | null;
+  nombre: string;
+  email?: string | null;
+  fecha_inscripcion?: string | null;
+  estado?: string | null;
+};
+
+export type ReportReporteInscritos = {
+  ciclo: { id: number | string; codigo: string };
+  grupo?: { id: number | string; nombre: string } | null;
+  total: number;
+  alumnos: ReportAlumnoInscrito[];
+};
+
+export type ReportPagoRow = {
+  inscripcion_id: number | string;
+  alumno: string;
+  email?: string | null;
+  referencia?: string | null;   // 👈 nuevo
+  tipo?: "pago" | "exencion";   // 👈 NUEVO (opcional por compat)
+  status: "pendiente" | "validado" | "rechazado";
+  importe_centavos: number;
+  fecha_pago?: string | null;
+};
+
+export type ReportReportePagos = {
+  ciclo: { id: number | string; codigo: string };
+  grupo?: { id: number | string; nombre: string } | null;
+  total_registros: number;
+  total_validado_centavos: number;
+  rows: ReportPagoRow[];
+};
+
+/** Lista de ciclos para filtros de reportes (año/idioma opcionales). */
+export async function getReportCiclos(params?: {
+  anio?: string | number;
+  idioma?: string;
+}): Promise<ReportCicloLite[]> {
+  const url = buildURL("/coordinacion/ciclos", {
+    // buildURL solo agrega si hay valor (no undefined/empty)
+    anio: params?.anio,
+    idioma: params?.idioma,
+  });
+  return apiFetch<ReportCicloLite[]>(url, { auth: true });
+}
+
+/** Lista de grupos por ciclo (si tu back aún no maneja grupos, devolverá []). */
+export async function getReportGrupos(cicloId: string | number): Promise<ReportGrupoLite[]> {
+  const url = buildURL("/coordinacion/grupos", { cicloId: String(cicloId) });
+  return apiFetch<ReportGrupoLite[]>(url, { auth: true });
+}
+
+/** Reporte de alumnos inscritos por ciclo (y opcionalmente grupo). */
+export async function getReporteInscritos(args: {
+  cicloId: string | number;
+  grupoId?: string | number;
+}): Promise<ReportReporteInscritos> {
+  const url = buildURL("/coordinacion/reportes/inscritos", {
+    cicloId: String(args.cicloId),
+    grupoId: args.grupoId !== undefined ? String(args.grupoId) : undefined,
+  });
+  return apiFetch<ReportReporteInscritos>(url, { auth: true });
+}
+
+/** Reporte de pagos por ciclo (y opcionalmente grupo). */
+export async function getReportePagos(args: {
+  cicloId: string | number;
+  grupoId?: string | number;
+}): Promise<ReportReportePagos> {
+  const url = buildURL("/coordinacion/reportes/pagos", {
+    cicloId: String(args.cicloId),
+    grupoId: args.grupoId !== undefined ? String(args.grupoId) : undefined,
+  });
+  return apiFetch<ReportReportePagos>(url, { auth: true });
+}
+
+
+/* ==================== Reporte: Encuesta (Coordinación) ==================== */
+
+export type SurveyOptionDTO = {
+  opcion: string;     // Texto de la opción
+  conteo: number;     // Número de votos
+};
+
+export type SurveyQuestionDTO = {
+  id: string | number;
+  texto: string;                // Enunciado de la pregunta
+  opciones: SurveyOptionDTO[];  // Opciones con conteos
+  total_respuestas?: number;    // Opcional (si no viene, se infiere sumando conteos)
+};
+
+export type ReportReporteEncuesta = {
+  ciclo: { id: number | string; codigo: string };
+  preguntas: SurveyQuestionDTO[];
+  total_participantes?: number; // Opcional
+};
+
+/**
+ * Reporte de resultados de encuesta por ciclo (Coordinación).
+ * Backend esperado: GET /coordinacion/reportes/encuesta?cicloId=...
+ */
+export async function getReporteEncuesta(args: {
+  cicloId: string | number;
+}): Promise<ReportReporteEncuesta> {
+  const url = buildURL("/coordinacion/reportes/encuesta", {
+    cicloId: String(args.cicloId),
+  });
+  return apiFetch<ReportReporteEncuesta>(url, { auth: true });
+}
+
+
+
+
+/* ==================== Reporte: Desempeño Docente ==================== */
+
+export type CoordDocenteLite = { id: number | string; nombre: string };
+
+export async function getDocentes(params?: { q?: string; incluir_inactivos?: boolean; }) {
+  const url = buildURL("/coordinacion/docentes", {
+    q: params?.q,
+    incluir_inactivos: params?.incluir_inactivos ?? false,
+  });
+  return apiFetch<CoordDocenteLite[]>(url, { auth: true });
+}
+
+export type SeriePunto = {
+  ciclo_id: number | string;
+  ciclo_codigo: string;     // ej. "2025-01"
+  promedio_pct: number;     // 0..100
+  fecha?: string | null;    // ISO opcional (para ordenar)
+};
+
+export type SerieDocenteResponse = {
+  docente: { id: number | string; nombre: string };
+  puntos: SeriePunto[];
+};
+
+export async function getSerieEncuestaDocente(args: {
+  docenteId: string | number;
+}): Promise<SerieDocenteResponse> {
+  const url = buildURL("/coordinacion/reportes/desempeno-docente", {
+    docenteId: String(args.docenteId),
+  });
+  return apiFetch<SerieDocenteResponse>(url, { auth: true });
+}
+
+
+// lib/api.ts
+export async function getSerieEncuestaDocentePorPregunta(params: { docenteId: string|number, soloProfesor?: boolean }) {
+  const url = buildURL("/coordinacion/reportes/desempeno-docente-por-pregunta", {
+    docenteId: params.docenteId,
+    ...(params.soloProfesor !== undefined ? { soloProfesor: params.soloProfesor } : {})
+  });
+  return apiFetch(url, { auth: true });
+}
+
+
+
+// ===== Comentarios de encuesta (open text) =====
+export type EncuestaComentario = {
+  id: string | number;
+  pregunta_id: string | number | null;
+  pregunta_texto: string | null;
+  texto: string;
+  created_at?: string | null;
+  alumno?: {
+    nombre?: string | null;
+    email?: string | null;
+  } | null;
+};
+
+// lib/api.ts
+export async function getEncuestaComentarios(args: {
+  cicloId: string | number;
+  includeGeneral?: boolean;   // ← NUEVO (default: false)
+  onlyCommentLike?: boolean;  // ← NUEVO (default: true)
+  q?: string;                 // ← NUEVO (búsqueda server-side, opcional)
+  limit?: number;
+  offset?: number;
+}): Promise<{ ciclo: any; total: number; items: EncuestaComentario[] }> {
+  const url = buildURL("/coordinacion/reportes/encuesta/comentarios", {
+    cicloId: String(args.cicloId),
+    ...(args.includeGeneral !== undefined ? { includeGeneral: args.includeGeneral } : {}),
+    ...(args.onlyCommentLike !== undefined ? { onlyCommentLike: args.onlyCommentLike } : {}),
+    ...(args.q ? { q: args.q } : {}),
+    ...(args.limit ? { limit: args.limit } : {}),
+    ...(args.offset ? { offset: args.offset } : {}),
+  });
+  const resp = await apiFetch(url, { auth: true });
+
+  const items: EncuestaComentario[] = (resp?.items ?? []).map((r: any) => ({
+    id: r.id ?? r.pregunta_id ?? r.id,
+    pregunta_id: r.pregunta_id ?? null,
+    pregunta_texto: r.pregunta_texto ?? r.pregunta ?? null,
+    texto: r.texto ?? r.comentario ?? "",
+    created_at: r.created_at ?? r.fecha ?? null,
+    alumno: {
+      nombre: r.alumno?.nombre ?? r.alumno_nombre ?? null,
+      email:  r.alumno?.email  ?? r.alumno_email  ?? null,
+    },
+  }));
+
+  return {
+    ciclo: resp?.ciclo ?? null,
+    total: resp?.total ?? items.length,
+    items,
+  };
+}

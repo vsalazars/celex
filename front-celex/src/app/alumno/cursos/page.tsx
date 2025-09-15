@@ -845,7 +845,7 @@ export default function Page() {
     };
 
     // si NO existe pregunta de comentarios, enviamos top-level comments (el back puede ignorarlo o guardarlo si lo soporta)
-    if (!commentQ && extraComments.trim().length > 0) {
+    if (extraComments.trim().length > 0) {
       (payload as any).comments = extraComments.trim();
     }
 
@@ -975,25 +975,7 @@ export default function Page() {
                 {currentQ && renderQuestionControl(currentQ)}
               </div>
 
-              {/* Comentarios adicionales (sólo en el último paso) */}
-              {qIndex === questionCount - 1 && (
-                <div className="rounded-xl border p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">Comentarios adicionales (opcional)</p>
-                      <p className="text-xs text-neutral-500 mt-1">
-                        Comparte sugerencias u observaciones generales sobre el curso o el docente.
-                      </p>
-                    </div>
-                  </div>
-                  <Textarea
-                    value={extraComments}
-                    onChange={(e) => setExtraComments(e.target.value)}
-                    placeholder="Escribe tus comentarios…"
-                    className="mt-3"
-                  />
-                </div>
-              )}
+          
 
               {/* Navegación */}
               <div className="flex items-center justify-between">

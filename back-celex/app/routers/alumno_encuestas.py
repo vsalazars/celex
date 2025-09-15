@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
 from datetime import date, datetime, timezone
 
 from ..database import get_db
@@ -33,7 +33,7 @@ def _already_submitted(db: Session, alumno_id: int, inscripcion_id: int) -> bool
         SurveyResponse.inscripcion_id == inscripcion_id
     ).first() is not None
 
-def _pick_general_comment_question(db: Session) -> SurveyQuestion | None:
+def _pick_general_comment_question(db: Session) -> Optional[SurveyQuestion]:
     """
     Busca una pregunta open_text que parezca 'comentarios' o 'sugerencias'.
     Si no encuentra, devuelve la primera open_text activa.
@@ -44,6 +44,8 @@ def _pick_general_comment_question(db: Session) -> SurveyQuestion | None:
         or_(
             SurveyQuestion.text.ilike("%coment%"),
             SurveyQuestion.text.ilike("%sugerenc%"),
+            SurveyQuestion.help_text.ilike("%coment%"),
+            SurveyQuestion.help_text.ilike("%sugerenc%"),
         )
     ).order_by(SurveyQuestion.order.asc()).first()
     if q:
@@ -63,7 +65,7 @@ def _question_to_out(q: SurveyQuestion) -> SurveyQuestionOut:
         required=q.required,
         active=q.active,
         order=q.order,
-        created_at=q.created_at,  # incluye created_at
+        created_at=getattr(q, "created_at", None),
     )
 
 def _category_to_out(c: SurveyCategory) -> SurveyCategoryOut:
@@ -73,14 +75,13 @@ def _category_to_out(c: SurveyCategory) -> SurveyCategoryOut:
         description=c.description,
         order=c.order,
         active=c.active,
-        created_at=c.created_at,  # incluye created_at
+        created_at=getattr(c, "created_at", None),
     )
 
 def _curso_terminado(ciclo: Ciclo) -> bool:
     """
     True si el curso ya terminó (compara contra curso_fin).
-    Soporta Date o DateTime.
-    Si no hay curso_fin, devuelve True (no bloquea).
+    Soporta Date o DateTime. Si no hay curso_fin, devuelve True (no bloquea).
     """
     fin = getattr(ciclo, "curso_fin", None)
     if fin is None:
@@ -99,6 +100,7 @@ def get_cuestionario(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # categorías y preguntas activas (ordenadas)
     cats = db.query(SurveyCategory).filter(
         SurveyCategory.active.is_(True)
     ).order_by(SurveyCategory.order.asc()).all()
@@ -145,30 +147,33 @@ def submit_survey(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # 1) Verificaciones básicas
     insc = _ensure_owned_inscripcion(db, user.id, payload.inscripcion_id)
     ciclo = db.query(Ciclo).filter(Ciclo.id == insc.ciclo_id).first()
 
     if _already_submitted(db, user.id, payload.inscripcion_id):
         raise HTTPException(status_code=409, detail="Ya enviaste esta encuesta")
 
-    # Reglas de negocio mínimas (coinciden con el front):
     if insc.status != "confirmada":
         raise HTTPException(status_code=400, detail="Encuesta disponible hasta confirmar la inscripción")
     if ciclo and not _curso_terminado(ciclo):
         raise HTTPException(status_code=400, detail="Encuesta disponible al terminar el curso")
 
-    # Adjunta 'comments' a una pregunta open_text si no vino en el payload
-    answers_in: List[SurveyAnswerIn] = list(payload.answers)
-    if payload.comments:
+    # 2) Normaliza comentario final (si viene)
+    comments_text: Optional[str] = (payload.comments or "").strip() or None
+
+    # 3) Adjunta 'comments' a una open_text SI existe alguna “de comentarios”
+    answers_in: List[SurveyAnswerIn] = list(payload.answers or [])
+    if comments_text:
         try:
-            ids_in_payload = {a.question_id for a in answers_in}
+            ids_in_payload = {int(a.question_id) for a in answers_in}
         except Exception:
             ids_in_payload = set()
         candidate = _pick_general_comment_question(db)
         if candidate and candidate.id not in ids_in_payload:
-            answers_in.append(SurveyAnswerIn(question_id=candidate.id, value=payload.comments))
+            answers_in.append(SurveyAnswerIn(question_id=candidate.id, value=comments_text))
 
-    # Crea la respuesta y sus answers
+    # 4) Crea la respuesta (OJO: sin 'comments', el modelo no lo tiene)
     resp = SurveyResponse(
         alumno_id=user.id,
         inscripcion_id=insc.id,
@@ -177,16 +182,15 @@ def submit_survey(
     db.add(resp)
     db.flush()  # para obtener resp.id
 
-    # Preguntas de referencia
+    # 5) Preguntas de referencia para tipado
+    qids = [int(a.question_id) for a in answers_in] or [-1]
     qmap: Dict[int, SurveyQuestion] = {
-        q.id: q for q in db.query(SurveyQuestion).filter(
-            SurveyQuestion.id.in_([a.question_id for a in answers_in])
-        ).all()
+        q.id: q for q in db.query(SurveyQuestion).filter(SurveyQuestion.id.in_(qids)).all()
     }
 
-    # Persistir answers mapeando tipo
+    # 6) Persistir answers mapeando por tipo
     for a in answers_in:
-        q = qmap.get(a.question_id)
+        q = qmap.get(int(a.question_id))
         if not q:
             continue
 
@@ -194,18 +198,15 @@ def submit_survey(
 
         if q.type in ("likert_1_5", "scale_0_10"):
             try:
-                ans.value_int = int(a.value)  # 1..5 o 0..10
+                ans.value_int = int(a.value) if a.value is not None else None
             except Exception:
                 ans.value_int = None
-
         elif q.type == "yes_no":
-            # Parse robusto de booleanos
             if isinstance(a.value, bool):
                 ans.value_bool = a.value
             else:
                 v = str(a.value).strip().lower()
                 ans.value_bool = v in {"1", "true", "t", "yes", "y", "si", "sí", "verdadero"}
-
         else:
             ans.value_text = (str(a.value).strip() if a.value is not None else None)
 

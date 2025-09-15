@@ -10,14 +10,14 @@ import ReportAlumnos from "./reports/ReportAlumnos";
 import ReportPagos from "./reports/ReportPagos";
 import ReportEncuestaNivo from "./reports/ReportEncuestaNivo";
 import ReportDesempenoDocente from "./reports/ReportDesempenoDocente";
-// import ReportPagosExamen from "./reports/ReportPagosExamen";
+import ReportPagosExamen from "./reports/ReportPagosExamen"; // ← nuevo componente
 import { useReportFilters } from "./reports/useReportFilters";
 import {
   ClipboardList,
   CreditCard,
   BarChart3,
   GraduationCap,
-  ReceiptText,
+  FileCheck, // ícono sugerido para el examen
 } from "lucide-react";
 
 type ReportKey =
@@ -39,7 +39,7 @@ export default function ReportsSection() {
       onClick={() => setActive(key)}
       className={cn(
         "rounded-full justify-center gap-2",
-        "w-[260px] h-10" // ancho fijo, suficiente para el título más largo
+        "min-w-[220px] h-10" // mismo tamaño para todos
       )}
     >
       <Icon className="h-4 w-4" />
@@ -54,7 +54,7 @@ export default function ReportsSection() {
           <div className="flex flex-wrap gap-2">
             {tabBtn("alumnos", "Alumnos inscritos", ClipboardList)}
             {tabBtn("pagos", "Pagos", CreditCard)}
-            {tabBtn("pagos_examen", "Pagos Examen de Colocación", ReceiptText)}
+            {tabBtn("pagos_examen", "Pagos Examen de Colocación", FileCheck)}
             {tabBtn("encuesta", "Encuesta", BarChart3)}
             {tabBtn("desempeno", "Desempeño Docente", GraduationCap)}
           </div>
@@ -63,19 +63,9 @@ export default function ReportsSection() {
 
           <FiltersBar
             {...filters}
-            mode={
-              active === "desempeno"
-                ? "docente"
-                : active === "pagos_examen"
-                ? "periodo"
-                : "ciclos"
-            }
+            mode={active === "desempeno" ? "docente" : "ciclos"}
             docenteId={docenteId}
             setDocenteId={setDocenteId}
-            periodStart={(filters as any).periodStart}
-            setPeriodStart={(filters as any).setPeriodStart}
-            periodEnd={(filters as any).periodEnd}
-            setPeriodEnd={(filters as any).setPeriodEnd}
           />
         </CardContent>
       </Card>
@@ -85,9 +75,7 @@ export default function ReportsSection() {
       ) : active === "pagos" ? (
         <ReportPagos filters={filters} />
       ) : active === "pagos_examen" ? (
-        <div className="text-sm text-muted-foreground">
-          Pagos de Examen de Colocación — selecciona un periodo arriba.
-        </div>
+        <ReportPagosExamen filters={filters} />
       ) : active === "encuesta" ? (
         <ReportEncuestaNivo filters={filters} />
       ) : (

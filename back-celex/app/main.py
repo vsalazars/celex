@@ -27,6 +27,7 @@ from .routers.placement_admin import router as placement_admin_router  # 👈 NU
 from app.routers import placement_teacher  # ⬅️ importa
 from .routers.coordinacion_encuestas import router as coordinacion_encuestas_router
 from .routers.alumno_encuestas import router as alumno_encuestas_router  # 👈 NUEVO
+from app.routers import coordinacion_reportes
 
 
 
@@ -60,6 +61,8 @@ app.include_router(placement_admin_router)  # 👈 NUEVO
 app.include_router(placement_teacher.router)
 app.include_router(coordinacion_encuestas_router)
 app.include_router(alumno_encuestas_router)   # 👈 NUEVO
+app.include_router(coordinacion_reportes.router)
+
 
 
 
