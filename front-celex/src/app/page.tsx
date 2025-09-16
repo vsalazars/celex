@@ -18,15 +18,23 @@ export default function Page() {
   };
 
   return (
-    <main className="min-h-dvh bg-gradient-to-b from-white to-neutral-50">
+    <main className="min-h-dvh flex flex-col bg-gradient-to-b from-white to-neutral-50">
       <AppHeader onLoginSuccess={(data) => redirectByRole(data.role || "")} />
 
-      <section className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 py-16 md:grid-cols-2 items-stretch">
-        <div className="h-full">
-          <HeroFeatures />
-        </div>
-        <div className="h-full">
-          <RegisterCard />
+      {/* Contenido principal: se expande para que las columnas puedan igualar alturas */}
+      <section className="flex-1">
+        <div className="mx-auto max-w-6xl px-4 py-12 md:py-16">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10 items-stretch">
+            {/* Columna izquierda: Hero / ofertas */}
+            <div className="h-full flex flex-col">
+              <HeroFeatures />
+            </div>
+
+            {/* Columna derecha: Registro */}
+            <div className="h-full flex flex-col">
+              <RegisterCard />
+            </div>
+          </div>
         </div>
       </section>
 

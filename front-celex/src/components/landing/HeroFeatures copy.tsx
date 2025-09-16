@@ -233,6 +233,27 @@ function deriveDisponibles(c: any) {
   return { disp, total };
 }
 
+const fmtMXN = (v?: number | null) =>
+  typeof v === "number" && !Number.isNaN(v)
+    ? new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(v)
+    : "—";
+
+function deriveCosto(e: any): number | undefined {
+  if (Number.isFinite(Number(e?.costo_centavos))) return Number(e.costo_centavos) / 100;
+  if (Number.isFinite(Number(e?.precio_centavos))) return Number(e.precio_centavos) / 100;
+
+  const v =
+    e?.costo ??
+    e?.precio ??
+    e?.monto ??
+    e?.tarifa ??
+    e?.fee;
+
+  const numv = Number(v);
+  if (Number.isFinite(numv)) return numv;
+  return undefined;
+}
+
 /* ===== Options ===== */
 const idiomas = ["ingles", "frances", "aleman", "italiano", "portugues"];
 const modalidades = ["intensivo", "sabatino", "semestral"];
@@ -381,7 +402,7 @@ export default function HeroFeatures() {
       const resp = await listPlacementExamsPublic({
         idioma: idioma || undefined,
         vigente: true,
-        include_capacity: true,
+        include_capacity: true, // 👈 CLAVE: pide capacidad al backend
         page: 1,
         page_size: 100,
       });
@@ -671,12 +692,14 @@ export default function HeroFeatures() {
                   {examsPage.map((e: PlacementExamLite) => {
                     const keyId = String((e as any).id ?? (e as any).codigo ?? Math.random());
                     const { from, to } = pickInscripcionWindowExam(e);
+                    const vigente = isTodayBetween(from, to);
 
                     const { disp, total } = deriveDisponibles(e as any);
                     const tone = capTone(disp);
                     const pct = capPercent(disp, total);
 
                     const aula = (e as any).salon ?? (e as any).aula ?? (e as any).sala ?? undefined;
+                    const costo = deriveCosto(e as any);
 
                     return (
                       <div key={keyId} className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
@@ -685,6 +708,7 @@ export default function HeroFeatures() {
                             <h3 className="font-semibold text-base">
                               {(e as any).codigo || "Examen"}
                             </h3>
+                          
                           </div>
                           <div className="mt-2">
                             <Badge className={`rounded-full border ${tone.badgeClass}`}>
@@ -708,26 +732,15 @@ export default function HeroFeatures() {
                             <div className="ml-6">{d((e as any).fecha)}</div>
                           </div>
 
-                          {/* ✅ HORA con icono, soporta 'hora' o rango 'hora_inicio – hora_fin', y muestra duración si existe */}
-                          {(e as any).hora_inicio || (e as any).hora_fin || (e as any).hora ? (
+                          {(e as any).hora_inicio || (e as any).hora_fin ? (
                             <div>
                               <div className="flex items-center gap-2 mb-1">
-                                <Clock3 className="h-4 w-4" /> <b>Hora</b>
+                                <Clock3 className="h-4 w-4" /> <b>Horario</b>
                               </div>
-                              <div className="ml-6">
-                                {((e as any).hora_inicio || (e as any).hora_fin)
-                                  ? `${h((e as any).hora_inicio)} – ${h((e as any).hora_fin)}`
-                                  : h((e as any).hora)}
-                                {Number.isFinite(Number((e as any).duracion_min)) ? (
-                                  <span className="text-xs text-neutral-500 ml-2">
-                                    · {(e as any).duracion_min} min
-                                  </span>
-                                ) : null}
-                              </div>
+                              <div className="ml-6">{h((e as any).hora_inicio)} – {h((e as any).hora_fin)}</div>
                             </div>
                           ) : null}
 
-                          {/* ✅ SALÓN con icono */}
                           {aula ? (
                             <div>
                               <div className="flex items-center gap-2 mb-1">
@@ -740,6 +753,11 @@ export default function HeroFeatures() {
                           <div>
                             <div className="mb-1 font-semibold">Inscripción</div>
                             <div className="ml-6">{d(from)} – {d(to)}</div>
+                          </div>
+
+                          <div>
+                            <div className="mb-1 font-semibold">Costo</div>
+                            <div className="ml-6">{fmtMXN(costo)}</div>
                           </div>
                         </div>
 

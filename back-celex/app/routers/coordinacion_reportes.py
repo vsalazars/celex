@@ -1,13 +1,14 @@
 # app/routers/coordinacion_reportes.py
+# app/routers/coordinacion_reportes.py
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import or_, func, literal
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy import or_, func, literal, extract
 
 from ..database import get_db
 from ..auth import require_coordinator_or_admin
-from ..models import Ciclo, Inscripcion, User
-
+# 👇 Asegura estos imports (incluye PlacementExam y PlacementRegistro)
+from ..models import Ciclo, Inscripcion, User, PlacementExam, PlacementRegistro
 router = APIRouter(prefix="/coordinacion", tags=["Coordinación - Reportes"])
 
 # ------------------------------
@@ -1023,3 +1024,204 @@ def reporte_encuesta_comentarios(
 
 
 
+
+# ==============================
+# Placement Exams (lite) + Registros (admin)
+# ==============================
+
+class PlacementExamLiteDTO(BaseModel):
+    id: int | str
+    codigo: str
+    idioma: str
+    fecha: Optional[str] = None  # ISO "YYYY-MM-DD"
+
+@router.get(
+    "/placement-exams/lite",
+    response_model=List[PlacementExamLiteDTO],
+    dependencies=[Depends(require_coordinator_or_admin)],
+)
+def placement_exams_lite(
+    anio: Optional[int] = Query(None, description="Ej. 2025"),
+    idioma: Optional[str] = Query(None, description="ingles|frances|aleman|..."),
+    q: Optional[str] = Query(None, description="Búsqueda por código/nombre (opcional)"),
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    """
+    Lista 'lite' para el selector de exámenes de colocación.
+    Filtra por año (fecha) e idioma. Orden: fecha desc, codigo desc.
+    """
+    qry = db.query(PlacementExam).filter(PlacementExam.activo.is_(True))
+
+    if idioma:
+        qry = qry.filter(
+            or_(
+                PlacementExam.idioma == idioma,
+                PlacementExam.idioma.ilike(idioma)
+            )
+        )
+    if anio:
+        # YEAR(fecha) = anio
+        qry = qry.filter(extract("year", PlacementExam.fecha) == anio)
+    if q:
+        like = f"%{q}%"
+        qry = qry.filter(
+            or_(
+                PlacementExam.codigo.ilike(like),
+                PlacementExam.nombre.ilike(like),
+            )
+        )
+
+    rows = (
+        qry.order_by(PlacementExam.fecha.desc(), PlacementExam.codigo.desc())
+        .limit(limit)
+        .all()
+    )
+
+    out: List[PlacementExamLiteDTO] = []
+    for r in rows:
+        fecha_iso = None
+        try:
+            fecha_iso = r.fecha.isoformat() if getattr(r, "fecha", None) else None
+        except Exception:
+            fecha_iso = None
+        out.append(
+            PlacementExamLiteDTO(
+                id=r.id,
+                codigo=r.codigo,
+                idioma=r.idioma,
+                fecha=fecha_iso,
+            )
+        )
+    return out
+
+
+class PlacementRegistroItemDTO(BaseModel):
+    id: int | str
+    # Alumno (lo mando desglosado y también listo para usar en front)
+    alumno_id: int | str
+    alumno_nombre: Optional[str] = None
+    alumno_apellidos: Optional[str] = None
+    alumno_email: Optional[str] = None
+
+    referencia: Optional[str] = None
+    tipo: str = "pago"  # default: pago
+    estado: str         # pendiente | validado | rechazado (mapeado desde status)
+    importe_centavos: Optional[int] = 0
+    created_at: Optional[str] = None   # ISO
+    validated_at: Optional[str] = None # ISO
+    validated_by_id: Optional[int | str] = None
+    validated_by_name: Optional[str] = None
+    rechazo_motivo: Optional[str] = None
+    validation_notes: Optional[str] = None
+
+class PlacementRegistrosAdminResponse(BaseModel):
+    exam: Dict[str, Any]
+    total: int
+    items: List[PlacementRegistroItemDTO]
+
+
+@router.get(
+    "/placement-exams/{exam_id}/registros-admin",
+    response_model=PlacementRegistrosAdminResponse,
+    dependencies=[Depends(require_coordinator_or_admin)],
+)
+def placement_registros_admin(
+    exam_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Regresa TODOS los registros/pagos del examen de colocación (placement_registros)
+    con datos del alumno y del validador (si existe).
+    """
+    exam = db.query(PlacementExam).filter(PlacementExam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Examen no encontrado")
+
+    # Alias para el validador
+    Validador = aliased(User)
+
+    # Columnas del alumno
+    apellidos = func.coalesce(func.trim(User.last_name), "")
+    nombres   = func.coalesce(func.trim(User.first_name), "")
+
+    # Columnas del validador
+    v_ap = func.coalesce(func.trim(Validador.last_name), "")
+    v_no = func.coalesce(func.trim(Validador.first_name), "")
+    validador_nombre = func.trim(func.concat(v_no, literal(" "), v_ap)).label("validador_nombre")
+
+    rows = (
+        db.query(
+            PlacementRegistro.id.label("id"),
+            PlacementRegistro.alumno_id.label("alumno_id"),
+            User.first_name.label("alumno_nombre"),
+            User.last_name.label("alumno_apellidos"),
+            User.email.label("alumno_email"),
+            PlacementRegistro.referencia.label("referencia"),
+            PlacementRegistro.status.label("status"),
+            PlacementRegistro.importe_centavos.label("importe_centavos"),
+            PlacementRegistro.created_at.label("created_at"),
+            PlacementRegistro.validated_at.label("validated_at"),
+            PlacementRegistro.validated_by_id.label("validated_by_id"),
+            PlacementRegistro.rechazo_motivo.label("rechazo_motivo"),
+            PlacementRegistro.validation_notes.label("validation_notes"),
+            validador_nombre,
+        )
+        .join(User, User.id == PlacementRegistro.alumno_id)
+        .outerjoin(Validador, Validador.id == PlacementRegistro.validated_by_id)
+        .filter(PlacementRegistro.exam_id == exam_id)
+        .order_by(func.lower(apellidos).asc(), func.lower(nombres).asc(), PlacementRegistro.id.asc())
+        .all()
+    )
+
+    items: List[PlacementRegistroItemDTO] = []
+    for r in rows:
+        estado = (r.status or "").strip().lower() or "pendiente"
+        created_iso = None
+        validated_iso = None
+        try:
+            created_iso = r.created_at.isoformat() if r.created_at else None
+        except Exception:
+            created_iso = None
+        try:
+            validated_iso = r.validated_at.isoformat() if r.validated_at else None
+        except Exception:
+            validated_iso = None
+
+        items.append(
+            PlacementRegistroItemDTO(
+                id=r.id,
+                alumno_id=r.alumno_id,
+                alumno_nombre=r.alumno_nombre,
+                alumno_apellidos=r.alumno_apellidos,
+                alumno_email=r.alumno_email,
+                referencia=r.referencia,
+                tipo="pago",                # si modelas exenciones, aquí puedes mapear
+                estado=estado,              # pendiente|validado|rechazado
+                importe_centavos=int(r.importe_centavos or 0),
+                created_at=created_iso,
+                validated_at=validated_iso,
+                validated_by_id=r.validated_by_id,
+                validated_by_name=r.validador_nombre,
+                rechazo_motivo=r.rechazo_motivo,
+                validation_notes=r.validation_notes,
+            )
+        )
+
+    exam_fecha = None
+    try:
+        exam_fecha = exam.fecha.isoformat() if getattr(exam, "fecha", None) else None
+    except Exception:
+        exam_fecha = None
+
+    return PlacementRegistrosAdminResponse(
+        exam={
+            "id": exam.id,
+            "codigo": exam.codigo,
+            "idioma": exam.idioma,
+            "fecha": exam_fecha,
+            "nombre": getattr(exam, "nombre", None),
+        },
+        total=len(items),
+        items=items,
+    )

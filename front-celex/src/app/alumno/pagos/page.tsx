@@ -1,4 +1,3 @@
-// app/alumno/pagos/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -21,6 +20,13 @@ import {
 } from "@/components/ui/table";
 
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+import {
   listMisInscripciones,
   downloadArchivoInscripcion, // (id: number, tipo: "comprobante" | "exencion" | "estudios")
 } from "@/lib/api";
@@ -30,7 +36,6 @@ import {
   FileDown,
   ReceiptText,
   ShieldCheck,
-  FileQuestion,
   BadgeDollarSign,
   CalendarDays,
   Info,
@@ -41,7 +46,7 @@ type InscripcionLite = {
   id: number;
   ciclo_id: number;
   status: string; // registrada | preinscrita | confirmada | rechazada | en_revision ...
-  tipo?: "pago" | "exencion"; // si tu backend lo llama diferente, se adapta en map
+  tipo?: "pago" | "exencion";
   referencia?: string | null;
   importe_centavos?: number | null;
   fecha_pago?: string | null; // YYYY-MM-DD
@@ -52,7 +57,6 @@ type InscripcionLite = {
     modalidad?: string;
     turno?: string;
   };
-  // flags opcionales si tu API ya los expone:
   has_comprobante?: boolean;
   has_exencion?: boolean;
   has_estudios?: boolean;
@@ -81,7 +85,7 @@ function d(s?: string | null) {
 }
 
 function statusBadgeTone(status: string) {
-  const s = status.toLowerCase();
+  const s = (status || "").toLowerCase();
   if (["confirmada", "validada", "aceptada"].includes(s)) {
     return { variant: "secondary" as const, className: "bg-emerald-100 text-emerald-900 border-emerald-200" };
   }
@@ -102,8 +106,7 @@ export default function AlumnoPagosPage() {
   useEffect(() => {
     (async () => {
       try {
-        const data = await listMisInscripciones(); // tu helper ya existe
-        // Normaliza campos mínimos que necesitamos
+        const data = await listMisInscripciones();
         const mapped: InscripcionLite[] = (data ?? []).map((raw: any) => ({
           id: raw.id,
           ciclo_id: raw.ciclo_id ?? raw.ciclo?.id,
@@ -162,7 +165,7 @@ export default function AlumnoPagosPage() {
           <Card className="shadow-sm">
             <CardHeader className="flex-row items-center justify-between gap-4">
               <CardTitle>Mis pagos / exenciones</CardTitle>
-              <div className="w-72">
+              <div className="w-full sm:w-72">
                 <Input
                   placeholder="Buscar por código, estatus o referencia…"
                   value={q}
@@ -170,6 +173,7 @@ export default function AlumnoPagosPage() {
                 />
               </div>
             </CardHeader>
+
             <CardContent>
               {loading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -177,125 +181,280 @@ export default function AlumnoPagosPage() {
                   Cargando…
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  No hay registros que coincidan.
-                </div>
+                <div className="text-sm text-muted-foreground">No hay registros que coincidan.</div>
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="min-w-[220px] text-left">Curso</TableHead>
-                        <TableHead className="text-center">Tipo</TableHead>
-                        <TableHead className="text-center">Referencia</TableHead>
-                        <TableHead className="text-center">Importe</TableHead>
-                        <TableHead className="text-center">Fecha de pago</TableHead>
-                        <TableHead className="text-center">Archivos</TableHead>
-                        <TableHead className="text-center">Estado</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filtered.map((it) => {
-                        const curso =
-                          `${it.ciclo?.codigo ?? "—"} • ${it.ciclo?.idioma ?? ""} ${it.ciclo?.nivel ?? ""} • ${it.ciclo?.modalidad ?? ""}/${it.ciclo?.turno ?? ""}`.trim();
-                        const tone = statusBadgeTone(it.status || "");
-
-                        return (
-                          <TableRow key={it.id} className="align-top">
-                            <TableCell className="text-left">
-                              <div className="font-medium">{curso}</div>
-                              <div className="text-xs text-muted-foreground">ID inscripción: {it.id}</div>
-                            </TableCell>
-
-                            <TableCell className="text-center">
-                              {it.tipo === "exencion" ? (
-                                <span className="inline-flex items-center gap-1 text-xs">
-                                  <ShieldCheck className="h-4 w-4" /> Exención
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-xs">
-                                  <ReceiptText className="h-4 w-4" /> Pago
-                                </span>
-                              )}
-                            </TableCell>
-
-                            <TableCell className="text-center text-sm">{it.referencia || "—"}</TableCell>
-
-                            <TableCell className="text-center text-sm">
-                              {it.tipo === "exencion" ? "—" : moneyMXN(it.importe_centavos)}
-                            </TableCell>
-
-                            <TableCell className="text-center text-sm">
-                              {it.tipo === "exencion" ? "—" : (
-                                <span className="inline-flex items-center gap-1">
-                                  <CalendarDays className="h-4 w-4" /> {d(it.fecha_pago)}
-                                </span>
-                              )}
-                            </TableCell>
-
-                            <TableCell className="text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                {/* Comprobante de pago */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8"
-                                  disabled={it.tipo === "exencion"}
-                                  onClick={() => onDownload(it.id, "comprobante")}
-                                  title="Descargar comprobante de pago"
+                <>
+                  {/* ===== Vista móvil: tarjetas ===== */}
+                  <div className="grid gap-3 md:hidden">
+                    {filtered.map((it) => {
+                      const tone = statusBadgeTone(it.status || "");
+                      return (
+                        <Card key={it.id} className="border">
+                          <CardContent className="py-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="font-medium truncate" title={it.ciclo?.codigo}>
+                                  {it.ciclo?.codigo || "—"}
+                                </div>
+                                <div
+                                  className="text-xs text-muted-foreground truncate"
+                                  title={`${it.ciclo?.idioma ?? ""} ${it.ciclo?.nivel ?? ""} • ${it.ciclo?.modalidad ?? ""}/${it.ciclo?.turno ?? ""}`}
                                 >
-                                  <FileDown className="h-4 w-4 mr-1" />
-                                  Comprobante
-                                </Button>
-
-                                {/* Exención */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8"
-                                  disabled={it.tipo !== "exencion"}
-                                  onClick={() => onDownload(it.id, "exencion")}
-                                  title="Descargar comprobante de exención"
-                                >
-                                  <FileDown className="h-4 w-4 mr-1" />
-                                  Exención
-                                </Button>
-
-                                {/* Estudios (solo algunas IPN/pago) */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8"
-                                  onClick={() => onDownload(it.id, "estudios")}
-                                  title="Descargar comprobante de estudios (si aplica)"
-                                >
-                                  <FileDown className="h-4 w-4 mr-1" />
-                                  Estudios
-                                </Button>
+                                  {(it.ciclo?.idioma ?? "")} {(it.ciclo?.nivel ?? "")} • {(it.ciclo?.modalidad ?? "")}/{(it.ciclo?.turno ?? "")}
+                                </div>
                               </div>
-                            </TableCell>
-
-                            <TableCell className="text-center">
-                              <Badge variant={tone.variant} className={tone.className}>
+                              <Badge variant={tone.variant} className={tone.className + " whitespace-nowrap"}>
                                 {it.status}
                               </Badge>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                            </div>
 
-                  {/* Nota informativa */}
-                  <div className="mt-3 text-[12px] text-neutral-600 flex items-start gap-2">
-                    <Info className="h-4 w-4 mt-0.5" />
-                    <p>
-                      Si un botón de descarga marca error, puede deberse a que aún no has cargado ese archivo
-                      o está en revisión. Para pagos: muestra <BadgeDollarSign className="inline h-3 w-3" /> importe y{" "}
-                      <CalendarDays className="inline h-3 w-3" /> fecha cuando han sido capturados.
-                    </p>
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground">Tipo</div>
+                                <div className="inline-flex items-center gap-1">
+                                  {it.tipo === "exencion" ? (
+                                    <>
+                                      <ShieldCheck className="h-4 w-4" /> Exención
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ReceiptText className="h-4 w-4" /> Pago
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground">Referencia</div>
+                                <div className="font-mono text-xs truncate" title={it.referencia || ""}>
+                                  {it.referencia || "—"}
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground">Importe</div>
+                                <div className="inline-flex items-center gap-1">
+                                  <BadgeDollarSign className="h-4 w-4" />
+                                  {it.tipo === "exencion" ? "—" : moneyMXN(it.importe_centavos)}
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <div className="text-xs text-muted-foreground">Fecha de pago</div>
+                                <div className="inline-flex items-center gap-1">
+                                  <CalendarDays className="h-4 w-4" />
+                                  {it.tipo === "exencion" ? "—" : d(it.fecha_pago)}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      className="h-9 w-9"
+                                      disabled={it.tipo === "exencion"}
+                                      onClick={() => onDownload(it.id, "comprobante")}
+                                    >
+                                      <FileDown className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Comprobante de pago</TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      className="h-9 w-9"
+                                      disabled={it.tipo !== "exencion"}
+                                      onClick={() => onDownload(it.id, "exencion")}
+                                    >
+                                      <FileDown className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Comprobante de exención</TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      className="h-9 w-9"
+                                      onClick={() => onDownload(it.id, "estudios")}
+                                    >
+                                      <FileDown className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Constancia de estudios</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
-                </div>
+
+                  {/* ===== Vista desktop: 5 columnas (Referencia solo para pagos, combinada con Importe) ===== */}
+                  <div className="hidden md:block">
+                    <div className="max-h-[70vh] overflow-auto rounded-md border">
+                      <Table className="table-fixed">
+                        <TableHeader className="sticky top-0 bg-background z-10 shadow-[0_1px_0_0_rgba(0,0,0,0.06)]">
+                          <TableRow>
+                            <TableHead className="text-left w-[30rem]">Curso</TableHead>
+                            <TableHead className="text-center w-[14rem]">Pago</TableHead>
+                            <TableHead className="text-center w-[10rem]">Fecha de pago</TableHead>
+                            <TableHead className="text-center w-[14rem]">Archivos</TableHead>
+                            <TableHead className="text-center w-[10rem]">Estado</TableHead>
+                          </TableRow>
+                        </TableHeader>
+
+                        <TableBody>
+                          {filtered.map((it) => {
+                            const cursoTxt = `${it.ciclo?.codigo ?? "—"}`;
+                            const detalleTxt = `${it.ciclo?.idioma ?? ""} ${it.ciclo?.nivel ?? ""} • ${it.ciclo?.modalidad ?? ""}/${it.ciclo?.turno ?? ""}`.trim();
+                            const tone = statusBadgeTone(it.status || "");
+                            const esExencion = it.tipo === "exencion";
+
+                            return (
+                              <TableRow key={it.id} className="align-top odd:bg-muted/30">
+                                {/* Curso + tipo como chip pequeño */}
+                                <TableCell className="py-4 w-[30rem]">
+                                  <div className="flex items-start gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium leading-tight truncate" title={cursoTxt}>
+                                        {cursoTxt}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground truncate" title={detalleTxt}>
+                                        {detalleTxt || "—"}
+                                      </div>
+                                    </div>
+                                    <div className="shrink-0 mt-0.5">
+                                      <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border bg-muted">
+                                        {esExencion ? (
+                                          <>
+                                            <ShieldCheck className="h-3.5 w-3.5" /> Exención
+                                          </>
+                                        ) : (
+                                          <>
+                                            <ReceiptText className="h-3.5 w-3.5" /> Pago
+                                          </>
+                                        )}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </TableCell>
+
+                                {/* Pago: referencia (solo si es pago) + importe */}
+                                <TableCell className="py-4 text-center w-[14rem]">
+                                  {esExencion ? (
+                                    "—"
+                                  ) : (
+                                    <div className="space-y-1">
+                                      {it.referencia ? (
+                                        <div
+                                          className="font-mono text-[11px] truncate"
+                                          title={`Ref: ${it.referencia}`}
+                                        >
+                                          Ref: {it.referencia}
+                                        </div>
+                                      ) : null}
+                                      <div className="text-sm">{moneyMXN(it.importe_centavos)}</div>
+                                    </div>
+                                  )}
+                                </TableCell>
+
+                                {/* Fecha */}
+                                <TableCell className="py-4 text-center w-[10rem]">
+                                  {esExencion ? (
+                                    "—"
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                      <CalendarDays className="h-4 w-4" />
+                                      {d(it.fecha_pago)}
+                                    </span>
+                                  )}
+                                </TableCell>
+
+                                {/* Archivos */}
+                                <TableCell className="py-3 w-[14rem]">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            size="icon"
+                                            variant="outline"
+                                            className="h-9 w-9"
+                                            disabled={esExencion}
+                                            onClick={() => onDownload(it.id, "comprobante")}
+                                          >
+                                            <FileDown className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Comprobante de pago</TooltipContent>
+                                      </Tooltip>
+
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            size="icon"
+                                            variant="outline"
+                                            className="h-9 w-9"
+                                            disabled={!esExencion}
+                                            onClick={() => onDownload(it.id, "exencion")}
+                                          >
+                                            <FileDown className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Comprobante de exención</TooltipContent>
+                                      </Tooltip>
+
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            size="icon"
+                                            variant="outline"
+                                            className="h-9 w-9"
+                                            onClick={() => onDownload(it.id, "estudios")}
+                                          >
+                                            <FileDown className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Constancia de estudios</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                </TableCell>
+
+                                {/* Estado */}
+                                <TableCell className="py-4 text-center w-[10rem]">
+                                  <Badge variant={tone.variant} className={tone.className + " whitespace-nowrap"}>
+                                    {it.status}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Nota informativa */}
+                    <div className="mt-3 text-[12px] text-neutral-600 flex items-start gap-2">
+                      <Info className="h-4 w-4 mt-0.5" />
+                      <p>
+                        Si un botón de descarga marca error, puede deberse a que aún no has cargado ese archivo
+                        o está en revisión. Para pagos: muestra{" "}
+                        <BadgeDollarSign className="inline h-3 w-3" /> importe y{" "}
+                        <CalendarDays className="inline h-3 w-3" /> fecha cuando han sido capturados.
+                      </p>
+                    </div>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

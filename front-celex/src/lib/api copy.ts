@@ -1,20 +1,54 @@
+// src/lib/api.ts
 import { API_URL } from "./constants";
 import { getToken, clearSession } from "./sessions";
 import type {
-  CoordResp, CreateTeacherInput, Paginated, Teacher
+  CoordResp,
+  CreateTeacherInput,
+  Paginated,
+  Teacher,
+  PlacementExam,
+  PlacementExamCreateDTO,
 } from "./types";
 
 /* ========== Helper ========== */
 function isFormDataBody(init?: RequestInit) {
-  // Navegador / Next client
   return typeof FormData !== "undefined" && init?.body instanceof FormData;
 }
 
-async function apiFetch<T = any>(
+type ApiInit = RequestInit & {
+  auth?: boolean;
+  json?: unknown; // Enviar JSON sin armar body a mano
+};
+
+function normalizeErrorDetail(json: any, fallback: string): string {
+  // FastAPI: detail puede ser string, objeto o lista de objetos
+  if (!json) return fallback;
+  const d = json.detail ?? json.message ?? json.error ?? json;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    // typical 422
+    const parts = d.map((e) => {
+      if (typeof e === "string") return e;
+      if (e?.msg && e?.loc) return `${e.loc.join(".")}: ${e.msg}`;
+      if (e?.msg) return e.msg;
+      try { return JSON.stringify(e); } catch { return String(e); }
+    });
+    return parts.join(" · ");
+  }
+  try { return JSON.stringify(d); } catch { return String(d); }
+}
+
+// 👇 Exporta apiFetch para poder usarlo desde otros módulos
+export async function apiFetch<T = any>(
   input: string,
-  init?: RequestInit & { auth?: boolean }
+  init?: ApiInit
 ): Promise<T> {
   const headers = new Headers(init?.headers || {});
+
+  // Aceptamos json por defecto si no hay preferencia
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json, */*;q=0.1");
+  }
 
   if (init?.auth) {
     const token = getToken();
@@ -22,41 +56,81 @@ async function apiFetch<T = any>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  // ⚠️ Importante: NO forzar JSON si mandamos FormData (multipart)
-  if (!isFormDataBody(init) && !headers.has("Content-Type")) {
+  // Si nos pasaron "json", armamos el body y el Content-Type (a menos que sea FormData)
+  let body: BodyInit | undefined = init?.body;
+  if (!isFormDataBody(init) && init?.json !== undefined) {
+    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    body = JSON.stringify(init.json);
+  }
+
+  // ⚠️ NO forzar JSON si mandamos FormData (multipart) o si ya lo pusimos con json
+  if (!isFormDataBody(init) && !headers.has("Content-Type") && body && init?.json === undefined) {
     headers.set("Content-Type", "application/json");
   }
-  // Si alguien puso Content-Type pero el body es FormData, lo quitamos para permitir el boundary
   if (isFormDataBody(init) && headers.has("Content-Type")) {
     headers.delete("Content-Type");
   }
 
-  const res = await fetch(input, { ...init, headers, cache: "no-store" });
+  let res: Response;
+  try {
+    res = await fetch(input, { ...init, headers, body, cache: "no-store" });
+  } catch (err: any) {
+    // Aquí cae el famoso "TypeError: Failed to fetch"
+    const detail = err?.message || String(err);
+    throw new Error(
+      `No se pudo conectar con la API (${input}). ` +
+      `Posibles causas: URL inválida, CORS, certificado o mixed content. ` +
+      `Detalle: ${detail}`
+    );
+  }
 
   if (!res.ok) {
     if (res.status === 401) {
       try { clearSession(); } catch {}
       throw new Error("No autorizado. Vuelve a iniciar sesión.");
     }
+
     let detail = `Error ${res.status}`;
     try {
-      const json = await res.json();
-      detail = json?.detail || json?.message || detail;
-    } catch {}
+      const ctype = res.headers.get("content-type") || "";
+      if (ctype.includes("application/json")) {
+        const j = await res.json();
+        detail = normalizeErrorDetail(j, detail);
+      } else {
+        const t = await res.text();
+        if (t) detail = t;
+      }
+    } catch {
+      // swallow
+    }
     throw new Error(detail);
   }
 
   if (res.status === 204) return undefined as unknown as T;
 
+  // Devuelve JSON si hay; si no, texto.
+  const ctype = res.headers.get("content-type") || "";
+  if (ctype.includes("application/json")) {
+    return (await res.json()) as T;
+  }
   const text = await res.text();
-  if (!text) return undefined as unknown as T;
-
-  try { return JSON.parse(text) as T; }
-  catch { return undefined as unknown as T; }
+  return (text as unknown) as T;
 }
 
-function buildURL(path: string, params?: Record<string, string | number | boolean | undefined>) {
-  const url = new URL(`${API_URL}${path.startsWith("/") ? "" : "/"}${path}`);
+// 👇 Exporta buildURL para que puedas importarlo como named export
+export function buildURL(
+  path: string,
+  params?: Record<string, string | number | boolean | undefined>
+) {
+  if (!API_URL) throw new Error("API_URL no está definida");
+  const base = API_URL.replace(/\/+$/, "");
+  const p = String(path || "").replace(/^\/?/, "/");
+  let url: URL;
+  try {
+    url = new URL(`${base}${p}`);
+  } catch {
+    throw new Error(`URL inválida: base=${base} path=${p}`);
+  }
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null && String(v).length > 0) {
@@ -80,7 +154,7 @@ export async function toggleCoordinatorStatus(id: number, is_active: boolean) {
   const url = buildURL(`/admin/coordinators/${id}/status`);
   return apiFetch(url, {
     method: "PATCH",
-    body: JSON.stringify({ is_active }),
+    json: { is_active }, // usa json
     auth: true,
   });
 }
@@ -91,7 +165,7 @@ export async function createCoordinator(payload: {
   const url = buildURL(`/admin/coordinators`);
   return apiFetch(url, {
     method: "POST",
-    body: JSON.stringify(payload),
+    json: payload, // usa json
     auth: true,
   });
 }
@@ -116,12 +190,12 @@ export async function inviteTeacher(input: CreateTeacherInput): Promise<Teacher>
   const url = buildURL("/coordinacion/docentes/invite");
   return apiFetch<Teacher>(url, {
     method: "POST",
-    body: JSON.stringify({
+    json: {
       first_name: input.first_name.trim(),
       last_name: input.last_name.trim(),
       email: input.email.trim().toLowerCase(),
       curp: input.curp.trim().toUpperCase(),
-    }),
+    },
     auth: true,
   });
 }
@@ -164,7 +238,7 @@ export type CicloDTO = {
   turno: Turno;
   nivel: Nivel;
   cupo_total: number;
-  lugares_disponibles: number;   // 👈 NUEVO
+  lugares_disponibles: number;
   dias: string[];
   hora_inicio: string;
   hora_fin: string;
@@ -236,12 +310,12 @@ export async function listCiclos(params: ListCiclosParams = {}): Promise<CicloLi
 
 export async function createCiclo(input: CreateCicloInput): Promise<CicloDTO> {
   const url = buildURL("/coordinacion/ciclos");
-  return apiFetch<CicloDTO>(url, { method: "POST", body: JSON.stringify(input), auth: true });
+  return apiFetch<CicloDTO>(url, { method: "POST", json: input, auth: true });
 }
 
 export async function updateCiclo(id: number | string, input: UpdateCicloInput): Promise<CicloDTO> {
   const url = buildURL(`/coordinacion/ciclos/${id}`);
-  return apiFetch<CicloDTO>(url, { method: "PUT", body: JSON.stringify(input), auth: true });
+  return apiFetch<CicloDTO>(url, { method: "PUT", json: input, auth: true });
 }
 
 export async function deleteCiclo(id: number | string): Promise<void> {
@@ -274,45 +348,9 @@ export async function listCiclosAlumno(params: {
   return apiFetch<CicloListResponse>(url, { auth: true });
 }
 
-// Extiende InscripcionDTO para reflejar lo que ya devuelve el back
-export type InscripcionDTO = {
-  id: number;
-  ciclo_id: number;
-  status: "registrada" | "preinscrita" | "confirmada" | "rechazada" | "cancelada";
-  created_at: string;
-  referencia?: string | null;
-  importe_centavos?: number | null;
-  comprobante?: ComprobanteMeta | null;              // ← NUEVO (si quieres mostrarlo)
-  comprobante_estudios?: ComprobanteMeta | null;     // ← NUEVO (si quieres mostrarlo)
-  ciclo?: {
-    id: number;
-    codigo: string;
-    idioma: string;
-    modalidad: string;
-    turno: string;
-    nivel?: string | null;
-    dias: string[];
-    hora_inicio?: string | null; // "HH:MM"
-    hora_fin?: string | null;    // "HH:MM"
-    aula?: string | null;
-    inscripcion?: { from: string; to: string } | null;
-    curso?: { from: string; to: string } | null;
-  } | null;
-};
+/* ===== Inscripciones ===== */
 
-
-// 🔽 Pon esto junto a tus types de inscripciones (debajo de InscripcionDTO, por ejemplo)
-export type InscritoAlumno = {
-  first_name: string;
-  last_name: string;
-  email: string;
-};
-
-export type InscripcionRow = {
-  id: number;
-  created_at: string; // ISO
-  alumno: InscritoAlumno;
-};
+export type InscripcionTipo = "pago" | "exencion";
 
 export type ComprobanteMeta = {
   filename?: string | null;
@@ -321,39 +359,79 @@ export type ComprobanteMeta = {
   storage_path?: string | null;
 };
 
-/**
- * Crear inscripción con comprobante (multipart/form-data)
- * Campos esperados por el backend:
- * - ciclo_id (int)
- * - referencia (string)
- * - importe_centavos (int)
- * - comprobante (File - PDF/imagen)
- */
-// 🔁 Reemplaza createInscripcion por esta versión (solo agrega el campo opcional)
-export async function createInscripcion(input: {
+export type InscripcionDTO = {
+  id: number;
+  ciclo_id: number;
+  status: "registrada" | "preinscrita" | "confirmada" | "rechazada" | "cancelada";
+  tipo: InscripcionTipo;
+  created_at: string;
+  referencia?: string | null;
+  importe_centavos?: number | null;
+  fecha_pago?: string | null;
+  comprobante?: ComprobanteMeta | null;
+  comprobante_estudios?: ComprobanteMeta | null;
+  comprobante_exencion?: ComprobanteMeta | null;
+  ciclo?: {
+    id: number;
+    codigo: string;
+    idioma: string;
+    modalidad: string;
+    turno: string;
+    nivel?: string | null;
+    dias: string[];
+    hora_inicio?: string | null;
+    hora_fin?: string | null;
+    aula?: string | null;
+    inscripcion?: { from: string; to: string } | null;
+    curso?: { from: string; to: string } | null;
+  } | null;
+
+  validated_by_id?: number | null;
+  validated_at?: string | null;
+
+  rechazo_motivo?: string | null;
+  validation_notes?: string | null;
+};
+
+// 🔽 Tipos discriminados para crear inscripción
+export type CreateInscripcionPago = {
+  tipo?: "pago";
   ciclo_id: number;
   referencia: string;
   importe_centavos: number;
-  comprobante: File;                 // pago (obligatorio)
-  comprobante_estudios?: File | null; // estudios (OBLIGATORIO si el alumno es IPN)
-}): Promise<void> {
+  fecha_pago: string;
+  comprobante: File;
+  comprobante_estudios?: File | null;
+};
+
+export type CreateInscripcionExencion = {
+  tipo: "exencion";
+  ciclo_id: number;
+  comprobante_exencion: File;
+};
+
+export type CreateInscripcionInput = CreateInscripcionPago | CreateInscripcionExencion;
+
+export async function createInscripcion(input: CreateInscripcionInput): Promise<void> {
   const url = buildURL("/alumno/inscripciones");
   const fd = new FormData();
   fd.append("ciclo_id", String(input.ciclo_id));
-  fd.append("referencia", input.referencia);
-  fd.append("importe_centavos", String(input.importe_centavos));
-  fd.append("comprobante", input.comprobante);
 
-  // ← NUEVO: solo lo mandamos si viene (tu UI lo enviará cuando el usuario sea IPN)
-  if (input.comprobante_estudios) {
-    fd.append("comprobante_estudios", input.comprobante_estudios);
+  if (input.tipo === "exencion") {
+    fd.append("tipo", "exencion");
+    fd.append("comprobante_exencion", input.comprobante_exencion);
+  } else {
+    fd.append("tipo", "pago");
+    fd.append("referencia", input.referencia);
+    fd.append("importe_centavos", String(input.importe_centavos));
+    fd.append("fecha_pago", input.fecha_pago);
+    fd.append("comprobante", input.comprobante);
+    if (input.comprobante_estudios) {
+      fd.append("comprobante_estudios", input.comprobante_estudios);
+    }
   }
 
-  await apiFetch(url, {
-    method: "POST",
-    body: fd,
-    auth: true,
-  });
+  await apiFetch(url, { method: "POST", body: fd, auth: true });
 }
 
 export async function listMisInscripciones(): Promise<InscripcionDTO[]> {
@@ -367,21 +445,632 @@ export async function cancelarInscripcion(id: number | string): Promise<void> {
   await apiFetch(url, { method: "DELETE", auth: true });
 }
 
-// 🔽 Función para coordinador: lista inscripciones de un ciclo
 export async function listInscripcionesCiclo(ciclo_id: number) {
   const url = buildURL(`/coordinacion/ciclos/${ciclo_id}/inscripciones`);
   const raw = await apiFetch<any>(url, { auth: true });
-
   const rows = Array.isArray(raw) ? raw : raw?.items || [];
   return rows.map((r: any) => ({
     id: r.id,
     created_at: r.created_at,
     alumno: {
       first_name: r.alumno?.first_name ?? null,
-      last_name:  r.alumno?.last_name ?? null,
-      email:      r.alumno?.email ?? null,
-      is_ipn:     !!r.alumno?.is_ipn,
-      boleta:     r.alumno?.boleta ?? null,
+      last_name: r.alumno?.last_name ?? null,
+      email: r.alumno?.email ?? null,
+      is_ipn: !!r.alumno?.is_ipn,
+      boleta: r.alumno?.boleta ?? null,
     },
   }));
+}
+
+export async function downloadArchivoInscripcion(
+  inscripcionId: number,
+  tipo: "comprobante" | "estudios" | "exencion",
+  suggestedName?: string
+) {
+  const url = buildURL(`/alumno/inscripciones/${inscripcionId}/archivo`, { tipo });
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    let msg = `Error ${res.status}`;
+    try { const j = await res.json(); msg = j?.detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  try { window.open(objUrl, "_blank", "noopener,noreferrer"); } catch {}
+  const a = document.createElement("a");
+  a.href = objUrl;
+  a.download = suggestedName || "archivo";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objUrl);
+}
+
+// ================== Coordinador – Validación de inscripciones ==================
+
+export async function listInscripcionesCoord(params: {
+  status?: string;
+  ciclo_id?: number;
+  skip?: number;
+  limit?: number;
+} = {}): Promise<InscripcionDTO[]> {
+  const url = buildURL("/coordinacion/inscripciones", {
+    status: params.status,
+    ciclo_id: params.ciclo_id,
+    skip: params.skip ?? 0,
+    limit: params.limit ?? 50,
+  });
+  return apiFetch<InscripcionDTO[]>(url, { auth: true });
+}
+
+export async function validateInscripcionCoord(
+  id: number,
+  action: "APPROVE" | "REJECT",
+  motivo?: string
+): Promise<InscripcionDTO> {
+  const url = buildURL(`/coordinacion/inscripciones/${id}/validate`);
+  return apiFetch<InscripcionDTO>(url, {
+    method: "POST",
+    json: {
+      action,
+      motivo,        // 👈 back valida este campo (min_length=6)
+      notes: motivo, // 👈 compat si el back aún lo lee
+    },
+    auth: true,
+  });
+}
+
+export async function downloadArchivoInscripcionCoord(
+  inscripcionId: number,
+  tipo: "comprobante" | "estudios" | "exencion",
+  suggestedName?: string
+) {
+  const url = buildURL(`/coordinacion/inscripciones/${inscripcionId}/archivo`, { tipo });
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    let msg = `Error ${res.status}`;
+    try { const j = await res.json(); msg = j?.detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  try { window.open(objUrl, "_blank", "noopener,noreferrer"); } catch {}
+  const a = document.createElement("a");
+  a.href = objUrl;
+  a.download = suggestedName || "archivo";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objUrl);
+}
+
+export type AlumnoHistorialResponse = {
+  items: any[];
+};
+
+export async function getAlumnoHistorial(): Promise<AlumnoHistorialResponse> {
+  const url = buildURL("/alumno/historial");
+  const res = await apiFetch(url, { auth: true });
+  return res as AlumnoHistorialResponse;
+}
+
+export async function listCiclosPublic(params: any = {}) {
+  const url = buildURL("/public/ciclos-abiertos", params);
+  return apiFetch(url, { auth: false });
+}
+
+/* ================= Placement Exams ================= */
+
+const PLACEMENT_BASE = "/placement-exams";
+
+// ===== Listar con paginación y filtros =====
+export async function listPlacementExams(params?: {
+  page?: number;
+  page_size?: number;
+  q?: string;
+  idioma?: Idioma;
+  fecha_from?: string; // "YYYY-MM-DD"
+  fecha_to?: string;   // "YYYY-MM-DD"
+}): Promise<Paginated<PlacementExam>> {
+  const url = buildURL(PLACEMENT_BASE, {
+    page: params?.page,
+    page_size: params?.page_size,
+    q: params?.q,
+    idioma: params?.idioma,
+    fecha_from: params?.fecha_from,
+    fecha_to: params?.fecha_to,
+  });
+  return apiFetch<Paginated<PlacementExam>>(url, { method: "GET", auth: true });
+}
+
+// Alias para compatibilidad con código viejo
+export const listPlacement = listPlacementExams;
+
+// ===== Crear nuevo examen =====
+export async function createPlacementExam(payload: PlacementExamCreateDTO): Promise<PlacementExam> {
+  const url = buildURL(PLACEMENT_BASE);
+  return apiFetch<PlacementExam>(url, {
+    method: "POST",
+    auth: true,
+    json: payload, // usa json
+  });
+}
+
+// ===== Actualizar examen existente =====
+export async function updatePlacementExam(
+  id: number,
+  patch: Partial<PlacementExamCreateDTO>
+): Promise<PlacementExam> {
+  const url = buildURL(`${PLACEMENT_BASE}/${id}`);
+  return apiFetch<PlacementExam>(url, {
+    auth: true,
+    method: "PATCH",
+    json: patch, // usa json
+  });
+}
+
+// ===== Eliminar examen =====
+export async function deletePlacementExam(id: number): Promise<void> {
+  const url = buildURL(`${PLACEMENT_BASE}/${id}`);
+  await apiFetch<void>(url, { method: "DELETE", auth: true });
+}
+
+export async function listPlacementPublic(params?: { q?: string; idioma?: string }) {
+  const url = buildURL("/placement-exams/public", params as any);
+  return apiFetch(url);
+}
+
+export async function createPlacementRegistro(examId: number, fd: FormData) {
+  const url = buildURL(`/placement-exams/${examId}/registros`);
+  return apiFetch(url, { method: "POST", body: fd, auth: true });
+}
+
+export async function listMyPlacementRegistros() {
+  const url = buildURL(`/placement-exams/mis-registros`);
+  return apiFetch(url, { auth: true });
+}
+
+export async function cancelPlacementRegistro(id: number) {
+  const url = buildURL(`/placement-exams/registros/${id}`);
+  return apiFetch(url, { method: "DELETE", auth: true });
+}
+
+// === NUEVO: helpers para descargas autenticadas (no JSON) ===
+export async function apiFetchBlobResponse(
+  input: string,
+  init?: ApiInit
+): Promise<Response> {
+  const headers = new Headers(init?.headers || {});
+  if (!headers.has("Accept")) headers.set("Accept", "*/*");
+
+  if (init?.auth) {
+    const token = getToken();
+    if (!token) throw new Error("Sesión inválida");
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(input, { ...init, headers, cache: "no-store" });
+  } catch (err: any) {
+    const detail = err?.message || String(err);
+    throw new Error(
+      `No se pudo conectar con la API (${input}). ` +
+      `Posibles causas: URL inválida, CORS, certificado o mixed content. ` +
+      `Detalle: ${detail}`
+    );
+  }
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      try { clearSession(); } catch {}
+      throw new Error("No autorizado. Vuelve a iniciar sesión.");
+    }
+    let detail = `Error ${res.status}`;
+    try {
+      const j = await res.clone().json();
+      detail = normalizeErrorDetail(j, detail);
+    } catch {
+      try {
+        const t = await res.clone().text();
+        if (t) detail = t;
+      } catch {}
+    }
+    throw new Error(detail);
+  }
+
+  return res; // el caller hará .blob()
+}
+
+export function inferFilenameFromResponse(resp: Response): string | null {
+  const cd = resp.headers.get("content-disposition") || "";
+  const m = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(cd);
+  if (m?.[1]) return decodeURIComponent(m[1].replace(/\"/g, ""));
+  return null;
+}
+
+export async function forceDownloadFromResponse(
+  resp: Response,
+  fallbackName: string = "archivo"
+) {
+  const blob = await resp.blob();
+  const objUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objUrl;
+  a.download = inferFilenameFromResponse(resp) || fallbackName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objUrl);
+}
+
+// === Descarga de comprobante de placement ===
+export async function downloadPlacementComprobante(
+  registroId: number,
+  suggestedName?: string
+) {
+  const url = buildURL(`/placement-exams/registros/${registroId}/comprobante`);
+  const resp = await apiFetchBlobResponse(url, { auth: true, method: "GET" });
+  await forceDownloadFromResponse(resp, suggestedName || `comprobante_${registroId}`);
+}
+
+
+
+
+
+/* ==================== Reportes (Coordinación) ==================== */
+/** Tipos específicos de reportes para no chocar con CicloDTO, etc. */
+export type ReportCicloLite = {
+  id: number | string;
+  codigo: string;
+  idioma?: string | null;
+  anio?: number | null;
+};
+
+export type ReportGrupoLite = {
+  id: number | string;
+  nombre: string;
+};
+
+export type ReportAlumnoInscrito = {
+  inscripcion_id: number | string;
+  boleta?: string | null;
+  nombre: string;
+  email?: string | null;
+  fecha_inscripcion?: string | null;
+  estado?: string | null;
+};
+
+export type ReportReporteInscritos = {
+  ciclo: { id: number | string; codigo: string };
+  grupo?: { id: number | string; nombre: string } | null;
+  total: number;
+  alumnos: ReportAlumnoInscrito[];
+};
+
+export type ReportPagoRow = {
+  inscripcion_id: number | string;
+  alumno: string;
+  email?: string | null;
+  referencia?: string | null;   // 👈 nuevo
+  tipo?: "pago" | "exencion";   // 👈 NUEVO (opcional por compat)
+  status: "pendiente" | "validado" | "rechazado";
+  importe_centavos: number;
+  fecha_pago?: string | null;
+};
+
+export type ReportReportePagos = {
+  ciclo: { id: number | string; codigo: string };
+  grupo?: { id: number | string; nombre: string } | null;
+  total_registros: number;
+  total_validado_centavos: number;
+  rows: ReportPagoRow[];
+};
+
+/** Lista de ciclos para filtros de reportes (año/idioma opcionales). */
+export async function getReportCiclos(params?: {
+  anio?: string | number;
+  idioma?: string;
+}): Promise<ReportCicloLite[]> {
+  const url = buildURL("/coordinacion/ciclos", {
+    // buildURL solo agrega si hay valor (no undefined/empty)
+    anio: params?.anio,
+    idioma: params?.idioma,
+  });
+  return apiFetch<ReportCicloLite[]>(url, { auth: true });
+}
+
+/** Lista de grupos por ciclo (si tu back aún no maneja grupos, devolverá []). */
+export async function getReportGrupos(cicloId: string | number): Promise<ReportGrupoLite[]> {
+  const url = buildURL("/coordinacion/grupos", { cicloId: String(cicloId) });
+  return apiFetch<ReportGrupoLite[]>(url, { auth: true });
+}
+
+/** Reporte de alumnos inscritos por ciclo (y opcionalmente grupo). */
+export async function getReporteInscritos(args: {
+  cicloId: string | number;
+  grupoId?: string | number;
+}): Promise<ReportReporteInscritos> {
+  const url = buildURL("/coordinacion/reportes/inscritos", {
+    cicloId: String(args.cicloId),
+    grupoId: args.grupoId !== undefined ? String(args.grupoId) : undefined,
+  });
+  return apiFetch<ReportReporteInscritos>(url, { auth: true });
+}
+
+/** Reporte de pagos por ciclo (y opcionalmente grupo). */
+export async function getReportePagos(args: {
+  cicloId: string | number;
+  grupoId?: string | number;
+}): Promise<ReportReportePagos> {
+  const url = buildURL("/coordinacion/reportes/pagos", {
+    cicloId: String(args.cicloId),
+    grupoId: args.grupoId !== undefined ? String(args.grupoId) : undefined,
+  });
+  return apiFetch<ReportReportePagos>(url, { auth: true });
+}
+
+
+/* ==================== Reporte: Encuesta (Coordinación) ==================== */
+
+export type SurveyOptionDTO = {
+  opcion: string;     // Texto de la opción
+  conteo: number;     // Número de votos
+};
+
+export type SurveyQuestionDTO = {
+  id: string | number;
+  texto: string;                // Enunciado de la pregunta
+  opciones: SurveyOptionDTO[];  // Opciones con conteos
+  total_respuestas?: number;    // Opcional (si no viene, se infiere sumando conteos)
+};
+
+export type ReportReporteEncuesta = {
+  ciclo: { id: number | string; codigo: string };
+  preguntas: SurveyQuestionDTO[];
+  total_participantes?: number; // Opcional
+};
+
+/**
+ * Reporte de resultados de encuesta por ciclo (Coordinación).
+ * Backend esperado: GET /coordinacion/reportes/encuesta?cicloId=...
+ */
+export async function getReporteEncuesta(args: {
+  cicloId: string | number;
+}): Promise<ReportReporteEncuesta> {
+  const url = buildURL("/coordinacion/reportes/encuesta", {
+    cicloId: String(args.cicloId),
+  });
+  return apiFetch<ReportReporteEncuesta>(url, { auth: true });
+}
+
+
+
+
+/* ==================== Reporte: Desempeño Docente ==================== */
+
+export type CoordDocenteLite = { id: number | string; nombre: string };
+
+export async function getDocentes(params?: { q?: string; incluir_inactivos?: boolean; }) {
+  const url = buildURL("/coordinacion/docentes", {
+    q: params?.q,
+    incluir_inactivos: params?.incluir_inactivos ?? false,
+  });
+  return apiFetch<CoordDocenteLite[]>(url, { auth: true });
+}
+
+export type SeriePunto = {
+  ciclo_id: number | string;
+  ciclo_codigo: string;     // ej. "2025-01"
+  promedio_pct: number;     // 0..100
+  fecha?: string | null;    // ISO opcional (para ordenar)
+};
+
+export type SerieDocenteResponse = {
+  docente: { id: number | string; nombre: string };
+  puntos: SeriePunto[];
+};
+
+export async function getSerieEncuestaDocente(args: {
+  docenteId: string | number;
+}): Promise<SerieDocenteResponse> {
+  const url = buildURL("/coordinacion/reportes/desempeno-docente", {
+    docenteId: String(args.docenteId),
+  });
+  return apiFetch<SerieDocenteResponse>(url, { auth: true });
+}
+
+
+// lib/api.ts
+export async function getSerieEncuestaDocentePorPregunta(params: { docenteId: string|number, soloProfesor?: boolean }) {
+  const url = buildURL("/coordinacion/reportes/desempeno-docente-por-pregunta", {
+    docenteId: params.docenteId,
+    ...(params.soloProfesor !== undefined ? { soloProfesor: params.soloProfesor } : {})
+  });
+  return apiFetch(url, { auth: true });
+}
+
+
+
+// ===== Comentarios de encuesta (open text) =====
+export type EncuestaComentario = {
+  id: string | number;
+  pregunta_id: string | number | null;
+  pregunta_texto: string | null;
+  texto: string;
+  created_at?: string | null;
+  alumno?: {
+    nombre?: string | null;
+    email?: string | null;
+  } | null;
+};
+
+// lib/api.ts
+export async function getEncuestaComentarios(args: {
+  cicloId: string | number;
+  includeGeneral?: boolean;   // ← NUEVO (default: false)
+  onlyCommentLike?: boolean;  // ← NUEVO (default: true)
+  q?: string;                 // ← NUEVO (búsqueda server-side, opcional)
+  limit?: number;
+  offset?: number;
+}): Promise<{ ciclo: any; total: number; items: EncuestaComentario[] }> {
+  const url = buildURL("/coordinacion/reportes/encuesta/comentarios", {
+    cicloId: String(args.cicloId),
+    ...(args.includeGeneral !== undefined ? { includeGeneral: args.includeGeneral } : {}),
+    ...(args.onlyCommentLike !== undefined ? { onlyCommentLike: args.onlyCommentLike } : {}),
+    ...(args.q ? { q: args.q } : {}),
+    ...(args.limit ? { limit: args.limit } : {}),
+    ...(args.offset ? { offset: args.offset } : {}),
+  });
+  const resp = await apiFetch(url, { auth: true });
+
+  const items: EncuestaComentario[] = (resp?.items ?? []).map((r: any) => ({
+    id: r.id ?? r.pregunta_id ?? r.id,
+    pregunta_id: r.pregunta_id ?? null,
+    pregunta_texto: r.pregunta_texto ?? r.pregunta ?? null,
+    texto: r.texto ?? r.comentario ?? "",
+    created_at: r.created_at ?? r.fecha ?? null,
+    alumno: {
+      nombre: r.alumno?.nombre ?? r.alumno_nombre ?? null,
+      email:  r.alumno?.email  ?? r.alumno_email  ?? null,
+    },
+  }));
+
+  return {
+    ciclo: resp?.ciclo ?? null,
+    total: resp?.total ?? items.length,
+    items,
+  };
+}
+
+
+
+
+/* ============== Reportes: Pagos Examen de Colocación ============== */
+
+export type PlacementExamLite = {
+  id: number | string;
+  codigo: string;
+  idioma: string;
+  fecha?: string | null; // ISO "YYYY-MM-DD"
+};
+
+/**
+ * Lista 'lite' para poblar el selector de exámenes de colocación.
+ * Soporta filtros por año e idioma. El back usa 'limit' (no page_size).
+ */
+export async function listPlacementExamsLite(params?: {
+  anio?: number | string;
+  idioma?: Idioma | string;
+  q?: string;
+  page_size?: number; // se mapea a 'limit'
+}): Promise<PlacementExamLite[]> {
+  const url = buildURL("/coordinacion/placement-exams/lite", {
+    anio: params?.anio ?? "",
+    idioma: params?.idioma ?? "",
+    q: params?.q ?? "",
+    limit: params?.page_size ?? 200,
+  });
+  const raw = await apiFetch<PlacementExamLite[] | { items: PlacementExamLite[] }>(url, { auth: true });
+  return Array.isArray(raw) ? raw : (raw as any)?.items ?? [];
+}
+
+export type PlacementRegistroAdminItem = {
+  id: number | string;
+  alumno_id: number | string;
+  alumno_nombre?: string | null;
+  alumno_apellidos?: string | null;
+  alumno_email?: string | null;
+
+  referencia?: string | null;
+  tipo?: string; // "pago" | "exencion" (si lo modelas)
+  estado: "pendiente" | "validado" | "rechazado";
+  importe_centavos?: number | null;
+
+  created_at?: string | null;    // ISO
+  validated_at?: string | null;  // ISO
+  validated_by_id?: number | string | null;
+  validated_by_name?: string | null;
+
+  rechazo_motivo?: string | null;
+  validation_notes?: string | null;
+};
+
+export type PlacementRegistrosAdminResponse = {
+  exam: {
+    id: number | string;
+    codigo: string;
+    idioma: string;
+    fecha?: string | null;
+    nombre?: string | null;
+  };
+  total: number;
+  items: PlacementRegistroAdminItem[];
+};
+
+/**
+ * Regresa todos los registros/pagos del examen de colocación seleccionado.
+ */
+export async function getPlacementRegistrosAdmin(
+  examId: number | string,
+  params?: { page_size?: number }
+): Promise<PlacementRegistrosAdminResponse> {
+  const url = buildURL(`/coordinacion/placement-exams/${examId}/registros-admin`, {
+    page_size: params?.page_size ?? "",
+  });
+  return apiFetch<PlacementRegistrosAdminResponse>(url, { auth: true });
+}
+
+
+
+
+function qs(params?: Record<string, any>) {
+  const u = new URLSearchParams();
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === "") return;
+    u.set(k, String(v));
+  });
+  const s = u.toString();
+  return s ? `?${s}` : "";
+}
+
+export async function publicFetch(
+  path: string,
+  opts?: RequestInit & { params?: Record<string, any> }
+) {
+  const url = `${API_BASE}${path}${qs(opts?.params)}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { "Content-Type": "application/json", ...(opts?.headers || {}) },
+    credentials: "omit",
+    cache: "no-store",
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    // Esto te da un error legible aunque el server devuelva HTML
+    throw new Error(text?.slice(0, 300) || `HTTP ${res.status}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Respuesta no-JSON desde ${url}: ${text.slice(0, 180)}`);
+  }
+}
+
+// Reemplaza la función listPlacementExamsPublic por:
+export async function listPlacementExamsPublic(params?: {
+  idioma?: string;
+  anio?: number;
+  vigente?: boolean;
+  page?: number;
+  page_size?: number;
+}) {
+  const url = buildURL("/public/placement-exams", params as any);
+  return apiFetch(url, { auth: false });
 }

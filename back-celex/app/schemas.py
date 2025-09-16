@@ -72,6 +72,60 @@ class UserCreate(BaseModel):
             raise ValueError("No proporciones boleta si no eres IPN")
         return self
 
+class Direccion(BaseModel):
+    calle: Optional[str] = None
+    numero: Optional[str] = None
+    colonia: Optional[str] = None
+    municipio: Optional[str] = None
+    estado: Optional[str] = None
+    cp: Optional[str] = None
+
+class IPNInfo(BaseModel):
+    nivel: Literal["Medio superior", "Superior", "Posgrado"]
+    unidad: str
+
+class TutorInfo(BaseModel):
+    telefono: Optional[str] = None
+
+class AlumnoPerfilOut(BaseModel):
+    nombre: str
+    apellidos: str
+    email: EmailStr
+    curp: str = Field(pattern=CURP_REGEX)
+    telefono: Optional[str] = None
+    direccion: Optional[Direccion] = None
+    is_ipn: bool
+    boleta: Optional[str] = None
+    ipn: Optional[IPNInfo] = None
+    tutor: Optional[TutorInfo] = None
+
+class AlumnoPerfilUpdate(BaseModel):
+    # Editables en el perfil
+    nombre: Optional[str] = None
+    apellidos: Optional[str] = None
+    email: Optional[EmailStr] = None
+    curp: Optional[str] = Field(default=None, pattern=CURP_REGEX)
+    telefono: Optional[str] = None
+
+    direccion: Optional[Direccion] = None
+
+    # El back ignora is_ipn (fuente de verdad es la BD)
+    is_ipn: Optional[bool] = None
+    boleta: Optional[str] = None
+
+    ipn: Optional[IPNInfo] = None
+
+    tutor: Optional[TutorInfo] = None
+
+    @field_validator("boleta")
+    @classmethod
+    def boleta_si_viene_10dig(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
+        import re
+        if not re.fullmatch(BOLETA_REGEX, v):
+            raise ValueError("Boleta inválida: 10 dígitos")
+        return v
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -458,7 +512,6 @@ class AlumnoHistorialItem(BaseModel):
 class AlumnoHistorialResponse(BaseModel):
     items: List[AlumnoHistorialItem]
 
-
 # ==========================
 # Placement (inputs/outputs base)
 # ==========================
@@ -466,26 +519,61 @@ class PlacementBaseIn(BaseModel):
     codigo: str = Field(..., min_length=2, max_length=50)
     idioma: str = Field(..., min_length=3, max_length=30)
 
-    # strings con patrón para validar desde el front
+    # strings normalizados desde el front
     fecha: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
-    hora: str  = Field(..., pattern=r"^\d{2}:\d{2}(:\d{2})?$")
+    hora:  str = Field(..., pattern=r"^\d{2}:\d{2}(:\d{2})?$")
 
-    salon: Optional[str] = Field(None, max_length=120)
-
+    salon: str | None = Field(None, max_length=120)
     duracion_min: int = Field(60, gt=0)
     cupo_total:   int = Field(0, ge=0)
-    costo: Optional[int] = None
+    costo: int | None = None
 
-    docente_id: Optional[int] = None
-    instrucciones: Optional[str] = None
+    docente_id: int | None = None
+    instrucciones: str | None = None
+
+    # 👇 NUEVO: periodo (el front manda insc_inicio / insc_fin)
+    insc_inicio: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    insc_fin:    str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+    # 👇 Compat opcional: por si llegan como insc_from/insc_to o inscripcion.{from,to}
+    insc_from: str | None = None
+    insc_to:   str | None = None
+    inscripcion: dict | None = None
 
     # opcionales/legacy
-    nombre: Optional[str] = None
-    modalidad: Optional[str] = None
-    nivel_objetivo: Optional[str] = None
-    estado: Optional[str] = None
-    link_registro: Optional[str] = None
-    activo: Optional[bool] = True
+    nombre: str | None = None
+    modalidad: str | None = None
+    nivel_objetivo: str | None = None
+    estado: str | None = None
+    link_registro: str | None = None
+    activo: bool | None = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coalesce_inscripcion(cls, data):
+        """
+        Acepta cualquiera de:
+          - insc_inicio / insc_fin
+          - insc_from / insc_to
+          - inscripcion = { from, to }
+        y consolida en insc_inicio / insc_fin.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        if not data.get("insc_inicio"):
+            if data.get("insc_from"):
+                data["insc_inicio"] = data.get("insc_from")
+            elif isinstance(data.get("inscripcion"), dict) and data["inscripcion"].get("from"):
+                data["insc_inicio"] = data["inscripcion"]["from"]
+
+        if not data.get("insc_fin"):
+            if data.get("insc_to"):
+                data["insc_fin"] = data.get("insc_to")
+            elif isinstance(data.get("inscripcion"), dict) and data["inscripcion"].get("to"):
+                data["insc_fin"] = data["inscripcion"]["to"]
+
+        return data
 
 
 class PlacementCreate(PlacementBaseIn):
@@ -493,7 +581,7 @@ class PlacementCreate(PlacementBaseIn):
 
 
 class PlacementUpdate(BaseModel):
-    # todos opcionales (parciales), aún como strings para el input
+    # todos opcionales (parciales)
     codigo: Optional[str] = Field(None, min_length=2, max_length=50)
     idioma: Optional[str] = Field(None, min_length=3, max_length=30)
     fecha: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
@@ -507,12 +595,39 @@ class PlacementUpdate(BaseModel):
     docente_id: Optional[int] = None
     instrucciones: Optional[str] = None
 
+    # 👇 NUEVO: periodo (opcionales)
+    insc_inicio: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    insc_fin:    Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+    # opcionales/legacy
     nombre: Optional[str] = None
     modalidad: Optional[str] = None
     nivel_objetivo: Optional[str] = None
     estado: Optional[str] = None
     link_registro: Optional[str] = None
     activo: Optional[bool] = None
+
+    # compat inputs alternos
+    insc_from: Optional[str] = None
+    insc_to:   Optional[str] = None
+    inscripcion: Optional[dict] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coalesce_inscripcion(cls, data):
+        if not isinstance(data, dict):
+            return data
+        if not data.get("insc_inicio"):
+            if data.get("insc_from"):
+                data["insc_inicio"] = data.get("insc_from")
+            elif isinstance(data.get("inscripcion"), dict) and data["inscripcion"].get("from"):
+                data["insc_inicio"] = data["inscripcion"]["from"]
+        if not data.get("insc_fin"):
+            if data.get("insc_to"):
+                data["insc_fin"] = data.get("insc_to")
+            elif isinstance(data.get("inscripcion"), dict) and data["inscripcion"].get("to"):
+                data["insc_fin"] = data["inscripcion"]["to"]
+        return data
 
 
 class PlacementOut(BaseModel):
@@ -541,6 +656,12 @@ class PlacementOut(BaseModel):
     link_registro: Optional[str] = None
     activo: Optional[bool] = True
 
+    # 👇 NUEVO: periodo y campos derivados/compat mostrados en el front
+    insc_inicio: Optional[date] = None
+    insc_fin:    Optional[date] = None
+    cupo_disponible: Optional[int] = None  # lo calcula el router
+    inscripcion: Optional[dict] = None     # { from, to } para compatibilidad
+
     @field_serializer("fecha")
     def _ser_fecha(self, v: Optional[date], _info):
         return v.strftime("%Y-%m-%d") if v else None
@@ -548,6 +669,10 @@ class PlacementOut(BaseModel):
     @field_serializer("hora")
     def _ser_hora(self, v: Optional[time], _info):
         return v.strftime("%H:%M") if v else None
+
+    @field_serializer("insc_inicio", "insc_fin")
+    def _ser_insc(self, v: Optional[date], _info):
+        return v.strftime("%Y-%m-%d") if v else None
 
     class Config:
         from_attributes = True
@@ -656,7 +781,6 @@ class NivelIdiomaUpdate(BaseModel):
     Payload para actualizar el nivel del alumno en un registro de colocación.
     """
     nivel: constr(strip_whitespace=True, min_length=1, max_length=20)
-
 
 
 

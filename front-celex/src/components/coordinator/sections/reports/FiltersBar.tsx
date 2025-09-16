@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -10,28 +10,33 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { RefreshCcw, Calendar as CalendarIcon, X } from "lucide-react"; /* NUEVO */
+import { RefreshCcw } from "lucide-react";
 import { ReportFiltersState, Idioma, CicloLite } from "./useReportFilters";
-import { getReportCiclos, getDocentes } from "@/lib/api";
-
-/* NUEVO: popover + calendar (shadcn) */
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import {
+  getReportCiclos,
+  getDocentes,
+  listPlacementExamsLite,
+  type PlacementExamLite,
+} from "@/lib/api";
 
 type AnyDocente = Record<string, any>;
 type DocenteLite = { id: string | number; nombre: string };
 
 type Props = ReportFiltersState & {
-  /** "ciclos": año/idioma/ciclo (default), "docente": selector de docente, "periodo": fechas */
-  mode?: "ciclos" | "docente" | "periodo";
-  // modo docente
+  /** modos: "ciclos" (default), "docente", "examen" */
+  mode?: "ciclos" | "docente" | "examen";
+
+  // ---- docente ----
   docenteId?: string;
   setDocenteId?: (v: string) => void;
-  // modo periodo (opcionalmente controlado desde arriba)
-  periodStart?: string; // "YYYY-MM-DD"
-  periodEnd?: string;   // "YYYY-MM-DD"
-  setPeriodStart?: (v: string) => void;
-  setPeriodEnd?: (v: string) => void;
+
+  // ---- examen (selector por código dependiente de año + idioma) ----
+  examCode?: string;
+  setExamCode?: (v: string) => void;
+
+  /** callback que ANTES disparabas con el botón "Aplicar".
+   *  Ahora lo invoco automáticamente al seleccionar un código. */
+  onApply?: () => void;
 };
 
 function normStr(v: any) {
@@ -60,21 +65,6 @@ function normalizeDocentes(arr: AnyDocente[]): DocenteLite[] {
   });
 }
 
-/* NUEVO: utilidades para convertir entre Date y "YYYY-MM-DD" */
-function toISO(d?: Date) {
-  if (!d) return "";
-  const y = d.getFullYear();
-  const m = `${d.getMonth() + 1}`.padStart(2, "0");
-  const day = `${d.getDate()}`.padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-function fromISO(s?: string) {
-  if (!s) return undefined;
-  const [y, m, d] = s.split("-").map(Number);
-  const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
-  return isNaN(dt.getTime()) ? undefined : dt;
-}
-
 export default function FiltersBar({
   anio,
   idioma,
@@ -88,45 +78,29 @@ export default function FiltersBar({
   setLoadingCiclos,
   setError,
   aniosList,
-  // modos
+
   mode = "ciclos",
+
   // docente
   docenteId = "",
   setDocenteId,
-  // periodo
-  periodStart,
-  periodEnd,
-  setPeriodStart,
-  setPeriodEnd,
+
+  // examen
+  examCode = "",
+  setExamCode,
+  onApply,
 }: Props) {
   const [docentes, setDocentes] = useState<DocenteLite[]>([]);
   const [loadingDocentes, setLoadingDocentes] = useState(false);
 
-  // --- estado interno de periodo si no se controla desde arriba ---
-  const [_pStart, _setPStart] = useState<string>(periodStart || "");
-  const [_pEnd, _setPEnd] = useState<string>(periodEnd || "");
-  useEffect(() => {
-    _setPStart(periodStart || "");
-  }, [periodStart]);
-  useEffect(() => {
-    _setPEnd(periodEnd || "");
-  }, [periodEnd]);
-
-  const handleStartChange = (v: string) => {
-    _setPStart(v);
-    setPeriodStart?.(v);
-  };
-  const handleEndChange = (v: string) => {
-    _setPEnd(v);
-    setPeriodEnd?.(v);
-  };
-
-  // --- MODO CICLOS (año/idioma/ciclo) ---
+  // =======================
+  // MODO: CICLOS (año/idioma/ciclo)
+  // =======================
   useEffect(() => {
     if (mode !== "ciclos") return;
     (async () => {
       setLoadingCiclos(true);
-      setError(null);
+      setError?.(null);
       setCiclos([]);
       setCicloId("");
       try {
@@ -137,7 +111,7 @@ export default function FiltersBar({
         const data = Array.isArray(raw) ? raw : (raw as any)?.items ?? [];
         setCiclos(data);
       } catch (e: any) {
-        setError(e?.message || "No se pudieron cargar los ciclos");
+        setError?.(e?.message || "No se pudieron cargar los ciclos");
         setCiclos([]);
       } finally {
         setLoadingCiclos(false);
@@ -146,12 +120,14 @@ export default function FiltersBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, anio, idioma]);
 
-  // --- MODO DOCENTE ---
+  // =======================
+  // MODO: DOCENTE
+  // =======================
   useEffect(() => {
     if (mode !== "docente") return;
     (async () => {
       setLoadingDocentes(true);
-      setError(null);
+      setError?.(null);
       try {
         const lista = (await getDocentes({
           incluir_inactivos: true,
@@ -163,7 +139,7 @@ export default function FiltersBar({
           setDocenteId(String(arr[0].id));
         }
       } catch (e: any) {
-        setError(e?.message || "No se pudieron cargar los docentes");
+        setError?.(e?.message || "No se pudieron cargar los docentes");
         setDocentes([]);
       } finally {
         setLoadingDocentes(false);
@@ -177,19 +153,76 @@ export default function FiltersBar({
     setIdioma("");
     setCicloId("");
     setCiclos([]);
-    setError(null);
+    setError?.(null);
   };
 
   const clearDocente = () => {
     if (setDocenteId) setDocenteId("");
-    setError(null);
+    setError?.(null);
   };
 
-  const clearPeriodo = () => {
-    handleStartChange("");
-    handleEndChange("");
-    setError(null);
-  };
+  // =======================
+  // MODO: EXAMEN (Año → Idioma → Código)
+  // =======================
+  const [examOpts, setExamOpts] = useState<PlacementExamLite[]>([]);
+  const [loadingExams, setLoadingExams] = useState(false);
+
+  useEffect(() => {
+    if (mode !== "examen") return;
+    let mounted = true;
+    (async () => {
+      setLoadingExams(true);
+      setError?.(null);
+      try {
+        const items = await listPlacementExamsLite({
+          idioma: idioma || undefined,
+          anio: anio || undefined,
+          page_size: 200,
+        } as any);
+
+        if (!mounted) return;
+
+        // Filtro por año en el cliente por si la API ignora "anio"
+        const filtered =
+          (items || []).filter((e: PlacementExamLite) => {
+            if (!anio) return true;
+            const raw = (e as any)?.fecha;
+            const yy = (() => {
+              if (typeof raw === "string") {
+                if (/^\d{4}/.test(raw)) return raw.slice(0, 4);
+                const d = new Date(raw);
+                return isNaN(d.getTime()) ? "" : String(d.getFullYear());
+              }
+              const d = raw instanceof Date ? raw : new Date(raw);
+              return isNaN(d.getTime()) ? "" : String(d.getFullYear());
+            })();
+            return yy === anio;
+          }) ?? [];
+
+        setExamOpts(filtered);
+
+        // Si cambió año/idioma y el código ya no existe, limpia selección
+        const exists = filtered.some((i) => i.codigo === examCode);
+        if (!exists) setExamCode?.("");
+      } catch (e: any) {
+        if (!mounted) return;
+        setExamOpts([]);
+        setExamCode?.("");
+        setError?.(e?.message || "No se pudieron cargar los exámenes");
+      } finally {
+        if (mounted) setLoadingExams(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, anio, idioma]);
+
+  const selectedExam = useMemo(
+    () => examOpts.find((e) => e.codigo === examCode) || null,
+    [examOpts, examCode]
+  );
 
   // --- Render por modo ---
   if (mode === "docente") {
@@ -257,68 +290,106 @@ export default function FiltersBar({
     );
   }
 
-  if (mode === "periodo") {
-    // filtros para pagos de examen de colocación (por rango de fechas)
-    /* NUEVO: reemplazamos los dos <input type="date"> por un picker de rango */
-    const from = fromISO(_pStart);
-    const to = fromISO(_pEnd);
-    const label =
-      from && to
-        ? `${from.toLocaleDateString()} — ${to.toLocaleDateString()}`
-        : from
-        ? `${from.toLocaleDateString()} — …`
-        : "Selecciona un periodo";
-
+  if (mode === "examen") {
     return (
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
-        <div className="md:col-span-8">
-          <Label>Periodo</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full h-10 justify-between"
-                title={label}
-              >
-                <span className="flex items-center gap-2">
-                  <CalendarIcon className="h-4 w-4" />
-                  {label}
-                </span>
-                {(from || to) && (
-                  <X
-                    className="h-4 w-4 opacity-70 hover:opacity-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearPeriodo();
-                    }}
-                  />
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="p-2 w-auto" align="start">
-              <Calendar
-                mode="range"
-                selected={{ from: from, to: to } as any}
-                onSelect={(next: any) => {
-                  const s = toISO(next?.from);
-                  const e = toISO(next?.to);
-                  handleStartChange(s || "");
-                  handleEndChange(e || "");
-                }}
-                numberOfMonths={2}
-                ISOWeek
-              />
-              <div className="flex justify-end pt-2">
-                <Button size="sm" variant="ghost">
-                  Cerrar
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
+        {/* Año */}
+        <div className="md:col-span-2">
+          <Label>Año</Label>
+          <Select value={anio} onValueChange={(v) => setAnio(v === "__clear__" ? "" : v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              {aniosList.map((y) => (
+                <SelectItem key={y} value={y}>
+                  {y}
+                </SelectItem>
+              ))}
+              <SelectItem value="__clear__">Limpiar</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="md:col-span-4 flex gap-2">
-          <Button variant="secondary" onClick={clearPeriodo} className="flex-1">
+        {/* Idioma */}
+        <div className="md:col-span-3">
+          <Label>Idioma</Label>
+          <Select
+            value={idioma}
+            onValueChange={(v) => setIdioma(v === "__clear__" ? "" : (v as Idioma))}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ingles">Inglés</SelectItem>
+              <SelectItem value="frances">Francés</SelectItem>
+              <SelectItem value="aleman">Alemán</SelectItem>
+              <SelectItem value="__clear__">Limpiar</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Código (dependiente de Año + Idioma) */}
+        <div className="md:col-span-4">
+          <Label>Examen (Código — Idioma — Fecha)</Label>
+          <Select
+            value={examCode}
+            onValueChange={(v) => {
+              const val = v === "__clear__" ? "" : v;
+              setExamCode?.(val);
+              // 🔥 Dispara automáticamente al seleccionar un código válido
+              if (val && onApply) setTimeout(() => onApply(), 0);
+            }}
+            disabled={loadingExams || !setExamCode}
+          >
+            <SelectTrigger className="w-full min-w-[320px] md:min-w-[380px] lg:min-w-[460px] bg-background text-foreground font-medium truncate">
+              <SelectValue
+                placeholder={loadingExams ? "Cargando..." : "Selecciona un examen"}
+              />
+            </SelectTrigger>
+            <SelectContent
+              position="popper"
+              sideOffset={6}
+              align="start"
+              className="max-h-72 overflow-auto min-w-[320px] md:min-w-[380px] lg:min-w-[460px] z-50 bg-popover text-popover-foreground border shadow-md"
+            >
+              {examOpts.length === 0 ? (
+                <SelectItem disabled value="__empty__" className="text-popover-foreground">
+                  {anio || idioma ? "Sin resultados para el filtro" : "Sin exámenes"}
+                </SelectItem>
+              ) : (
+                examOpts.map((e) => {
+                  const label = `${e.codigo} — ${e.idioma} — ${e.fecha || "s/fecha"}`;
+                  return (
+                    <SelectItem
+                      key={`exam-${e.id}`}
+                      value={e.codigo}
+                      className="text-popover-foreground truncate"
+                      title={label}
+                    >
+                      {label}
+                    </SelectItem>
+                  );
+                })
+              )}
+              <SelectItem value="__clear__" className="text-popover-foreground">
+                Limpiar
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+        
+        </div>
+
+        {/* Acciones (solo dejar "Limpiar") */}
+        <div className="md:col-span-3 flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => setExamCode?.("")}
+            className="flex-1"
+            disabled={!setExamCode}
+          >
             <RefreshCcw className="h-4 w-4 mr-2" /> Limpiar
           </Button>
         </div>

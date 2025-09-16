@@ -10,8 +10,9 @@ import ReportAlumnos from "./reports/ReportAlumnos";
 import ReportPagos from "./reports/ReportPagos";
 import ReportEncuestaNivo from "./reports/ReportEncuestaNivo";
 import ReportDesempenoDocente from "./reports/ReportDesempenoDocente";
-// import ReportPagosExamen from "./reports/ReportPagosExamen";
+import ReportPagosExamen from "./reports/ReportPagosExamen";
 import { useReportFilters } from "./reports/useReportFilters";
+import type { Idioma } from "./reports/useReportFilters";
 import {
   ClipboardList,
   CreditCard,
@@ -20,27 +21,20 @@ import {
   ReceiptText,
 } from "lucide-react";
 
-type ReportKey =
-  | "alumnos"
-  | "pagos"
-  | "pagos_examen"
-  | "encuesta"
-  | "desempeno";
+type ReportKey = "alumnos" | "pagos" | "pagos_examen" | "encuesta" | "desempeno";
 
 export default function ReportsSection() {
   const filters = useReportFilters();
   const [active, setActive] = useState<ReportKey>("alumnos");
   const [docenteId, setDocenteId] = useState<string>("");
+  const [examCode, setExamCode] = useState<string>(""); // código de examen para pagos_examen
 
   const tabBtn = (key: ReportKey, label: React.ReactNode, Icon: any) => (
     <Button
       key={key}
       variant={active === key ? "default" : "outline"}
       onClick={() => setActive(key)}
-      className={cn(
-        "rounded-full justify-center gap-2",
-        "w-[260px] h-10" // ancho fijo, suficiente para el título más largo
-      )}
+      className={cn("rounded-full justify-center gap-2", "w-[260px] h-10")}
     >
       <Icon className="h-4 w-4" />
       {label}
@@ -67,15 +61,14 @@ export default function ReportsSection() {
               active === "desempeno"
                 ? "docente"
                 : active === "pagos_examen"
-                ? "periodo"
+                ? "examen" // en pagos_examen mostramos selector de examen
                 : "ciclos"
             }
             docenteId={docenteId}
             setDocenteId={setDocenteId}
-            periodStart={(filters as any).periodStart}
-            setPeriodStart={(filters as any).setPeriodStart}
-            periodEnd={(filters as any).periodEnd}
-            setPeriodEnd={(filters as any).setPeriodEnd}
+            // Props para modo "examen"
+            examCode={examCode}
+            setExamCode={setExamCode}
           />
         </CardContent>
       </Card>
@@ -85,9 +78,11 @@ export default function ReportsSection() {
       ) : active === "pagos" ? (
         <ReportPagos filters={filters} />
       ) : active === "pagos_examen" ? (
-        <div className="text-sm text-muted-foreground">
-          Pagos de Examen de Colocación — selecciona un periodo arriba.
-        </div>
+        <ReportPagosExamen
+          anio={filters.anio}
+          idioma={filters.idioma as Idioma | ""}
+          examCode={examCode}
+        />
       ) : active === "encuesta" ? (
         <ReportEncuestaNivo filters={filters} />
       ) : (

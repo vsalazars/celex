@@ -30,6 +30,9 @@ export default function AppHeader({
             <span className="text-sm font-medium text-neutral-600">
               Centro de Estudios Científicos y Tecnológicos No. 15 "Diódoro Antúnez Echegaray"
             </span>
+            <span className="text-sm font-medium text-neutral-600">
+              Cursos Extracurriculares de Lenguas Extranjeras (CELEX)
+            </span>
           </div>
         </div>
 

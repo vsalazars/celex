@@ -30,8 +30,15 @@ import { Badge } from "@/components/ui/badge";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
-
 import { Label } from "@/components/ui/label";
+
+// 👉 NUEVO: rango de fechas (shadcn + react-day-picker)
+import { CalendarIcon } from "lucide-react";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 /* ======================================================
                     Validación (Zod)
@@ -49,7 +56,24 @@ const createSchema = z.object({
   costo: z.coerce.number().nonnegative("No puede ser negativo").optional(),
   docente_id: z.coerce.number().int().optional(),
   instrucciones: z.string().optional(),
+
+  // Ventana de inscripción (llenada por el selector de rango)
+  insc_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Requerido"),
+  insc_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Requerido"),
+}).superRefine((v, ctx) => {
+  const from = new Date(`${v.insc_from}T00:00:00`);
+  const to = new Date(`${v.insc_to}T23:59:59`);
+  if (isNaN(from.getTime())) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Fecha inválida", path: ["insc_from"] });
+  }
+  if (isNaN(to.getTime())) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Fecha inválida", path: ["insc_to"] });
+  }
+  if (!isNaN(from.getTime()) && !isNaN(to.getTime()) && from > to) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Debe ser ≤ que 'al'", path: ["insc_from"] });
+  }
 });
+
 type CreateFormValues = z.infer<typeof createSchema>;
 
 /* ======================================================
@@ -85,27 +109,29 @@ function inferFilenameFromResponse(resp: Response): string | null {
   return null;
 }
 
-/* ======================================================
-                     Tipos de pagos (UI)
-   ====================================================== */
-type RegAlumno = {
-  first_name?: string | null;
-  last_name?: string | null;
-  email?: string | null;
-  boleta?: string | null;
-} | null;
+// Lector tolerante del periodo de inscripción para la tabla
+function pickInscripcionWindowRow(e: any) {
+  const ins = e?.inscripcion || e?.registro || undefined;
+  const from =
+    ins?.from ??
+    e?.insc_inicio ??
+    e?.inscripcion_inicio ??
+    e?.registro_inicio ??
+    e?.insc_from ??
+    null;
+  const to =
+    ins?.to ??
+    e?.insc_fin ??
+    e?.inscripcion_fin ??
+    e?.registro_fin ??
+    e?.insc_to ??
+    null;
+  return { from, to };
+}
 
-type PlacementRegistroRow = {
-  id: number;
-  alumno?: RegAlumno;
-  referencia?: string | null;
-  importe_centavos?: number | null;
-  fecha_pago?: string | null;         // "YYYY-MM-DD"
-  status: string;                     // "preinscrita" | "validada" | "rechazada" | "cancelada"
-  created_at: string;                 // ISO
-  comprobante?: { filename?: string | null } | null;
-  rechazo_motivo?: string | null;     // 👈 NUEVO: viene del back
-};
+// Normaliza a YYYY-MM-DD sin offset de zona
+const toYMD = (d?: Date) =>
+  d ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().slice(0, 10) : "";
 
 /* ======================================================
                    Componente principal
@@ -174,6 +200,9 @@ export default function CoordinatorPlacement() {
   /* ======= Crear examen (modal) ======= */
   const [open, setOpen] = React.useState(false);
 
+  // 👉 Estado del rango de inscripción
+  const [inscRange, setInscRange] = React.useState<DateRange | undefined>();
+
   const form = useForm<CreateFormValues>({
     resolver: zodResolver(createSchema),
     defaultValues: {
@@ -187,9 +216,20 @@ export default function CoordinatorPlacement() {
       costo: 0,
       docente_id: undefined,
       instrucciones: "",
+      insc_from: "",
+      insc_to: "",
     },
     mode: "onBlur",
   });
+
+  const onSelectRange = (range?: DateRange) => {
+    setInscRange(range);
+    const fromStr = toYMD(range?.from);
+    const toStr = toYMD(range?.to);
+    form.setValue("insc_from", fromStr, { shouldValidate: true, shouldDirty: true });
+    form.setValue("insc_to", toStr, { shouldValidate: true, shouldDirty: true });
+    form.trigger(["insc_from", "insc_to"]);
+  };
 
   React.useEffect(() => {
     if (open && teachers.length === 0) fetchTeachers();
@@ -200,7 +240,7 @@ export default function CoordinatorPlacement() {
   const onCreate = async (values: CreateFormValues) => {
     setSaving(true);
     try {
-      const payload = {
+      const payload: Record<string, any> = {
         codigo: values.codigo.trim(),
         nombre: values.codigo.trim(),
         idioma: values.idioma,
@@ -212,6 +252,13 @@ export default function CoordinatorPlacement() {
         costo: values.costo ?? undefined,
         docente_id: values.docente_id ?? undefined,
         instrucciones: values.instrucciones?.trim() || undefined,
+
+        // Ventana de inscripción
+        insc_inicio: values.insc_from,
+        insc_fin: values.insc_to,
+
+        // (opcional por compat)
+        inscripcion: { from: values.insc_from, to: values.insc_to },
       };
 
       const res = await fetch(`${API_URL}/placement-exams`, {
@@ -230,6 +277,7 @@ export default function CoordinatorPlacement() {
       toast.success("Examen de colocación creado");
       setOpen(false);
       form.reset();
+      setInscRange(undefined);
       setPage(1);
       fetchList();
     } catch (e: any) {
@@ -263,7 +311,7 @@ export default function CoordinatorPlacement() {
   const [payOpen, setPayOpen] = React.useState(false);
   const [payExam, setPayExam] = React.useState<PlacementExam | null>(null);
   const [payLoading, setPayLoading] = React.useState(false);
-  const [payRows, setPayRows] = React.useState<PlacementRegistroRow[]>([]);
+  const [payRows, setPayRows] = React.useState<any[]>([]);
 
   const fetchPagos = React.useCallback(async (examId: number) => {
     setPayLoading(true);
@@ -277,7 +325,7 @@ export default function CoordinatorPlacement() {
         throw new Error(msg || `Error ${res.status}`);
       }
       const data = await res.json();
-      const items: PlacementRegistroRow[] = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
+      const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
       setPayRows(items);
     } catch (e: any) {
       toast.error(e?.message || "No se pudieron cargar los pagos");
@@ -336,21 +384,10 @@ export default function CoordinatorPlacement() {
       const res = await fetch(`${API_URL}/placement-exams/registros/${regId}/comprobante-admin`, {
         headers: { ...authHeaders(), Accept: "*/*" },
       });
-      if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        throw new Error(msg || `Error ${res.status}`);
-      }
-      const blob = await res.blob();
-      const objUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objUrl;
-      a.download = inferFilenameFromResponse(res) || `comprobante_${regId}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(objUrl);
-    } catch (e: any) {
+    }
+    catch (e: any) {
       toast.error(e?.message || "No se pudo descargar el comprobante");
+      return;
     }
   };
 
@@ -535,6 +572,75 @@ export default function CoordinatorPlacement() {
                     />
                   </div>
 
+                  {/* === Rango de inscripción (date range) === */}
+                  <div className="grid gap-2">
+                    <FormLabel>Periodo de inscripción</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="justify-start text-left font-normal"
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {inscRange?.from && inscRange?.to ? (
+                            <>
+                              {format(inscRange.from, "dd/MM/yyyy", { locale: es })} –{" "}
+                              {format(inscRange.to, "dd/MM/yyyy", { locale: es })}
+                            </>
+                          ) : (
+                            <span>Selecciona rango</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="range"
+                          numberOfMonths={2}
+                          selected={inscRange}
+                          onSelect={onSelectRange}
+                          locale={es}
+                          defaultMonth={inscRange?.from}
+                        />
+                      </PopoverContent>
+                    </Popover>
+
+                    {/* Inputs ocultos para que Zod valide y para enviar al back */}
+                    <div className="hidden">
+                      <FormField
+                        control={form.control}
+                        name="insc_from"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormControl>
+                              <Input type="text" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="insc_to"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormControl>
+                              <Input type="text" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    {/* Mensaje de error combinado */}
+                    {(form.formState.errors.insc_from || form.formState.errors.insc_to) && (
+                      <p className="text-sm text-destructive">
+                        {form.formState.errors.insc_from?.message ||
+                          form.formState.errors.insc_to?.message ||
+                          "Selecciona un rango válido"}
+                      </p>
+                    )}
+                  </div>
+
                   {/* duración / cupo / costo */}
                   <div className="grid grid-cols-3 gap-4">
                     <FormField
@@ -692,20 +798,22 @@ export default function CoordinatorPlacement() {
                   <TableHead>Salón</TableHead>
                   <TableHead>Duración</TableHead>
                   <TableHead>Cupo</TableHead>
-                  <TableHead>Disponible</TableHead>{/* 👈 NUEVO */}
+                  <TableHead>Disponible</TableHead>
+                  <TableHead>Inscripción</TableHead>
                   <TableHead>Costo</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={10}>Cargando…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11}>Cargando…</TableCell></TableRow>
                 ) : items.length === 0 ? (
-                  <TableRow><TableCell colSpan={10}>Sin resultados</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11}>Sin resultados</TableCell></TableRow>
                 ) : (
                   items.map((it) => {
                     const codigo = (it as any).codigo ?? it.nombre;
-                    const disponible = (it as any).cupo_disponible; // si el back lo envía
+                    const disponible = (it as any).cupo_disponible;
+                    const { from: insFrom, to: insTo } = pickInscripcionWindowRow(it);
                     return (
                       <TableRow key={it.id}>
                         <TableCell className="font-medium">{codigo}</TableCell>
@@ -721,6 +829,9 @@ export default function CoordinatorPlacement() {
                               {disponible}
                             </Badge>
                           ) : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {insFrom && insTo ? `${insFrom} – ${insTo}` : "—"}
                         </TableCell>
                         <TableCell>{money((it as any).costo)}</TableCell>
                         <TableCell className="text-right space-x-2">
@@ -789,7 +900,7 @@ export default function CoordinatorPlacement() {
                   <TableHead>Importe</TableHead>
                   <TableHead>Fecha pago</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Motivo rechazo</TableHead>{/* 👈 NUEVO */}
+                  <TableHead>Motivo rechazo</TableHead>
                   <TableHead>Creado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -852,12 +963,13 @@ export default function CoordinatorPlacement() {
                           >
                             Ver
                           </Button>
+                          {/* Descarga directa en el viewer modal */}
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => downloadComprobanteAdmin(r.id)}
+                            onClick={() => openViewer(r.id)}
                             disabled={!r.comprobante}
-                            title={!r.comprobante ? "Sin comprobante" : "Descargar comprobante"}
+                            title={!r.comprobante ? "Sin comprobante" : "Descargar/Ver"}
                           >
                             Descargar
                           </Button>

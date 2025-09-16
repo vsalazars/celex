@@ -212,7 +212,7 @@ export async function activateTeacher(id: string | number): Promise<void> {
 
 export async function deleteTeacher(id: string | number): Promise<void> {
   const url = buildURL(`/coordinacion/docentes/${id}`);
-  await apiFetch(url, { method: "DELETE", auth: true });
+  await apiFetch<void>(url, { method: "DELETE", auth: true });
 }
 
 /* ================= Ciclos / Grupos (Coordinación) ================= */
@@ -565,7 +565,7 @@ export async function listCiclosPublic(params: any = {}) {
   return apiFetch(url, { auth: false });
 }
 
-/* ================= Placement Exams ================= */
+/* ================= Placement Exams (Coordinación) ================= */
 
 const PLACEMENT_BASE = "/placement-exams";
 
@@ -592,13 +592,30 @@ export async function listPlacementExams(params?: {
 // Alias para compatibilidad con código viejo
 export const listPlacement = listPlacementExams;
 
+
+/* ========== (nuevo) helpers de placement ========== */
+function normalizeInscWindow<T extends Record<string, any>>(input: T): T {
+  const insc_inicio =
+    input.insc_inicio ?? input.insc_from ?? input.inscripcion?.from ?? undefined;
+  const insc_fin =
+    input.insc_fin ?? input.insc_to ?? input.inscripcion?.to ?? undefined;
+
+  const out: any = { ...input, insc_inicio, insc_fin };
+  delete out.insc_from;
+  delete out.insc_to;
+  delete out.inscripcion;
+  return out;
+}
+
+
 // ===== Crear nuevo examen =====
 export async function createPlacementExam(payload: PlacementExamCreateDTO): Promise<PlacementExam> {
   const url = buildURL(PLACEMENT_BASE);
+  const json = normalizeInscWindow(payload as any);
   return apiFetch<PlacementExam>(url, {
     method: "POST",
     auth: true,
-    json: payload, // usa json
+    json,
   });
 }
 
@@ -608,12 +625,15 @@ export async function updatePlacementExam(
   patch: Partial<PlacementExamCreateDTO>
 ): Promise<PlacementExam> {
   const url = buildURL(`${PLACEMENT_BASE}/${id}`);
+  const json = normalizeInscWindow(patch as any);
   return apiFetch<PlacementExam>(url, {
     auth: true,
     method: "PATCH",
-    json: patch, // usa json
+    json,
   });
 }
+
+
 
 // ===== Eliminar examen =====
 export async function deletePlacementExam(id: number): Promise<void> {
@@ -621,11 +641,15 @@ export async function deletePlacementExam(id: number): Promise<void> {
   await apiFetch<void>(url, { method: "DELETE", auth: true });
 }
 
+/** ========= Endpoints públicos de Placement (para el sitio público) ========= **/
+
+// (Compat) lista pública alternativa
 export async function listPlacementPublic(params?: { q?: string; idioma?: string }) {
   const url = buildURL("/placement-exams/public", params as any);
   return apiFetch(url);
 }
 
+// Registro público/autenticado del alumno a un examen
 export async function createPlacementRegistro(examId: number, fd: FormData) {
   const url = buildURL(`/placement-exams/${examId}/registros`);
   return apiFetch(url, { method: "POST", body: fd, auth: true });
@@ -720,10 +744,6 @@ export async function downloadPlacementComprobante(
   await forceDownloadFromResponse(resp, suggestedName || `comprobante_${registroId}`);
 }
 
-
-
-
-
 /* ==================== Reportes (Coordinación) ==================== */
 /** Tipos específicos de reportes para no chocar con CicloDTO, etc. */
 export type ReportCicloLite = {
@@ -816,7 +836,6 @@ export async function getReportePagos(args: {
   return apiFetch<ReportReportePagos>(url, { auth: true });
 }
 
-
 /* ==================== Reporte: Encuesta (Coordinación) ==================== */
 
 export type SurveyOptionDTO = {
@@ -849,9 +868,6 @@ export async function getReporteEncuesta(args: {
   });
   return apiFetch<ReportReporteEncuesta>(url, { auth: true });
 }
-
-
-
 
 /* ==================== Reporte: Desempeño Docente ==================== */
 
@@ -886,7 +902,6 @@ export async function getSerieEncuestaDocente(args: {
   return apiFetch<SerieDocenteResponse>(url, { auth: true });
 }
 
-
 // lib/api.ts
 export async function getSerieEncuestaDocentePorPregunta(params: { docenteId: string|number, soloProfesor?: boolean }) {
   const url = buildURL("/coordinacion/reportes/desempeno-docente-por-pregunta", {
@@ -895,8 +910,6 @@ export async function getSerieEncuestaDocentePorPregunta(params: { docenteId: st
   });
   return apiFetch(url, { auth: true });
 }
-
-
 
 // ===== Comentarios de encuesta (open text) =====
 export type EncuestaComentario = {
@@ -948,3 +961,182 @@ export async function getEncuestaComentarios(args: {
     items,
   };
 }
+
+/* ============== Reportes: Pagos Examen de Colocación ================= */
+
+export type PlacementExamLite = {
+  id: number | string;
+  codigo: string;
+  idioma: string;
+  fecha?: string | null; // ISO "YYYY-MM-DD"
+};
+
+/* ====== Admin: registros/pagos de placement ====== */
+
+// URL corregida al router nuevo: /placement-exams/{exam_id}/registros-admin
+export async function getPlacementRegistrosAdmin(
+  examId: number | string,
+  params?: { page_size?: number }
+): Promise<{ exam?: any; total: number; items: any[] }> {
+  const url = buildURL(`${PLACEMENT_BASE}/${examId}/registros-admin`, {
+    page_size: params?.page_size ?? "",
+  });
+  const raw = await apiFetch<any>(url, { auth: true });
+
+  const items: any[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray(raw?.items)
+    ? raw.items
+    : [];
+  return {
+    exam: raw?.exam ?? null,
+    total: raw?.total ?? items.length,
+    items,
+  };
+}
+
+// Validar/rechazar registro (admin)
+export async function validatePlacementRegistroAdmin(
+  registroId: number,
+  action: "APPROVE" | "REJECT",
+  motivo?: string
+) {
+  const url = buildURL(`${PLACEMENT_BASE}/registros/${registroId}/validate`);
+  return apiFetch(url, {
+    method: "POST",
+    auth: true,
+    json: { action, motivo },
+  });
+}
+
+// Descargar comprobante (admin)
+export async function downloadPlacementComprobanteAdmin(
+  registroId: number,
+  suggestedName?: string
+) {
+  const url = buildURL(`${PLACEMENT_BASE}/registros/${registroId}/comprobante-admin`);
+  const resp = await apiFetchBlobResponse(url, { auth: true, method: "GET" });
+  await forceDownloadFromResponse(resp, suggestedName || `comprobante_${registroId}`);
+}
+
+// Stats de cupo para un examen
+export async function getPlacementStatsAdmin(examId: number | string): Promise<{
+  cupo_total?: number | null;
+  ocupados: number;
+  disponibles?: number | null;
+}> {
+  const url = buildURL(`${PLACEMENT_BASE}/${examId}/stats-admin`);
+  return apiFetch(url, { auth: true });
+}
+
+
+
+
+
+/* =================== Utilities públicos =================== */
+
+/** Fetch público simple que respeta API_URL y parsea JSON de forma segura. */
+export async function publicFetch(
+  path: string,
+  opts?: RequestInit & { params?: Record<string, any> }
+) {
+  const url = buildURL(path, opts?.params);
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { "Content-Type": "application/json", ...(opts?.headers || {}) },
+    credentials: "omit",
+    cache: "no-store",
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    // Esto te da un error legible aunque el server devuelva HTML
+    throw new Error(text?.slice(0, 300) || `HTTP ${res.status}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Respuesta no-JSON desde ${url}: ${text.slice(0, 180)}`);
+  }
+}
+
+/* =================== Público: listado y capacidad de Placement =================== */
+
+/** Tipo público tolerante (por si el back ya manda la capacidad directa). */
+export type PlacementExamPublic = {
+  id: number | string;
+  codigo: string;
+  idioma: string;
+  fecha?: string | null;
+  hora_inicio?: string | null;
+  hora_fin?: string | null;
+  sede?: string | null;
+  inscripcion?: { from: string; to: string } | null;
+
+  // opcionales si el backend decide mandarlos planos
+  cupo_total?: number;
+  cupo_restante?: number;
+
+  // o anidados
+  capacity?: {
+    cupo_total: number;
+    cupo_restante: number;
+    inscritos_count?: number;
+    holds_activos?: number;
+  } | null;
+};
+
+/** Llamada pública original para listar exámenes (no siempre incluye capacidad). */
+export async function listPlacementExamsPublic(params?: {
+  idioma?: string;
+  anio?: number;
+  vigente?: boolean;
+  include_capacity?: boolean; // 👈 nuevo
+  page?: number;
+  page_size?: number;
+}) {
+  const url = buildURL("/public/placement-exams", params as any);
+  return apiFetch(url, { auth: false });
+}
+
+/** Estructura de capacidad que puede devolver el endpoint público. */
+export type ExamCapacity = {
+  id: number | string;
+  cupo_total: number;
+  cupo_restante: number;
+  inscritos_count?: number;
+  holds_activos?: number;
+};
+
+/**
+ * Obtiene capacidad pública por lote.
+ * Intenta GET con query `ids=a,b,c`; si no existe el endpoint, reintenta POST {ids:[]}.
+ */
+export async function getPlacementExamsCapacityPublic(ids: (number | string)[]) {
+  if (!ids?.length) return {} as Record<string, ExamCapacity>;
+
+  // 1) intento GET
+  const urlGet = buildURL("/public/placement-exams/capacity", {
+    ids: ids.join(","), // servidor: parsea CSV
+  });
+
+  try {
+    const res = await apiFetch<ExamCapacity[] | Record<string, ExamCapacity>>(urlGet, { auth: false });
+    if (Array.isArray(res)) {
+      return res.reduce((acc, r) => { acc[String(r.id)] = r; return acc; }, {} as Record<string, ExamCapacity>);
+    }
+    return res as Record<string, ExamCapacity>;
+  } catch {
+    // 2) fallback POST
+    const urlPost = buildURL("/public/placement-exams/capacity");
+    const res = await apiFetch<ExamCapacity[] | Record<string, ExamCapacity>>(urlPost, {
+      auth: false,
+      method: "POST",
+      json: { ids },
+    });
+    if (Array.isArray(res)) {
+      return res.reduce((acc, r) => { acc[String(r.id)] = r; return acc; }, {} as Record<string, ExamCapacity>);
+    }
+    return res as Record<string, ExamCapacity>;
+  }
+}
+

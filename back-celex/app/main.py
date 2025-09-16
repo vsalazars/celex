@@ -28,6 +28,8 @@ from app.routers import placement_teacher  # ⬅️ importa
 from .routers.coordinacion_encuestas import router as coordinacion_encuestas_router
 from .routers.alumno_encuestas import router as alumno_encuestas_router  # 👈 NUEVO
 from app.routers import coordinacion_reportes
+from app.routers import public_examenes
+from .routers.alumno_perfil import router as alumno_perfil_router
 
 
 
@@ -62,6 +64,8 @@ app.include_router(placement_teacher.router)
 app.include_router(coordinacion_encuestas_router)
 app.include_router(alumno_encuestas_router)   # 👈 NUEVO
 app.include_router(coordinacion_reportes.router)
+app.include_router(public_examenes.router)
+app.include_router(alumno_perfil_router)
 
 
 

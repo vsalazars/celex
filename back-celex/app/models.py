@@ -51,6 +51,24 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    # Datos de contacto y domicilio (opcionales)
+    telefono = Column(String(20), nullable=True)
+
+    addr_calle     = Column(String(200), nullable=True)
+    addr_numero    = Column(String(50),  nullable=True)
+    addr_colonia   = Column(String(200), nullable=True)
+    addr_municipio = Column(String(200), nullable=True)
+    addr_estado    = Column(String(200), nullable=True)
+    addr_cp        = Column(String(10),  nullable=True)
+
+    # Datos IPN extendidos (opcionales)
+    ipn_nivel  = Column(String(30),  nullable=True)  # "Medio superior" | "Superior" | "Posgrado"
+    ipn_unidad = Column(String(120), nullable=True)
+
+    # Tutor (si es menor)
+    tutor_telefono = Column(String(20), nullable=True)
+
+
 
 # -------------------- Enums de Ciclo --------------------
 class Modalidad(str, enum.Enum):
@@ -263,33 +281,39 @@ class PlacementExam(Base):
         UniqueConstraint("codigo", name="uq_placement_codigo"),
         CheckConstraint("cupo_total >= 0", name="ck_place_cupo_nonneg"),
         CheckConstraint("duracion_min > 0", name="ck_place_duracion_pos"),
+        # 👇 permite nulos, pero si ambos existen, exige orden correcto
+        CheckConstraint(
+            "(insc_inicio IS NULL) OR (insc_fin IS NULL) OR (insc_inicio <= insc_fin)",
+            name="ck_place_insc_rango",
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # NUEVOS / ajustados
-    codigo = Column(String(50), nullable=False, index=True)     # único por __table_args__
-    idioma = Column(String(30), nullable=False, index=True)     # ingles | frances | ...
+    codigo = Column(String(50), nullable=False, index=True)
+    idioma = Column(String(30), nullable=False, index=True)
     fecha = Column(Date, nullable=False)
     hora = Column(Time, nullable=False)
+
+    # 👇 NUEVO: periodo de inscripción
+    insc_inicio = Column(Date, nullable=True, index=True)
+    insc_fin    = Column(Date, nullable=True, index=True)
 
     salon = Column(String(120), nullable=True)
     duracion_min = Column(Integer, nullable=False, default=60)
     cupo_total = Column(Integer, nullable=False, default=0)
-    costo = Column(Integer, nullable=True)                      # MXN opcional (en pesos o centavos según tu decisión global)
+    costo = Column(Integer, nullable=True)
 
     docente_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     docente = relationship("User", foreign_keys=[docente_id], lazy="joined")
 
-    # existentes
-    nombre = Column(String(120), nullable=False, index=True)    # puedes usar nombre=codigo o un título más legible
+    nombre = Column(String(120), nullable=False, index=True)
     modalidad = Column(String(30), nullable=True)
     nivel_objetivo = Column(String(10), nullable=True)
     estado = Column(String(20), nullable=False, default="borrador")
     instrucciones = Column(Text, nullable=True)
     link_registro = Column(String(255), nullable=True)
     activo = Column(Boolean, nullable=False, default=True)
-
 
 # -------------------- Enums y Modelo PlacementRegistro --------------------
 class PlacementRegistroStatus(str, enum.Enum):
