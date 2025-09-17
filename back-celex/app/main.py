@@ -9,6 +9,8 @@ from .database import Base, engine, get_db
 from .models import User, UserRole as ModelUserRole
 from .schemas import UserCreate, UserOut, LoginRequest, TokenResponse, UserRole
 from .auth import get_password_hash, verify_password, create_access_token
+from app.schemas import AlumnoPerfilOut, AlumnoDetalleOut, InscripcionLiteOut, CicloLiteOut
+
 
 # ✅ Routers (importa cada router con alias .router)
 from .routers.admin import router as admin_router
@@ -30,6 +32,7 @@ from .routers.alumno_encuestas import router as alumno_encuestas_router  # 👈 
 from app.routers import coordinacion_reportes
 from app.routers import public_examenes
 from .routers.alumno_perfil import router as alumno_perfil_router
+from app.routers import coordinacion_alumnos
 
 
 
@@ -66,6 +69,7 @@ app.include_router(alumno_encuestas_router)   # 👈 NUEVO
 app.include_router(coordinacion_reportes.router)
 app.include_router(public_examenes.router)
 app.include_router(alumno_perfil_router)
+app.include_router(coordinacion_alumnos.router)
 
 
 

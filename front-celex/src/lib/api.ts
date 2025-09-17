@@ -10,6 +10,8 @@ import type {
   PlacementExamCreateDTO,
 } from "./types";
 
+
+
 /* ========== Helper ========== */
 function isFormDataBody(init?: RequestInit) {
   return typeof FormData !== "undefined" && init?.body instanceof FormData;
@@ -1139,4 +1141,5 @@ export async function getPlacementExamsCapacityPublic(ids: (number | string)[]) 
     return res as Record<string, ExamCapacity>;
   }
 }
+
 

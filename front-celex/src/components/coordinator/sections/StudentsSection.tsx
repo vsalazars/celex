@@ -1,10 +1,14 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import React from "react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -12,777 +16,478 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Download,
-  ExternalLink,
-  FileText,
-  RefreshCcw,
-  Search,
-  Users,
-} from "lucide-react";
-import { toast } from "sonner";
-import { apiFetch } from "@/lib/api";
-import { API_URL } from "@/lib/constants";
+import { Download, Loader2, Search } from "lucide-react";
 
-// ----------------------
-// Types
-// ----------------------
-export type AlumnoDTO = {
-  id: number;
-  first_name: string;
-  last_name: string;
-  email: string;
-  curp: string;
+import { apiFetch, buildURL } from "@/lib/api";
+import type { Paginated } from "@/lib/types";
+
+// =============================
+// Tipos locales (flexibles)
+// =============================
+export type AlumnoFull = {
+  id?: number | string;
+  inscripcion_id?: number | string;
+  first_name?: string;
+  last_name?: string;
+  nombre?: string;
+  email?: string;
+  curp?: string;
   boleta?: string | null;
-  is_ipn?: boolean | null;
+  is_ipn?: boolean;
+  telefono?: string | null;
+  // Dirección
+  addr_calle?: string | null;
+  addr_numero?: string | null;
+  addr_colonia?: string | null;
+  addr_municipio?: string | null;
+  addr_estado?: string | null;
+  addr_cp?: string | null;
+  // Inscripción (si se conoce)
+  fecha_inscripcion?: string | null;
+  estado?: string | null;
+  created_at?: string | null;
 };
 
-export type CicloDTO = {
-  id: number;
-  codigo: string;
-  idioma: string;
-  nivel: string;
-  turno: string;
-  modalidad: string;
-  insc_inicio: string;
-  insc_fin: string;
-  curso_inicio: string;
-  curso_fin: string;
-};
-
-export type InscripcionDTO = {
-  id: number;
-  alumno_id: number;
-  ciclo_id: number;
-  status: string;
-  created_at: string;
-  referencia?: string | null;
-  importe_centavos?: number | null;
-  comprobante_path?: string | null;
-  comprobante_mime?: string | null;
-  comprobante_size?: number | null;
-  tipo: "pago" | "exencion";
-  fecha_pago?: string | null;
-  alumno_is_ipn?: boolean;
-  validated_by_id?: number | null;
-  validated_at?: string | null;
-  validation_notes?: string | null;
-  rechazo_motivo?: string | null;
-  rechazada_at?: string | null;
-  alumno?: AlumnoDTO;
-  ciclo?: CicloDTO;
-};
-
-export type StudentSummary = {
-  alumno: AlumnoDTO;
-  inscripciones: InscripcionDTO[];
-  ultima?: InscripcionDTO;
-};
-
-type Filters = {
-  q: string;
-  idioma: string | "all";
-  nivel: string | "all";
-  turno: string | "all";
-  modalidad: string | "all";
-  status: string | "all";
-};
-
-const initialFilters: Filters = {
-  q: "",
-  idioma: "all",
-  nivel: "all",
-  turno: "all",
-  modalidad: "all",
-  status: "all",
-};
-
-const fmtDate = (s?: string | null) =>
-  s ? new Date(s).toLocaleDateString() : "–";
-const fmtMoney = (c?: number | null) =>
-  typeof c === "number"
-    ? (c / 100).toLocaleString(undefined, {
-        style: "currency",
-        currency: "MXN",
-      })
-    : "–";
-
-const STATUS_COLORS: Record<string, string> = {
-  registrada: "bg-blue-100 text-blue-800",
-  preinscrita: "bg-amber-100 text-amber-800",
-  confirmada: "bg-emerald-100 text-emerald-800",
-  validada: "bg-emerald-100 text-emerald-800",
-  rechazada: "bg-rose-100 text-rose-800",
-};
+const ALL = "all"; // sentinel para 'Todos' (evita value="")
 
 export default function StudentsSection() {
-  const [filters, setFilters] = useState<Filters>(initialFilters);
-  const [qDebounced, setQDebounced] = useState(filters.q);
+  const [q, setQ] = React.useState("");
+  const [anio, setAnio] = React.useState<string>(ALL);
+  const [idioma, setIdioma] = React.useState<string>(ALL);
 
-  const [loading, setLoading] = useState(false);
-  const [inscripciones, setInscripciones] = useState<InscripcionDTO[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(25);
 
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detail, setDetail] = useState<StudentSummary | null>(null);
+  const [data, setData] = React.useState<Paginated<AlumnoFull>>({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 25,
+    pages: 1,
+  });
 
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [loading, setLoading] = React.useState(false);
+  const [fallbackMode, setFallbackMode] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const abortRef = React.useRef<AbortController | null>(null);
 
-  // debounce de input de búsqueda
-  useEffect(() => {
-    const handler = setTimeout(() => setQDebounced(filters.q), 400);
-    return () => clearTimeout(handler);
-  }, [filters.q]);
+  // Años detectados a partir de /coordinacion/ciclos
+  const [years, setYears] = React.useState<number[]>([]);
 
-  // Cuando cambian filtros (excepto page/pageSize) reinicia a página 1
-  useEffect(() => {
-    setPage(1);
-  }, [
-    qDebounced,
-    filters.status,
-    filters.idioma,
-    filters.nivel,
-    filters.turno,
-    filters.modalidad,
-  ]);
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const url = buildURL("/coordinacion/ciclos", {});
+        const ciclos = await apiFetch<any[]>(url, { auth: true });
+        const ys = Array.from(
+          new Set(
+            (ciclos || [])
+              .map((c: any) => {
+                const codigo = String(c?.codigo ?? "");
+                const pref = codigo.split("-", 1)[0];
+                return Number(pref) || undefined;
+              })
+              .filter(Boolean)
+          )
+        )
+          .sort((a, b) => (b as number) - (a as number)) as number[];
+        setYears(ys);
+      } catch {
+        // ignora
+      }
+    })();
+  }, []);
 
-  async function fetchInscripciones() {
-    try {
-      setLoading(true);
+  const fetchStudents = React.useCallback(
+    async (opts?: { resetPage?: boolean }) => {
       setError(null);
+      setLoading(true);
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
 
-      const params = new URLSearchParams();
-      if (qDebounced) params.set("q", qDebounced);
-      if (filters.status !== "all") params.set("status", filters.status);
-      if (filters.idioma !== "all") params.set("idioma", filters.idioma);
-      if (filters.nivel !== "all") params.set("nivel", filters.nivel);
-      if (filters.turno !== "all") params.set("turno", filters.turno);
-      if (filters.modalidad !== "all") params.set("modalidad", filters.modalidad);
-      params.set("page", String(page));
-      params.set("page_size", String(pageSize));
+      try {
+        // 1) Intento directo
+        const url = buildURL("/coordinacion/alumnos", {
+          q: q || undefined,
+          anio: anio !== ALL ? anio : undefined,
+          idioma: idioma !== ALL ? idioma : undefined,
+          page,
+          page_size: pageSize,
+        });
+        const resp = await apiFetch<Paginated<AlumnoFull>>(url, { auth: true, signal: ac.signal });
+        setData(resp);
+        setFallbackMode(false);
+      } catch {
+        // 2) Fallback: ciclos -> grupos -> reportes/inscritos
+        try {
+          setFallbackMode(true);
+          const ciclosURL = buildURL("/coordinacion/ciclos", {
+            anio: anio !== ALL ? anio : undefined,
+            idioma: idioma !== ALL ? idioma : undefined,
+          });
+          const ciclos = await apiFetch<any[]>(ciclosURL, { auth: true, signal: ac.signal });
 
-      const url = `${API_URL}/coordinacion/inscripciones?${params.toString()}`;
-      const data = (await apiFetch(url, {
-        auth: true,
-      })) as { items: InscripcionDTO[]; total?: number } | InscripcionDTO[];
+          const items: AlumnoFull[] = [];
+          for (const c of ciclos || []) {
+            const gruposURL = buildURL("/coordinacion/grupos", { cicloId: c?.id });
+            const grupos = await apiFetch<any[]>(gruposURL, { auth: true, signal: ac.signal });
 
-      const items = Array.isArray(data) ? data : data.items;
-      setInscripciones(items || []);
-    } catch (e: any) {
-      console.error(e);
-      setError(e?.message || "Error al cargar inscripciones");
-      toast.error("No se pudieron cargar las inscripciones");
-    } finally {
-      setLoading(false);
-    }
+            for (const g of grupos || []) {
+              const repURL = buildURL("/coordinacion/reportes/inscritos", {
+                cicloId: c?.id,
+                grupoId: g?.id,
+                q: q || undefined,
+              });
+              const rep = await apiFetch<{ alumnos: any[] }>(repURL, { auth: true, signal: ac.signal });
+              for (const a of rep?.alumnos || []) {
+                items.push({
+                  inscripcion_id: a?.inscripcion_id ?? a?.id,
+                  nombre: a?.nombre,
+                  email: a?.email,
+                  boleta: a?.boleta,
+                  curp: a?.curp,
+                  estado: a?.estado,
+                  fecha_inscripcion: a?.fecha_inscripcion,
+                });
+              }
+            }
+          }
+
+          // Deduplicado suave por inscripcion_id (si existe)
+          const dedup: AlumnoFull[] = [];
+          const seen = new Set<string>();
+          for (const it of items) {
+            const key = it.inscripcion_id != null ? `i:${it.inscripcion_id}` : `e:${it.email ?? ""}|n:${it.nombre ?? ""}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            dedup.push(it);
+          }
+
+          // filtrado rápido por q si no hay filtro en back
+          const filtered = q
+            ? dedup.filter((it) => {
+                const hay = [it.nombre, it.first_name, it.last_name, it.email, it.curp, it.boleta]
+                  .filter(Boolean)
+                  .join(" ")
+                  .toLowerCase();
+                return hay.includes(q.toLowerCase());
+              })
+            : dedup;
+
+          // paginación en cliente
+          const total = filtered.length;
+          const pages = Math.max(1, Math.ceil(total / pageSize));
+          const safePage = Math.min(page, pages);
+          const start = (safePage - 1) * pageSize;
+          const pageItems = filtered.slice(start, start + pageSize);
+
+          setData({ items: pageItems, total, page: safePage, page_size: pageSize, pages });
+        } catch {
+          setError("No se pudo cargar el listado de alumnos.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [q, anio, idioma, page, pageSize]
+  );
+
+  React.useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
+
+  // =============================
+  // Utilidades
+  // =============================
+  function fullName(a: AlumnoFull): string {
+    if (a.nombre && a.nombre.trim()) return a.nombre.trim();
+    return [a.last_name, a.first_name].filter(Boolean).join(" ") || "(sin nombre)";
   }
 
-  useEffect(() => {
-    fetchInscripciones();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    qDebounced,
-    filters.status,
-    filters.idioma,
-    filters.nivel,
-    filters.turno,
-    filters.modalidad,
-    page,
-    pageSize,
-  ]);
-
-  const students = useMemo<StudentSummary[]>(() => {
-    const map = new Map<number, StudentSummary>();
-    for (const insc of inscripciones) {
-      const alumno =
-        insc.alumno ||
-        ({
-          id: insc.alumno_id,
-          first_name: "(Sin nombre)",
-          last_name: "",
-          email: "",
-          curp: "",
-          boleta: null,
-          is_ipn: null,
-        } as AlumnoDTO);
-
-      const current = map.get(alumno.id);
-      if (!current) {
-        map.set(alumno.id, { alumno, inscripciones: [insc], ultima: insc });
-      } else {
-        current.inscripciones.push(insc);
-        const a = new Date(current.ultima?.created_at || 0).getTime();
-        const b = new Date(insc.created_at).getTime();
-        if (b > a) current.ultima = insc;
-      }
-    }
-    return Array.from(map.values()).sort((a, b) =>
-      `${a.alumno.last_name} ${a.alumno.first_name}`.localeCompare(
-        `${b.alumno.last_name} ${b.alumno.first_name}`
-      )
-    );
-  }, [inscripciones]);
-
-  const totalPages = Math.max(1, Math.ceil(students.length / pageSize));
-
-  // Si cambian students o pageSize, asegura que page esté dentro del rango
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [totalPages, page]);
-
-  const paginated = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return students.slice(start, start + pageSize);
-  }, [students, page, pageSize]);
-
-  function openDetail(s: StudentSummary) {
-    setDetail(s);
-    setDetailOpen(true);
+  function rowKey(a: AlumnoFull, idx: number): string {
+    const id = a.id != null ? `u:${a.id}` : "";
+    const ins = a.inscripcion_id != null ? `i:${a.inscripcion_id}` : "";
+    const extra = a.email ? `e:${a.email}` : a.curp ? `c:${a.curp}` : "";
+    const base = [id, ins, extra].filter(Boolean).join("|") || `idx:${idx}`;
+    // añadimos idx para garantizar unicidad incluso con ids repetidos
+    return `${base}#${idx}`;
   }
 
-  async function downloadComprobante(
-    insc: InscripcionDTO,
-    adminView = true
-  ) {
-    try {
-      const path = adminView
-        ? `${API_URL}/coordinacion/inscripciones/${insc.id}/archivo`
-        : `${API_URL}/alumno/inscripciones/${insc.id}/archivo`;
-      const resp = await apiFetch(path, { auth: true });
-      const isUrlLike =
-        typeof resp === "object" && "url" in (resp as any) && (resp as any).url;
-      if (isUrlLike) {
-        window.open((resp as any).url as string, "_blank");
-        return;
-      }
-      if (resp && (resp as any).base64) {
-        const {
-          base64,
-          filename = `comprobante_${insc.id}.pdf`,
-          mime = "application/pdf",
-        } = resp as any;
-        const blob = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-        const file = new Blob([blob], { type: mime });
-        const href = URL.createObjectURL(file);
-        const a = document.createElement("a");
-        a.href = href;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(href);
-        return;
-      }
-      toast.info("El backend debe devolver URL firmada o base64 del archivo");
-    } catch (e: any) {
-      console.error(e);
-      toast.error("No se pudo descargar el comprobante");
+  function toCSV(rows: AlumnoFull[]): string {
+    const header = [
+      "id",
+      "inscripcion_id",
+      "nombre",
+      "email",
+      "curp",
+      "boleta",
+      "is_ipn",
+      "telefono",
+      "addr_calle",
+      "addr_numero",
+      "addr_colonia",
+      "addr_municipio",
+      "addr_estado",
+      "addr_cp",
+      "fecha_inscripcion",
+      "estado",
+      "created_at",
+    ];
+    const escape = (v: any) => {
+      if (v == null) return "";
+      const s = String(v).replaceAll('"', '""');
+      if (/[",\n]/.test(s)) return `"${s}"`;
+      return s;
+    };
+    const lines = [header.join(",")];
+    for (const r of rows) {
+      const line = header.map((k) => escape((r as any)[k])).join(",");
+      lines.push(line);
     }
+    return lines.join("\n");
   }
 
-  function exportCSV() {
-    const rows: string[] = [];
-    rows.push(
-      [
-        "Alumno",
-        "Email",
-        "CURP",
-        "Boleta",
-        "IPN",
-        "#Inscripciones",
-        "Último status",
-        "Último ciclo",
-        "Idioma",
-        "Nivel",
-        "Turno",
-        "Modalidad",
-        "Fecha registro",
-        "Referencia",
-        "Importe",
-      ].join(",")
-    );
-
-    students.forEach((s) => {
-      const u = s.ultima;
-      rows.push(
-        [
-          `${s.alumno.last_name} ${s.alumno.first_name}`,
-          s.alumno.email,
-          s.alumno.curp,
-          s.alumno.boleta || "",
-          s.alumno.is_ipn ? "Sí" : "No",
-          String(s.inscripciones.length),
-          u?.status || "",
-          u?.ciclo?.codigo || "",
-          u?.ciclo?.idioma || "",
-          u?.ciclo?.nivel || "",
-          u?.ciclo?.turno || "",
-          u?.ciclo?.modalidad || "",
-          u?.created_at ? new Date(u.created_at).toISOString() : "",
-          u?.referencia || "",
-          typeof u?.importe_centavos === "number"
-            ? String(u.importe_centavos / 100)
-            : "",
-        ]
-          .map((x) => `"${(x || "").toString().replaceAll('"', '""')}"`)
-          .join(",")
-      );
-    });
-
-    const blob = new Blob([rows.join("\n")], {
-      type: "text/csv;charset=utf-8;",
-    });
+  function downloadCSV() {
+    const csv = toCSV(data.items);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `students_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `alumnos_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
+  const idiomaOptions = [
+    { value: ALL, label: "Todos" },
+    { value: "ingles", label: "Inglés" },
+    { value: "frances", label: "Francés" },
+    { value: "aleman", label: "Alemán" },
+    { value: "italiano", label: "Italiano" },
+    { value: "chino", label: "Chino" },
+    { value: "japones", label: "Japonés" },
+  ];
+
+  // =============================
+  // Render
+  // =============================
   return (
-    <Card className="overflow-hidden border-0 shadow-sm bg-white/50 dark:bg-neutral-900/50">
-      <CardHeader className="space-y-1">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-xl font-semibold flex items-center gap-2">
-            <Users className="h-5 w-5" /> Estudiantes
-          </CardTitle>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={fetchInscripciones} disabled={loading}>
-              <RefreshCcw className="h-4 w-4 mr-2" /> Recargar
-            </Button>
-            <Button variant="outline" onClick={exportCSV}>
-              <FileText className="h-4 w-4 mr-2" /> Exportar CSV
-            </Button>
-          </div>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h1 className="text-2xl font-semibold">Alumnos</h1>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="rounded-xl" onClick={downloadCSV} disabled={loading || data.total === 0}>
+            <Download className="h-4 w-4 mr-2" /> Exportar CSV
+          </Button>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Explora estudiantes a partir de sus inscripciones y consulta el detalle.
-        </p>
-      </CardHeader>
-      <CardContent className="pt-0">
-        {/* Filtros */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="col-span-2">
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      </div>
+
+      <Card className="rounded-2xl">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Listado detallado{fallbackMode ? " (modo agrupado)" : ""}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Filtros */}
+          <div className="flex flex-col md:flex-row gap-2">
+            <div className="relative md:w-80">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-neutral-500" />
               <Input
-                placeholder="Buscar por nombre, email, CURP, boleta…"
                 className="pl-8"
-                value={filters.q}
-                onChange={(e) =>
-                  setFilters((f) => ({ ...f, q: e.target.value }))
-                }
+                placeholder="Buscar por nombre, email, CURP, boleta…"
+                value={q}
+                onChange={(e) => { setQ(e.target.value); setPage(1); }}
               />
             </div>
+
+            <Select value={anio} onValueChange={(v) => { setAnio(v); setPage(1); }}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Año" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos</SelectItem>
+                {years.map((y) => (
+                  <SelectItem key={`y-${y}`} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={idioma} onValueChange={(v) => { setIdioma(v); setPage(1); }}>
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="Idioma" />
+              </SelectTrigger>
+              <SelectContent>
+                {idiomaOptions.map((opt) => (
+                  <SelectItem key={`lang-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                onClick={() => fetchStudents({ resetPage: true })}
+                className="rounded-xl"
+                disabled={loading}
+              >
+                {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Actualizar
+              </Button>
+            </div>
           </div>
 
-          <Select
-            value={filters.status}
-            onValueChange={(v) =>
-              setFilters((f) => ({ ...f, status: v as Filters["status"] }))
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos status</SelectItem>
-              <SelectItem value="registrada">Registrada</SelectItem>
-              <SelectItem value="preinscrita">Preinscrita</SelectItem>
-              <SelectItem value="confirmada">Confirmada</SelectItem>
-              <SelectItem value="validada">Validada</SelectItem>
-              <SelectItem value="rechazada">Rechazada</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.idioma}
-            onValueChange={(v) =>
-              setFilters((f) => ({ ...f, idioma: v as Filters["idioma"] }))
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Idioma" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos idiomas</SelectItem>
-              <SelectItem value="ingles">Inglés</SelectItem>
-              <SelectItem value="frances">Francés</SelectItem>
-              <SelectItem value="aleman">Alemán</SelectItem>
-              <SelectItem value="italiano">Italiano</SelectItem>
-              <SelectItem value="portugues">Portugués</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.nivel}
-            onValueChange={(v) =>
-              setFilters((f) => ({ ...f, nivel: v as Filters["nivel"] }))
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Nivel" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos niveles</SelectItem>
-              {(["A1", "A2", "B1", "B2", "C1", "C2"] as const).map((n) => (
-                <SelectItem key={n} value={n}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.turno}
-            onValueChange={(v) =>
-              setFilters((f) => ({ ...f, turno: v as Filters["turno"] }))
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Turno" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos turnos</SelectItem>
-              <SelectItem value="matutino">Matutino</SelectItem>
-              <SelectItem value="vespertino">Vespertino</SelectItem>
-              <SelectItem value="mixto">Mixto</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={String(pageSize)}
-            onValueChange={(v) => setPageSize(Number(v))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Tamaño página" />
-            </SelectTrigger>
-            <SelectContent>
-              {[10, 20, 50, 100].map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n} / pág
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Tabla */}
-        <div className="mt-4 border rounded-xl overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Alumno</TableHead>
-                <TableHead>CURP / Boleta</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead className="hidden lg:table-cell">
-                  Inscripciones
-                </TableHead>
-                <TableHead>Último ciclo</TableHead>
-                <TableHead className="hidden md:table-cell">
-                  Fecha reg.
-                </TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow key="loading">
-                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
-                    Cargando…
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {!loading && error && (
-                <TableRow key="error">
-                  <TableCell colSpan={8} className="text-center py-6 text-rose-600">
-                    {error}
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {!loading && !error && paginated.length === 0 && (
-                <TableRow key="empty">
-                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
-                    Sin resultados
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {!loading &&
-                !error &&
-                paginated.map((s, idx) => {
-                  const u = s.ultima;
-                  const status = (u?.status || "").toLowerCase();
-                  // clave única y estable por fila de alumno (usa alumno + última inscripción)
-                  const rowKey = `al-${s.alumno.id}-${u?.id ?? "x"}-${idx}`;
-                  return (
-                    <TableRow key={rowKey} className="hover:bg-muted/40">
-                      <TableCell>
-                        <div className="font-medium">
-                          {s.alumno.last_name} {s.alumno.first_name}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {s.alumno.is_ipn ? "IPN" : "Externo"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">{s.alumno.curp}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {s.alumno.boleta || "—"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm truncate max-w-[220px]">
-                          {s.alumno.email}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                        {s.inscripciones.length}
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm font-medium">
-                          {u?.ciclo?.codigo || "—"}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {u?.ciclo
-                            ? `${u.ciclo.idioma.toUpperCase()} · ${u.ciclo.nivel} · ${u.ciclo.turno} · ${u.ciclo.modalidad}`
-                            : "—"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        {fmtDate(u?.created_at)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={`${STATUS_COLORS[status] || ""}`}>
-                          {u?.status || "—"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openDetail(s)}
-                          >
-                            <ExternalLink className="h-4 w-4 mr-1" /> Detalle
-                          </Button>
-                          {u?.comprobante_path && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => downloadComprobante(u)}
-                            >
-                              <Download className="h-4 w-4 mr-1" /> Comprobante
-                            </Button>
-                          )}
-                        </div>
+          {/* Tabla */}
+          <div className="border rounded-xl">
+            <ScrollArea className="w-full overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[180px]">Alumno</TableHead>
+                    <TableHead className="min-w-[220px]">Email</TableHead>
+                    <TableHead className="min-w-[140px]">CURP</TableHead>
+                    <TableHead className="min-w-[110px]">Boleta</TableHead>
+                    <TableHead className="min-w-[90px]">IPN</TableHead>
+                    <TableHead className="min-w-[140px]">Teléfono</TableHead>
+                    <TableHead className="min-w-[220px]">Dirección</TableHead>
+                    <TableHead className="min-w-[140px]">Inscripción</TableHead>
+                    <TableHead className="min-w-[120px]">Estatus</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading && data.items.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-10 text-neutral-500">
+                        <Loader2 className="inline h-4 w-4 mr-2 animate-spin" /> Cargando…
                       </TableCell>
                     </TableRow>
-                  );
-                })}
-            </TableBody>
-          </Table>
-        </div>
+                  ) : null}
 
-        {/* Paginación */}
-        <div className="flex items-center justify-between mt-4">
-          <div className="text-sm text-muted-foreground">
-            {students.length} alumnos · página {page} / {totalPages}
+                  {!loading && data.items.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-10 text-neutral-500">
+                        {error || "Sin resultados"}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+
+                  {data.items.map((a, idx) => (
+                    <TableRow key={rowKey(a, idx)}>
+                      <TableCell>
+                        <div className="font-medium">{fullName(a)}</div>
+                        <div className="text-xs text-neutral-500">ID: {String(a.id ?? a.inscripcion_id ?? "-")}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div>{a.email || "-"}</div>
+                      </TableCell>
+                      <TableCell>{a.curp || "-"}</TableCell>
+                      <TableCell>{a.boleta || "-"}</TableCell>
+                      <TableCell>
+                        {a.is_ipn == null ? (
+                          <span className="text-neutral-400">-</span>
+                        ) : a.is_ipn ? (
+                          <Badge variant="secondary">Sí</Badge>
+                        ) : (
+                          <Badge variant="outline">No</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>{a.telefono || "-"}</TableCell>
+                      <TableCell>
+                        <div className="text-xs leading-tight text-neutral-700">
+                          {[a.addr_calle, a.addr_numero].filter(Boolean).join(" ") || ""}
+                        </div>
+                        <div className="text-xs leading-tight text-neutral-500">
+                          {[a.addr_colonia, a.addr_municipio, a.addr_estado]
+                            .filter(Boolean)
+                            .join(", ") || "-"}
+                          {a.addr_cp ? `, CP ${a.addr_cp}` : ""}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-xs">{a.fecha_inscripcion || "-"}</div>
+                        <div className="text-[10px] text-neutral-500">Alta: {a.created_at || "-"}</div>
+                      </TableCell>
+                      <TableCell>
+                        {a.estado ? (
+                          <Badge variant="secondary">{a.estado}</Badge>
+                        ) : (
+                          <span className="text-neutral-400">-</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
           </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              Anterior
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            >
-              Siguiente
-            </Button>
-          </div>
-        </div>
-      </CardContent>
 
-      {/* Detalle */}
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Detalle de estudiante</DialogTitle>
-            <DialogDescription>
-              Inscripciones, comprobantes y estados
-            </DialogDescription>
-          </DialogHeader>
-
-          {detail && (
-            <div className="space-y-4">
-              <Card className="border-0 bg-muted/40">
-                <CardContent className="pt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-sm text-muted-foreground">Nombre</div>
-                    <div className="font-medium">
-                      {detail.alumno.last_name} {detail.alumno.first_name}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Email</div>
-                    <div className="font-medium break-all">
-                      {detail.alumno.email}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">CURP</div>
-                    <div className="font-medium break-all">
-                      {detail.alumno.curp}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Boleta</div>
-                    <div className="font-medium">
-                      {detail.alumno.boleta || "—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Origen</div>
-                    <div className="font-medium">
-                      {detail.alumno.is_ipn ? "IPN" : "Externo"}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="space-y-2">
-                <div className="text-sm font-medium">
-                  Inscripciones ({detail.inscripciones.length})
-                </div>
-                <ScrollArea className="h-[360px] pr-2">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Ciclo</TableHead>
-                        <TableHead>
-                          Idioma / Nivel / Turno / Modalidad
-                        </TableHead>
-                        <TableHead>Registro</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Pago</TableHead>
-                        <TableHead className="text-right">Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {detail.inscripciones
-                        .slice()
-                        .sort(
-                          (a, b) =>
-                            new Date(b.created_at).getTime() -
-                            new Date(a.created_at).getTime()
-                        )
-                        .map((insc, idx) => {
-                          const rowKey = `insc-${insc.id ?? "x"}-${
-                            insc.ciclo_id ?? "y"
-                          }-${idx}`;
-                          return (
-                            <TableRow key={rowKey}>
-                              <TableCell>
-                                <div className="font-medium">
-                                  {insc.ciclo?.codigo || insc.ciclo_id}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  ID #{insc.id}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                {insc.ciclo ? (
-                                  <div className="text-sm">
-                                    {insc.ciclo.idioma.toUpperCase()} ·{" "}
-                                    {insc.ciclo.nivel} · {insc.ciclo.turno} ·{" "}
-                                    {insc.ciclo.modalidad}
-                                  </div>
-                                ) : (
-                                  <div className="text-sm">—</div>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <div className="text-sm">
-                                  {fmtDate(insc.created_at)}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  className={`${
-                                    STATUS_COLORS[
-                                      (insc.status || "").toLowerCase()
-                                    ] || ""
-                                  }`}
-                                >
-                                  {insc.status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <div className="text-sm">
-                                  {fmtMoney(insc.importe_centavos)}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {insc.referencia || ""}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex justify-end gap-2">
-                                  {insc.comprobante_path && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        downloadComprobante(insc)
-                                      }
-                                    >
-                                      <Download className="h-4 w-4 mr-1" />{" "}
-                                      Comprobante
-                                    </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
+          {/* Paginación */}
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <div className="text-neutral-500">
+              {data.total > 0 ? (
+                <span>
+                  Mostrando <b>{data.items.length}</b> de <b>{data.total}</b> alumno(s)
+                  {fallbackMode ? " (modo agrupado)" : ""}
+                </span>
+              ) : (
+                <span>Sin datos</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => {
+                  setPageSize(Number(v));
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[110px]">
+                  <SelectValue placeholder="Tamaño" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map((n) => (
+                    <SelectItem key={`ps-${n}`} value={String(n)}>
+                      {n} por página
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  size="sm"
+                  disabled={loading || data.page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Anterior
+                </Button>
+                <div className="px-2">{data.page} / {data.pages}</div>
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  size="sm"
+                  disabled={loading || data.page >= data.pages}
+                  onClick={() => setPage((p) => Math.min(data.pages, p + 1))}
+                >
+                  Siguiente
+                </Button>
               </div>
             </div>
-          )}
+          </div>
+        </CardContent>
+      </Card>
 
-          <DialogFooter>
-            <Button onClick={() => setDetailOpen(false)}>Cerrar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </Card>
+      {/* Nota sobre el modo */}
+      {fallbackMode ? (
+        <p className="text-xs text-neutral-500">
+          Modo agrupado: se construye el listado a partir de <code>/coordinacion/ciclos</code>,
+          <code>/coordinacion/grupos</code> y <code>/coordinacion/reportes/inscritos</code>. Se recomienda exponer
+          un endpoint <code>GET /coordinacion/alumnos</code> paginado para un rendimiento óptimo (filtros: <code>q</code>,
+          <code>anio</code>, <code>idioma</code>, etc.).
+        </p>
+      ) : null}
+    </div>
   );
 }

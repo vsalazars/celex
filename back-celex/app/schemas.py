@@ -885,3 +885,28 @@ class SurveyEstadoOut(BaseModel):
     map: Dict[int, bool]
     # Por compatibilidad extra con tu front (si lo quieres usar)
     submitted: List[int] = []
+
+
+
+class CicloLiteOut(BaseModel):
+    id: int
+    codigo: str
+    idioma: Optional[str] = None
+    nivel: Optional[str] = None
+    turno: Optional[str] = None
+    modalidad: Optional[str] = None
+
+class InscripcionLiteOut(BaseModel):
+    id: int
+    status: str
+    tipo: Literal["pago", "exencion"]
+    created_at: datetime
+    referencia: Optional[str] = None
+    importe_centavos: Optional[int] = None
+    fecha_pago: Optional[date] = None
+    ciclo: Optional[CicloLiteOut] = None
+
+class AlumnoDetalleOut(BaseModel):
+    perfil: AlumnoPerfilOut
+    inscripciones: List[InscripcionLiteOut]
+    ultima: Optional[InscripcionLiteOut] = None

@@ -475,118 +475,92 @@ export default function AlumnoInscripcionPage() {
     <RequireAuth roles={["student"]}>
       <AlumnoShell title="Inscripción">
         <div className="space-y-4">
-          {/* Toolbar */}
+         {/* Toolbar: 1 sola fila (scroll si no cabe) */}
           <div className="rounded-2xl border bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="relative w-full md:max-w-sm">
+            <div className="flex items-center gap-2 whitespace-nowrap overflow-x-auto flex-nowrap">
+
+              {/* Buscar por código */}
+              <div className="relative w-[12rem] shrink-0">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-400" />
                 <Input
                   value={q}
-                  onChange={(e) => {
-                    setQ(e.target.value);
-                    setPage(1);
-                  }}
+                  onChange={(e) => { setQ(e.target.value); setPage(1); }}
                   placeholder="Buscar por código…"
                   className="pl-9 rounded-xl h-9"
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary" className="hidden md:inline-flex gap-1">
-                  <Filter className="h-3.5 w-3.5" /> Filtros
-                </Badge>
+              {/* Filtros badge */}
+              <Badge variant="secondary" className="inline-flex items-center gap-1 shrink-0">
+                <Filter className="h-3.5 w-3.5" /> Filtros
+              </Badge>
 
-                <Select
-                  value={fIdioma}
-                  onValueChange={(v) => {
-                    setFIdioma(v);
-                    setPage(1);
-                  }}
+              {/* Idioma */}
+              <Select value={fIdioma} onValueChange={(v) => { setFIdioma(v); setPage(1); }}>
+                <SelectTrigger className="w-[120px] h-9 rounded-xl shrink-0">
+                  <SelectValue placeholder="Idioma" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ingles">Inglés</SelectItem>
+                  <SelectItem value="frances">Francés</SelectItem>
+                  <SelectItem value="aleman">Alemán</SelectItem>
+                  <SelectItem value="italiano">Italiano</SelectItem>
+                  <SelectItem value="portugues">Portugués</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Modalidad */}
+              <Select value={fModalidad} onValueChange={(v) => { setFModalidad(v); setPage(1); }}>
+                <SelectTrigger className="w-[120px] h-9 rounded-xl shrink-0">
+                  <SelectValue placeholder="Modalidad" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="intensivo">Intensivo</SelectItem>
+                  <SelectItem value="sabatino">Sabatino</SelectItem>
+                  <SelectItem value="semestral">Semestral</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Turno */}
+              <Select value={fTurno} onValueChange={(v) => { setFTurno(v); setPage(1); }}>
+                <SelectTrigger className="w-[110px] h-9 rounded-xl shrink-0">
+                  <SelectValue placeholder="Turno" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="matutino">Matutino</SelectItem>
+                  <SelectItem value="vespertino">Vespertino</SelectItem>
+                  <SelectItem value="mixto">Mixto</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Nivel */}
+              <Select value={fNivel} onValueChange={(v) => { setFNivel(v); setPage(1); }}>
+                <SelectTrigger className="w-[100px] h-9 rounded-xl shrink-0">
+                  <SelectValue placeholder="Nivel" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="A1">A1</SelectItem>
+                  <SelectItem value="A2">A2</SelectItem>
+                  <SelectItem value="B1">B1</SelectItem>
+                  <SelectItem value="B2">B2</SelectItem>
+                  <SelectItem value="C1">C1</SelectItem>
+                  <SelectItem value="C2">C2</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Limpiar */}
+              {(fIdioma || fModalidad || fTurno || fNivel || q) && (
+                <Button
+                  variant="outline"
+                  className="h-9 rounded-xl shrink-0"
+                  onClick={() => { setQ(""); setFIdioma(undefined); setFModalidad(undefined); setFTurno(undefined); setFNivel(undefined); setPage(1); }}
                 >
-                  <SelectTrigger className="w-[140px] rounded-xl h-9">
-                    <SelectValue placeholder="Idioma" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ingles">Inglés</SelectItem>
-                    <SelectItem value="frances">Francés</SelectItem>
-                    <SelectItem value="aleman">Alemán</SelectItem>
-                    <SelectItem value="italiano">Italiano</SelectItem>
-                    <SelectItem value="portugues">Portugués</SelectItem>
-                  </SelectContent>
-                </Select>
+                  Limpiar
+                </Button>
+              )}
 
-                <Select
-                  value={fModalidad}
-                  onValueChange={(v) => {
-                    setFModalidad(v);
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-[140px] rounded-xl h-9">
-                    <SelectValue placeholder="Modalidad" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="intensivo">Intensivo</SelectItem>
-                    <SelectItem value="sabatino">Sabatino</SelectItem>
-                    <SelectItem value="semestral">Semestral</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select
-                  value={fTurno}
-                  onValueChange={(v) => {
-                    setFTurno(v);
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-[140px] rounded-xl h-9">
-                    <SelectValue placeholder="Turno" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="matutino">Matutino</SelectItem>
-                    <SelectItem value="vespertino">Vespertino</SelectItem>
-                    <SelectItem value="mixto">Mixto</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select
-                  value={fNivel}
-                  onValueChange={(v) => {
-                    setFNivel(v);
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-[120px] rounded-xl h-9">
-                    <SelectValue placeholder="Nivel" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="A1">A1</SelectItem>
-                    <SelectItem value="A2">A2</SelectItem>
-                    <SelectItem value="B1">B1</SelectItem>
-                    <SelectItem value="B2">B2</SelectItem>
-                    <SelectItem value="C1">C1</SelectItem>
-                    <SelectItem value="C2">C2</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {fIdioma || fModalidad || fTurno || fNivel || q ? (
-                  <Button
-                    variant="outline"
-                    className="rounded-xl h-9"
-                    onClick={() => {
-                      setQ("");
-                      setFIdioma(undefined);
-                      setFModalidad(undefined);
-                      setFTurno(undefined);
-                      setFNivel(undefined);
-                      setPage(1);
-                    }}
-                  >
-                    Limpiar
-                  </Button>
-                ) : null}
-              </div>
             </div>
+          </div>
 
             <Separator className="my-4" />
 
@@ -1004,7 +978,6 @@ export default function AlumnoInscripcionPage() {
               </SheetFooter>
             </SheetContent>
           </Sheet>
-        </div>
       </AlumnoShell>
     </RequireAuth>
   );
