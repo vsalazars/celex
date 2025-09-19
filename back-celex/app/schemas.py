@@ -910,3 +910,42 @@ class AlumnoDetalleOut(BaseModel):
     perfil: AlumnoPerfilOut
     inscripciones: List[InscripcionLiteOut]
     ultima: Optional[InscripcionLiteOut] = None
+
+
+class HistorialAsistenciaSummary(BaseModel):
+    presentes: int = 0
+    ausentes: int = 0
+    retardos: int = 0
+    justificados: int = 0
+    total_sesiones: int = 0
+    porcentaje_asistencia: float = 0.0  # 0..100
+
+
+class HistorialCicloItem(BaseModel):
+    inscripcion_id: int
+    ciclo_id: int
+    ciclo_codigo: str
+    idioma: Optional[str] = None
+    nivel: Optional[str] = None
+    modalidad: Optional[str] = None
+    turno: Optional[str] = None
+
+    fecha_inicio: Optional[str] = None  # ISO date
+    fecha_fin: Optional[str] = None     # ISO date
+
+    horario: Optional[str] = None       # si guardas hora_inicio/hora_fin como texto/HH:MM, lo concatenamos en back
+
+    inscripcion_estado: Optional[str] = None
+    inscripcion_tipo: Optional[str] = None
+    fecha_inscripcion: Optional[str] = None  # ISO datetime
+
+    calificacion: Optional[float] = None
+    docente_nombre: Optional[str] = None  # si tienes relación, dejará None si no hay
+
+    asistencia: HistorialAsistenciaSummary = Field(default_factory=HistorialAsistenciaSummary)
+
+
+class HistorialAlumnoResponse(BaseModel):
+    alumno_id: int
+    total: int
+    items: List[HistorialCicloItem]
