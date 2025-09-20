@@ -1194,10 +1194,71 @@ function normalizeHistorialQuery(params?: { idioma?: string; anio?: number | str
   return out;
 }
 
+// --- Tipos del historial con evaluación detallada ---
+export type HistorialAsistenciaSummary = {
+  presentes: number;
+  ausentes: number;
+  retardos: number;
+  justificados: number;
+  total_sesiones: number;
+  porcentaje_asistencia: number; // 0..100
+};
+
+export type EvaluacionDetalle = {
+  medio_examen?: number | null;    // 0..80
+  medio_continua?: number | null;  // 0..20
+  final_examen?: number | null;    // 0..60
+  final_continua?: number | null;  // 0..20
+  final_tarea?: number | null;     // 0..20
+  subtotal_medio: number;
+  subtotal_final: number;
+  promedio_final: number;
+};
+
+export type HistorialCicloItem = {
+  inscripcion_id: number;
+  ciclo_id: number;
+  ciclo_codigo: string;
+  idioma?: string | null;
+  nivel?: string | null;
+  modalidad?: string | null;
+  turno?: string | null;
+
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+  horario?: string | null;
+
+  inscripcion_estado?: string | null;
+  inscripcion_tipo?: string | null;
+  fecha_inscripcion?: string | null;
+
+  calificacion?: number | null;         // calificación “plana” si existe
+  evaluacion?: EvaluacionDetalle | null; // ⬅️ NUEVO: desglose por bloques
+
+  docente_id?: number | null;
+  docente_nombre?: string | null;
+  docente_email?: string | null;
+
+  asistencia: HistorialAsistenciaSummary;
+};
+
+export type HistorialAlumnoResponse = {
+  alumno_id: number;
+  total: number;
+  items: HistorialCicloItem[];
+};
+
+// --- Cliente del endpoint /coordinacion/alumnos/{alumno_id}/historial ---
 export async function getHistorialAlumno(
-  alumnoId: number | string,
-  params?: { idioma?: string; anio?: number | string; estado?: string }
-): Promise<HistorialAlumnoResponse> {
-  const url = buildURL(`/coordinacion/alumnos/${alumnoId}/historial`, normalizeHistorialQuery(params));
+  alumnoId: string | number,
+  filters: { idioma?: string; anio?: string | number; estado?: string } = {}
+) {
+  const url = buildURL(`/coordinacion/alumnos/${alumnoId}/historial`, {
+    idioma: filters.idioma || undefined,
+    anio: filters.anio || undefined,
+    estado: filters.estado || undefined,
+  });
   return apiFetch<HistorialAlumnoResponse>(url, { auth: true });
 }
+
+

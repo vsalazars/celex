@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { Mail, IdCard, BadgeCheck, Phone, MapPin, School } from "lucide-react";
+import { Mail, IdCard, BadgeCheck, Phone, MapPin, School, User, Users2 } from "lucide-react";
 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -52,8 +52,7 @@ const IPN_UNIDADES: Record<string, string[]> = {
   "Medio superior": [
     "CECyT 1", "CECyT 2", "CECyT 3", "CECyT 4", "CECyT 5", "CECyT 6",
     "CECyT 7", "CECyT 8", "CECyT 9", "CECyT 10", "CECyT 11", "CECyT 12",
-    "CECyT 13", "CECyT 14", "CECyT 15", "CET 1",
-    "Otro",
+    "CECyT 13", "CECyT 14", "CECyT 15", "CET 1", "Otro",
   ],
   Superior: [
     "ESCOM", "ESIME Azcapotzalco", "ESIME Zacatenco", "ESIME Culhuacán",
@@ -63,6 +62,10 @@ const IPN_UNIDADES: Record<string, string[]> = {
   ],
   Posgrado: ["CIC", "SEPI", "Otro"],
 };
+
+// Parentescos sugeridos
+const PARENTESCOS = ["Padre", "Madre", "Tutor legal", "Hermano/a", "Abuelo/a", "Otro"] as const;
+type Parentesco = (typeof PARENTESCOS)[number];
 
 // —————————————————————————————————————————————————————
 // Form types
@@ -75,6 +78,8 @@ type FormValues = {
   curp: string;
   telefono?: string;
   // Tutor si menor
+  tutor_nombre?: string;
+  tutor_parentesco?: Parentesco | "";
   tutor_telefono?: string;
   // Dirección
   calle?: string;
@@ -109,6 +114,8 @@ export default function StudentProfileForm() {
       email,
       curp,
       telefono: "",
+      tutor_nombre: "",
+      tutor_parentesco: "" as any,
       tutor_telefono: "",
       calle: "",
       numero: "",
@@ -150,6 +157,8 @@ export default function StudentProfileForm() {
           email: perfil.email ?? email,
           curp: perfil.curp ?? curp,
           telefono: perfil.telefono ?? "",
+          tutor_nombre: (perfil.tutor as any)?.nombre ?? "",
+          tutor_parentesco: (perfil.tutor as any)?.parentesco ?? "",
           tutor_telefono: perfil.tutor?.telefono ?? "",
           calle: perfil.direccion?.calle ?? "",
           numero: perfil.direccion?.numero ?? "",
@@ -181,6 +190,12 @@ export default function StudentProfileForm() {
     if (values.telefono && !/^\d{10}$/.test(values.telefono)) errs["telefono"] = "Teléfono a 10 dígitos";
 
     if (isMinor) {
+      if (!values.tutor_nombre || values.tutor_nombre.trim().length < 3) {
+        errs["tutor_nombre"] = "Nombre del padre/tutor es obligatorio";
+      }
+      if (!values.tutor_parentesco) {
+        errs["tutor_parentesco"] = "Selecciona el parentesco";
+      }
       if (!values.tutor_telefono || !/^\d{10}$/.test(values.tutor_telefono)) {
         errs["tutor_telefono"] = "Teléfono de tutor (10 dígitos) es obligatorio";
       }
@@ -226,7 +241,13 @@ export default function StudentProfileForm() {
               unidad: values.ipn_unidad === "Otro" ? (values.ipn_unidad_otro || "Otro") : values.ipn_unidad!,
             }
           : null,
-        tutor: isMinor ? { telefono: values.tutor_telefono!.trim() } : null,
+        tutor: isMinor
+          ? {
+              nombre: values.tutor_nombre!.trim(),
+              parentesco: values.tutor_parentesco!,
+              telefono: values.tutor_telefono!.trim(),
+            }
+          : null,
       });
 
       toast.success("Perfil actualizado correctamente.");
@@ -318,6 +339,7 @@ export default function StudentProfileForm() {
               />
             </div>
 
+            {/* Teléfonos */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -334,6 +356,7 @@ export default function StudentProfileForm() {
                   </FormItem>
                 )}
               />
+              {/* Campo teléfono tutor siempre visible si es menor */}
               {isMinor && (
                 <FormField
                   control={form.control}
@@ -356,6 +379,53 @@ export default function StudentProfileForm() {
                 />
               )}
             </div>
+
+            {/* Tutor — se muestra sólo si es menor */}
+            {isMinor && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="tutor_nombre"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <User className="h-4 w-4" /> Nombre del padre/tutor
+                      </FormLabel>
+                      <FormControl>
+                        <Input placeholder="Nombre completo del padre/tutor" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="tutor_parentesco"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <Users2 className="h-4 w-4" /> Parentesco
+                      </FormLabel>
+                      <Select value={field.value || ""} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona parentesco" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {PARENTESCOS.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {p}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -367,7 +437,7 @@ export default function StudentProfileForm() {
               Domicilio
             </CardTitle>
           </CardHeader>
-        <CardContent className="space-y-4">
+          <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <FormField
                 control={form.control}

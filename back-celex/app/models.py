@@ -67,6 +67,8 @@ class User(Base):
 
     # Tutor (si es menor)
     tutor_telefono = Column(String(20), nullable=True)
+    tutor_nombre = Column(String(120), nullable=True)
+    tutor_parentesco = Column(String(50), nullable=True)
 
 
 
@@ -462,5 +464,3 @@ class SurveyAnswer(Base):
     value_text = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-

@@ -12,7 +12,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Download, Loader2, Search } from "lucide-react";
+import { Download, Loader2, Search, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 import { apiFetch, buildURL, getHistorialAlumno } from "@/lib/api";
@@ -34,6 +34,8 @@ export type AlumnoFull = {
   is_ipn?: boolean;
   telefono?: string | null;
   tutor_telefono?: string | null; // ← NUEVO: se mostrará solo si viene (menor de edad)
+  tutor_nombre?: string | null;     // ← NUEVO
+  tutor_parentesco?: string | null; // ← NUEVO
 
   // Dirección
   addr_calle?: string | null;
@@ -60,13 +62,13 @@ export default function StudentsSection() {
   const [idioma, setIdioma] = React.useState<string>(ALL);
 
   const [page, setPage] = React.useState(1);
-  const [pageSize, setPageSize] = React.useState(25);
+  const [pageSize, setPageSize] = React.useState(10);
 
   const [data, setData] = React.useState<Paginated<AlumnoFull>>({
     items: [],
     total: 0,
     page: 1,
-    page_size: 25,
+    page_size: 10,
     pages: 1,
   });
 
@@ -156,8 +158,7 @@ export default function StudentsSection() {
           page_size: pageSize,
         });
         const resp = await apiFetch<Paginated<AlumnoFull>>(url, { auth: true, signal: ac.signal });
-        const itemsUniq = uniqueByAlumno(resp.items);
-        setData({ ...resp, items: itemsUniq });
+        setData(resp);
         setFallbackMode(false);
       } catch {
         // 2) Fallback
@@ -302,7 +303,6 @@ export default function StudentsSection() {
     return map[s] || s.charAt(0).toUpperCase() + s.slice(1);
   }
 
-
   function badgeTone(status?: string | null) {
     const s = (status || "").toLowerCase();
     if (s === "confirmada") return "bg-emerald-50 text-emerald-700 border-emerald-200";
@@ -403,6 +403,12 @@ export default function StudentsSection() {
       timeZone: "America/Mexico_City",
     });
     return `${day}/${month}/${year} ${time} hrs`;
+  }
+
+  // Números
+  function fmtNum(n?: number | null, digits = 0) {
+    if (n == null || Number.isNaN(n)) return "-";
+    return n.toFixed(digits);
   }
 
   const idiomaOptions = [
@@ -528,9 +534,21 @@ export default function StudentsSection() {
           <div className="flex items-center justify-between gap-2 text-sm">
             <div className="text-neutral-500">
               {data.total > 0 ? (
-                <span>Mostrando <b>{data.items.length}</b> registro(s){fallbackMode ? " (modo agrupado)" : ""}</span>
-              ) : <span>Sin datos</span>}
+                (() => {
+                  const start = (data.page - 1) * data.page_size + 1;
+                  const end = Math.min(data.page * data.page_size, data.total);
+                  return (
+                    <span>
+                      Mostrando <b>{start}</b>–<b>{end}</b> de <b>{data.total}</b> registro(s)
+                      {fallbackMode ? " (modo agrupado)" : ""}
+                    </span>
+                  );
+                })()
+              ) : (
+                <span>Sin datos</span>
+              )}
             </div>
+
             <div className="flex items-center gap-2">
               <Select
                 value={String(pageSize)}
@@ -543,6 +561,7 @@ export default function StudentsSection() {
                   ))}
                 </SelectContent>
               </Select>
+
               <Button
                 variant="outline"
                 className="rounded-xl"
@@ -552,7 +571,9 @@ export default function StudentsSection() {
               >
                 Anterior
               </Button>
+
               <div className="px-2">{data.page} / {data.pages}</div>
+
               <Button
                 variant="outline"
                 className="rounded-xl"
@@ -564,6 +585,7 @@ export default function StudentsSection() {
               </Button>
             </div>
           </div>
+
         </CardContent>
       </Card>
 
@@ -595,7 +617,7 @@ export default function StudentsSection() {
             <div className="flex-1 min-h-0 overflow-hidden px-5 py-4">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-full items-stretch">
                 {/* Columna izquierda — 1/4 del ancho */}
-                <div className="lg:col-span-3 lg:sticky lg:top-[56px] self-start">
+                <div className="lg:col-span-3 lg:sticky lg:top=[56px] self-start">
                   <Card className="rounded-xl h-[calc(85vh-56px-2rem)] flex flex-col min-h-0">
                     <CardHeader className="pb-2 shrink-0">
                       <CardTitle className="text-sm">Resumen</CardTitle>
@@ -638,26 +660,25 @@ export default function StudentsSection() {
                               </div>
                             </div>
 
-                            {/* NUEVO: Si es IPN, mostramos Nivel y Unidad académica (en renglones separados) */}
-                              {selected.is_ipn ? (
-                                <div className="space-y-1">
-                                  <Field
-                                    label="Nivel (IPN)"
-                                    value={prettyEnum(selected.ipn_nivel) || "-"}
-                                  />
-                                  <Field
-                                    label="Unidad académica"
-                                    value={selected.ipn_unidad_academica || "-"}
-                                  />
-                                </div>
-                              ) : null}
-
+                            {/* NUEVO: Si es IPN, mostramos Nivel y Unidad académica */}
+                            {selected.is_ipn ? (
+                              <div className="space-y-1">
+                                <Field label="Nivel (IPN)" value={prettyEnum(selected.ipn_nivel) || "-"} />
+                                <Field label="Unidad académica" value={selected.ipn_unidad_academica || "-"} />
+                              </div>
+                            ) : null}
 
                             <Field label="Teléfono" value={selected.telefono || "-"} />
 
-                            {/* 👇 NUEVO: Teléfono del tutor — solo aparece si viene del back (menor de edad) */}
-                            {selected.tutor_telefono ? (
-                              <Field label="Tel. tutor" value={selected.tutor_telefono} />
+                            {/* Teléfono del tutor + nombre y parentesco — solo si hay algún dato */}
+                            {(selected.tutor_telefono || selected.tutor_nombre || selected.tutor_parentesco) ? (
+                              <div className="space-y-1">
+                                {selected.tutor_telefono ? (
+                                  <Field label="Tel. tutor" value={selected.tutor_telefono} />
+                                ) : null}
+                                <Field label="Nombre del tutor" value={selected.tutor_nombre || "-"} />
+                                <Field label="Parentesco" value={selected.tutor_parentesco || "-"} />
+                              </div>
                             ) : null}
 
                             {/* Dirección en 2 renglones */}
@@ -690,7 +711,7 @@ export default function StudentsSection() {
                 <div className="lg:col-span-9 min-h-0">
                   <Card className="rounded-xl h-[calc(85vh-56px-2rem)] flex flex-col min-h-0">
                     <CardHeader className="pb-2 shrink-0">
-                      <CardTitle className="text-sm">Historial de cursos (confirmadas)</CardTitle>
+                      <CardTitle className="text-sm">Historial de cursos</CardTitle>
                     </CardHeader>
                     <div className="flex-1 min-h-0 overflow-hidden">
                       <ScrollArea className="h-full pr-2">
@@ -703,77 +724,146 @@ export default function StudentsSection() {
                             <div className="text-xs text-red-600">{histError}</div>
                           ) : hist?.items?.length ? (
                             <div className="space-y-3">
-                              {hist.items.map((it) => (
-                                <div key={`h-${it.inscripcion_id}`} className="rounded-xl border p-3">
-                                  {/* Encabezado de cada curso */}
-                                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <div className="font-medium">{it.ciclo_codigo || "(sin código)"}</div>
-                                      <Badge variant="outline" className="h-7 px-3.5 text-base">{prettyEnum(it.idioma)}</Badge>
-                                      {it.nivel ? <Badge variant="outline" className="h-7 px-3.5 text-base">{prettyEnum(it.nivel)}</Badge> : null}
-                                      {it.modalidad ? <Badge variant="outline">{prettyEnum(it.modalidad)}</Badge> : null}
-                                      {it.turno ? <Badge variant="outline">{prettyEnum(it.turno)}</Badge> : null}
+                              {hist.items.map((it) => {
+                                const ev = it.evaluacion;
+                                const prom = ev?.promedio_final ?? null;
+                                const calReg = it.calificacion ?? null;
+                                const hayDiscrepancia =
+                                  prom != null && calReg != null && Math.abs(prom - calReg) >= 0.5;
+
+                                return (
+                                  <div key={`h-${it.inscripcion_id}`} className="rounded-xl border p-3">
+                                    {/* Encabezado de cada curso */}
+                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <div className="font-medium">{it.ciclo_codigo || "(sin código)"}</div>
+                                        <Badge variant="outline" className="h-7 px-3.5 text-base">{prettyEnum(it.idioma)}</Badge>
+                                        {it.nivel ? <Badge variant="outline" className="h-7 px-3.5 text-base">{prettyEnum(it.nivel)}</Badge> : null}
+                                        {it.modalidad ? <Badge variant="outline">{prettyEnum(it.modalidad)}</Badge> : null}
+                                        {it.turno ? <Badge variant="outline">{prettyEnum(it.turno)}</Badge> : null}
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {calReg != null ? (
+                                          <Badge
+                                            variant="outline"
+                                            className="h-7 px-3.5 text-base" // ⬅️ ahora mismo tamaño que Francés/B1
+                                          >
+                                            Calificación: <span className="ml-1 font-medium">{fmtNum(calReg)}</span>
+                                          </Badge>
+                                        ) : null}
+                                          {/* ⬇️ QUITAR ESTE BLOQUE */}
+                                            {/*
+                                            <Badge variant="outline" className={`h-5 ${badgeTone(it.inscripcion_estado)}`}>
+                                              {prettyEnum(it.inscripcion_estado)}
+                                            </Badge>
+                                            */}
+                                      </div>
                                     </div>
-                                    <Badge variant="outline" className={`h-5 ${badgeTone(it.inscripcion_estado)}`}>
-                                      {prettyEnum(it.inscripcion_estado)}
-                                    </Badge>
+
+                                    {/* Detalles de fechas/horario/docente */}
+                                    <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3 text-sm">
+                                      <Field label="Horario" value={it.horario || "-"} />
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <Field label="Fecha inicio" value={fmtDate(it.fecha_inicio)} />
+                                        <Field label="Fecha fin" value={fmtDate(it.fecha_fin)} />
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <Field label="Tipo de trámite" value={prettyEnum(it.inscripcion_tipo)} />
+                                        <Field label="Inscrito el" value={<span>{fmtDateTimeLong(it.fecha_inscripcion)}</span>} />
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <Field label="Docente" value={it.docente_nombre || "-"} />
+                                        <Field label="Email docente" value={it.docente_email || "-"} />
+                                      </div>
+                                    </div>
+
+                                    {/* Asistencia compacta */}
+                                    <div className="mt-3">
+                                      <div className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] leading-5">
+                                        <span className="text-neutral-500">Presentes</span>
+                                        <span className="font-medium">{String(it.asistencia?.presentes ?? 0)}</span>
+
+                                        <span className="opacity-40">|</span>
+
+                                        <span className="text-neutral-500">Ausentes</span>
+                                        <span className="font-medium">{String(it.asistencia?.ausentes ?? 0)}</span>
+
+                                        <span className="opacity-40">|</span>
+
+                                        <span className="text-neutral-500">Retardos</span>
+                                        <span className="font-medium">{String(it.asistencia?.retardos ?? 0)}</span>
+
+                                        <span className="opacity-40">|</span>
+
+                                        <span className="text-neutral-500">Justificados</span>
+                                        <span className="font-medium">{String(it.asistencia?.justificados ?? 0)}</span>
+
+                                        <span className="opacity-40">|</span>
+
+                                        <span className="text-neutral-500">Sesiones</span>
+                                        <span className="font-medium">{String(it.asistencia?.total_sesiones ?? 0)}</span>
+
+                                        <span className="opacity-40">|</span>
+
+                                        <span className="text-neutral-500">% Asistencia</span>
+                                        <span className="font-medium">{`${it.asistencia?.porcentaje_asistencia ?? 0}%`}</span>
+                                      </div>
+                                    </div>
+
+                                    {/* ============================
+                                        NUEVO: Evaluación por bloques
+                                       ============================ */}
+                                    {ev ? (
+                                      <div className="mt-4 border rounded-lg overflow-hidden">
+                                        <div className="px-3 py-2 bg-neutral-50 border-b text-[12px] font-medium flex items-center gap-2">
+                                          Evaluación
+                                          {hayDiscrepancia ? (
+                                            <span className="inline-flex items-center gap-1 text-amber-700">
+                                              <AlertTriangle className="h-3.5 w-3.5" />
+                                              <span>
+                                                Discrepancia: Promedio ({fmtNum(ev.promedio_final)})
+                                                {" "}≠ Calificación ({fmtNum(calReg)})
+                                              </span>
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        <div className="p-3 overflow-x-auto">
+                                          <Table className="text-[12px]">
+                                            <TableHeader>
+                                              <TableRow>
+                                                <TableHead className="text-center">Medio · Examen<br /><span className="text-[10px] text-neutral-500">0–80</span></TableHead>
+                                                <TableHead className="text-center">Medio · Cont.<br /><span className="text-[10px] text-neutral-500">0–20</span></TableHead>
+                                                <TableHead className="text-center">Subtotal<br /><span className="text-[10px] text-neutral-500">Medio</span></TableHead>
+                                                <TableHead className="text-center">Final · Examen<br /><span className="text-[10px] text-neutral-500">0–60</span></TableHead>
+                                                <TableHead className="text-center">Final · Cont.<br /><span className="text-[10px] text-neutral-500">0–20</span></TableHead>
+                                                <TableHead className="text-center">Final · Tarea<br /><span className="text-[10px] text-neutral-500">0–20</span></TableHead>
+                                                <TableHead className="text-center">Subtotal<br /><span className="text-[10px] text-neutral-500">Final</span></TableHead>
+                                                <TableHead className="text-center">Promedio</TableHead>
+                                              </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                              <TableRow>
+                                                <TableCell className="text-center">{fmtNum(ev.medio_examen)}</TableCell>
+                                                <TableCell className="text-center">{fmtNum(ev.medio_continua)}</TableCell>
+                                                <TableCell className="text-center"><Badge variant="outline">{fmtNum(ev.subtotal_medio)}</Badge></TableCell>
+                                                <TableCell className="text-center">{fmtNum(ev.final_examen)}</TableCell>
+                                                <TableCell className="text-center">{fmtNum(ev.final_continua)}</TableCell>
+                                                <TableCell className="text-center">{fmtNum(ev.final_tarea)}</TableCell>
+                                                <TableCell className="text-center"><Badge variant="outline">{fmtNum(ev.subtotal_final)}</Badge></TableCell>
+                                                <TableCell className="text-center">
+                                                  <Badge variant={(ev.promedio_final ?? 0) >= 70 ? "default" : "secondary"}>
+                                                    {fmtNum(ev.promedio_final)}
+                                                  </Badge>
+                                                </TableCell>
+                                              </TableRow>
+                                            </TableBody>
+                                          </Table>
+                                        </div>
+                                      </div>
+                                    ) : null}
                                   </div>
-
-                                  {/* Detalles */}
-                                  <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3 text-sm">
-                                    <Field label="Horario" value={it.horario || "-"} />
-                                    <div className="grid grid-cols-2 gap-3">
-                                      <Field label="Fecha inicio" value={fmtDate(it.fecha_inicio)} />
-                                      <Field label="Fecha fin" value={fmtDate(it.fecha_fin)} />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                      <Field label="Tipo de trámite" value={prettyEnum(it.inscripcion_tipo)} />
-                                      {/* Inscrito el — SOLO formato largo en español */}
-                                      <Field
-                                        label="Inscrito el"
-                                        value={<span>{fmtDateTimeLong(it.fecha_inscripcion)}</span>}
-                                      />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                      <Field label="Docente" value={it.docente_nombre || "-"} />
-                                      <Field label="Email docente" value={it.docente_email || "-"} />
-                                    </div>
-                                  </div>
-
-                                  {/* Asistencia compacta, alineada a la izquierda */}
-                                  <div className="mt-3">
-                                    <div className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] leading-5">
-                                      <span className="text-neutral-500">Presentes</span>
-                                      <span className="font-medium">{String(it.asistencia?.presentes ?? 0)}</span>
-
-                                      <span className="opacity-40">|</span>
-
-                                      <span className="text-neutral-500">Ausentes</span>
-                                      <span className="font-medium">{String(it.asistencia?.ausentes ?? 0)}</span>
-
-                                      <span className="opacity-40">|</span>
-
-                                      <span className="text-neutral-500">Retardos</span>
-                                      <span className="font-medium">{String(it.asistencia?.retardos ?? 0)}</span>
-
-                                      <span className="opacity-40">|</span>
-
-                                      <span className="text-neutral-500">Justificados</span>
-                                      <span className="font-medium">{String(it.asistencia?.justificados ?? 0)}</span>
-
-                                      <span className="opacity-40">|</span>
-
-                                      <span className="text-neutral-500">Sesiones</span>
-                                      <span className="font-medium">{String(it.asistencia?.total_sesiones ?? 0)}</span>
-
-                                      <span className="opacity-40">|</span>
-
-                                      <span className="text-neutral-500">% Asistencia</span>
-                                      <span className="font-medium">{`${it.asistencia?.porcentaje_asistencia ?? 0}%`}</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           ) : (
                             <div className="text-xs text-neutral-500">Sin cursos confirmados.</div>

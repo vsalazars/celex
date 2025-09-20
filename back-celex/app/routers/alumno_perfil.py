@@ -9,18 +9,45 @@ from app.schemas import AlumnoPerfilOut, AlumnoPerfilUpdate
 
 router = APIRouter(prefix="/alumno", tags=["alumno"])
 
+
+def _parse_age_from_curp(curp: str | None) -> int | None:
+    """
+    Devuelve la edad (años) deducida de la CURP o None si no es válida.
+    Formato esperado: ABCDYYMMDDHXXXXXNN
+    """
+    if not curp:
+        return None
+    import re
+    m = re.match(r"^[A-Z]{4}(\d{2})(\d{2})(\d{2})[HM][A-Z]{5}[A-Z0-9]{2}$", curp, re.IGNORECASE)
+    if not m:
+        return None
+    yy, mm, dd = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    from datetime import date
+    today = date.today()
+    current_yy = today.year % 100
+    full_year = 2000 + yy if yy <= current_yy else 1900 + yy
+    try:
+        dob = date(full_year, mm, dd)
+    except ValueError:
+        return None
+    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    return age
+
+
 def _to_out(user: User) -> AlumnoPerfilOut:
+    # Dirección
     direccion = None
     if any([user.addr_calle, user.addr_numero, user.addr_colonia, user.addr_municipio, user.addr_estado, user.addr_cp]):
         direccion = {
-            "calle": user.addr_calle,
-            "numero": user.addr_numero,
-            "colonia": user.addr_colonia,
-            "municipio": user.addr_municipio,
-            "estado": user.addr_estado,
-            "cp": user.addr_cp,
+            "calle": user.addr_calle or None,
+            "numero": user.addr_numero or None,
+            "colonia": user.addr_colonia or None,
+            "municipio": user.addr_municipio or None,
+            "estado": user.addr_estado or None,
+            "cp": user.addr_cp or None,
         }
 
+    # IPN
     ipn = None
     if user.is_ipn:
         ipn = {
@@ -28,9 +55,18 @@ def _to_out(user: User) -> AlumnoPerfilOut:
             "unidad": user.ipn_unidad or "",
         }
 
+    # Tutor (normaliza vacíos a None y valida parentesco)
     tutor = None
-    if user.tutor_telefono:
-        tutor = {"telefono": user.tutor_telefono}
+    if any([user.tutor_nombre, user.tutor_parentesco, user.tutor_telefono]):
+        parentesco = (user.tutor_parentesco or None)
+        valid_parentescos = {"Padre", "Madre", "Tutor legal", "Hermano/a", "Abuelo/a", "Otro"}
+        if parentesco not in valid_parentescos:
+            parentesco = None
+        tutor = {
+            "nombre": (user.tutor_nombre or None),
+            "parentesco": parentesco,
+            "telefono": (user.tutor_telefono or None),
+        }
 
     return AlumnoPerfilOut(
         nombre=user.first_name,
@@ -45,6 +81,7 @@ def _to_out(user: User) -> AlumnoPerfilOut:
         tutor=tutor,
     )
 
+
 @router.get("/perfil", response_model=AlumnoPerfilOut)
 def get_perfil(
     current_user: User = Depends(get_current_user),
@@ -52,6 +89,7 @@ def get_perfil(
 ):
     # Solo lectura: no necesitamos merge aquí
     return _to_out(current_user)
+
 
 @router.patch("/perfil", response_model=AlumnoPerfilOut)
 def update_perfil(
@@ -64,17 +102,22 @@ def update_perfil(
 
     # === Campos básicos ===
     if payload.nombre is not None:
-        user.first_name = payload.nombre.strip() or user.first_name
+        v = (payload.nombre or "").strip()
+        if v:
+            user.first_name = v
     if payload.apellidos is not None:
-        user.last_name = payload.apellidos.strip() or user.last_name
+        v = (payload.apellidos or "").strip()
+        if v:
+            user.last_name = v
     if payload.email is not None:
         # si NO quieres permitir cambiar email, comenta la línea siguiente
-        user.email = payload.email.lower().strip()
+        user.email = (payload.email or "").lower().strip() or user.email
     if payload.curp is not None:
-        user.curp = payload.curp.strip().upper()
+        user.curp = (payload.curp or "").strip().upper() or user.curp
 
     if payload.telefono is not None:
-        user.telefono = (payload.telefono or "").strip() or None
+        v = (payload.telefono or "").strip()
+        user.telefono = v or None
 
     # === Dirección ===
     if payload.direccion is not None:
@@ -99,9 +142,43 @@ def update_perfil(
         user.ipn_nivel = None
         user.ipn_unidad = None
 
-    # === Tutor ===
-    if payload.tutor is not None:
-        user.tutor_telefono = (payload.tutor.telefono or "").strip() or None
+    # === Reglas para TUTOR cuando es menor de edad ===
+    # Determinamos edad con la CURP "resultante" (la recién enviada o la actual)
+    curp_ref = user.curp  # ya normalizada arriba si vino en el payload
+    age = _parse_age_from_curp(curp_ref)
+
+    if age is not None and age < 18:
+        # Debe enviarse tutor con los 3 campos obligatorios
+        if payload.tutor is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Si eres menor de edad, debes proporcionar los datos de tu padre/tutor.",
+            )
+        t = payload.tutor
+        missing = []
+        if not (t.nombre or "").strip():
+            missing.append("nombre del padre/tutor")
+        if not (t.parentesco or "").strip():
+            missing.append("parentesco")
+        if not (t.telefono or "").strip():
+            missing.append("teléfono del tutor")
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Faltan campos de tutor: {', '.join(missing)}.",
+            )
+        # Guardar tutor completo
+        user.tutor_nombre = t.nombre.strip()
+        user.tutor_parentesco = t.parentesco.strip()
+        user.tutor_telefono = t.telefono.strip()
+    else:
+        # Si NO es menor: si viene tutor explícitamente, se respeta (actualiza o limpia)
+        if payload.tutor is not None:
+            t = payload.tutor
+            user.tutor_nombre = (t.nombre or "").strip() or None
+            user.tutor_parentesco = (t.parentesco or "").strip() or None
+            user.tutor_telefono = (t.telefono or "").strip() or None
+        # Si no vino, no tocamos lo existente.
 
     # ¡OJO!: no llames a db.add(user); ya está ligado a la sesión
     db.commit()

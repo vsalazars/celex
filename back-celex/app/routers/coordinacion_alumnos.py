@@ -3,13 +3,12 @@ from typing import List, Optional, Tuple, Dict
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, case, desc
+from datetime import date
 
 from ..database import get_db
 from ..auth import require_coordinator_or_admin
 from ..models import User, Inscripcion, Ciclo, Evaluacion
 from .. import models_asistencia as ma  # AsistenciaSesion (ciclo_id), AsistenciaRegistro (sesion_id, inscripcion_id, estado)
-from datetime import date  # 👈👈👈 AÑADIR
-
 
 # ------------------------------
 # Router
@@ -23,6 +22,7 @@ router = APIRouter(
 # Schemas (locales a este router)
 # ------------------------------
 from pydantic import BaseModel, ConfigDict, EmailStr
+
 
 class AlumnoFullOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -40,7 +40,10 @@ class AlumnoFullOut(BaseModel):
     boleta: Optional[str] = None
     is_ipn: Optional[bool] = None
     telefono: Optional[str] = None
-    tutor_telefono: Optional[str] = None   # 👈👈👈 NUEVO
+    tutor_telefono: Optional[str] = None  # sólo si menor de edad
+    tutor_nombre: Optional[str] = None    # ← NUEVO
+    tutor_parentesco: Optional[str] = None  # ← NUEVO
+ 
 
     # Dirección
     addr_calle: Optional[str] = None
@@ -55,7 +58,7 @@ class AlumnoFullOut(BaseModel):
     estado: Optional[str] = None
     created_at: Optional[str] = None
 
-    # ⬇️ NUEVO: Perfil IPN
+    # Perfil IPN
     ipn_nivel: Optional[str] = None
     ipn_unidad_academica: Optional[str] = None
 
@@ -77,6 +80,19 @@ class HistorialAsistenciaSummary(BaseModel):
     porcentaje_asistencia: float = 0.0  # 0..100
 
 
+# ⬇️ NUEVO: detalle de evaluación por bloques
+class EvaluacionDetalle(BaseModel):
+    medio_examen: Optional[float] = None     # 0..80
+    medio_continua: Optional[float] = None   # 0..20
+    final_examen: Optional[float] = None     # 0..60
+    final_continua: Optional[float] = None   # 0..20
+    final_tarea: Optional[float] = None      # 0..20
+
+    subtotal_medio: float = 0.0
+    subtotal_final: float = 0.0
+    promedio_final: float = 0.0
+
+
 class HistorialCicloItem(BaseModel):
     inscripcion_id: int
     ciclo_id: int
@@ -95,6 +111,7 @@ class HistorialCicloItem(BaseModel):
     fecha_inscripcion: Optional[str] = None  # ISO datetime
 
     calificacion: Optional[float] = None
+    evaluacion: Optional[EvaluacionDetalle] = None  # ⬅️ NUEVO
 
     # Docente asignado
     docente_id: Optional[int] = None
@@ -123,7 +140,7 @@ def _to_full_out(u: User, ins: Optional[Inscripcion]) -> AlumnoFullOut:
         or getattr(u, "ipn_unidad_academica", None)
     )
 
-    # 👇 calcular si es menor
+    # calcular si es menor
     es_menor = _es_menor_de_edad(getattr(u, "curp", None))
 
     return AlumnoFullOut(
@@ -138,7 +155,11 @@ def _to_full_out(u: User, ins: Optional[Inscripcion]) -> AlumnoFullOut:
         boleta=u.boleta,
         is_ipn=u.is_ipn,
         telefono=u.telefono,
-        tutor_telefono=(u.tutor_telefono if es_menor else None),  # 👈 sólo si es menor
+        tutor_telefono=(getattr(u, "tutor_telefono", None) if es_menor else None),
+        tutor_nombre=(getattr(u, "tutor_nombre", None) if es_menor else None),          # ← NUEVO
+        tutor_parentesco=(getattr(u, "tutor_parentesco", None) if es_menor else None),  # ← NUEVO
+
+
 
         addr_calle=u.addr_calle,
         addr_numero=u.addr_numero,
@@ -151,11 +172,9 @@ def _to_full_out(u: User, ins: Optional[Inscripcion]) -> AlumnoFullOut:
         estado=(ins.status if ins else None),
         created_at=(u.created_at.isoformat() if getattr(u, "created_at", None) else None),
 
-        # ⬇️ mapeo correcto para el front
         ipn_nivel=getattr(u, "ipn_nivel", None),
         ipn_unidad_academica=ua,
     )
-
 
 
 def _safe_horario(c: Ciclo) -> Optional[str]:
@@ -244,7 +263,6 @@ def _es_menor_de_edad(curp: Optional[str]) -> bool:
     return age < 18
 
 
-
 # ------------------------------
 # GET /coordinacion/alumnos
 # ------------------------------
@@ -255,78 +273,123 @@ def _es_menor_de_edad(curp: Optional[str]) -> bool:
 )
 def listar_alumnos(
     q: Optional[str] = Query(None, description="Búsqueda por nombre, email, CURP, boleta"),
-    anio: Optional[int] = Query(None, description="Año del ciclo (por fecha_inicio si existe o prefijo de codigo 'YYYY-…')"),
+    anio: Optional[int] = Query(None, description="Año del ciclo (por fecha_inicio si existe o prefijo 'YYYY-…')"),
     idioma: Optional[str] = Query(None, description="ingles|frances|aleman|italiano|chino|japones|..."),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
+    unique_alumno: bool = Query(True, description="Si True, pagina por alumnos únicos (no por inscripciones)"),
     db: Session = Depends(get_db),
 ):
     """
-    Lista **inscripciones** con datos completos del alumno (una fila por inscripción).
-    Filtros:
-      • `anio`: por año de fecha_inicio del ciclo (si existe) o por prefijo `YYYY-` de `Ciclo.codigo`
-      • `idioma`: igualdad con `Ciclo.idioma` (enum o string, case-insensitive)
-      • `q`: nombre, apellidos, email, curp, boleta
+    Lista alumnos. Si unique_alumno=True (default), devuelve alumnos únicos (1 fila por User),
+    eligiendo su inscripción más reciente que cumpla los filtros.
     """
-    qry = (
-        db.query(Inscripcion, User, Ciclo)
+    # --- base join con todos los filtros compartidos ---
+    start_col = _ciclo_start_col()
+
+    def apply_filters(qry):
+        if idioma:
+            try:
+                qry = qry.filter(or_(Ciclo.idioma == idioma, func.lower(Ciclo.idioma) == idioma.lower()))
+            except Exception:
+                qry = qry.filter(Ciclo.idioma == idioma)
+
+        if anio:
+            conds = [func.substr(Ciclo.codigo, 1, 4) == str(anio)]
+            if start_col is not None:
+                conds.append(func.extract("year", start_col) == anio)
+            qry = qry.filter(or_(*conds))
+
+        if q:
+            pat = f"%{q.strip()}%"
+            qry = qry.filter(
+                or_(
+                    User.first_name.ilike(pat),
+                    User.last_name.ilike(pat),
+                    User.email.ilike(pat),
+                    User.curp.ilike(pat),
+                    User.boleta.ilike(pat),
+                )
+            )
+        return qry
+
+    if not unique_alumno:
+        # --------- MODO CLÁSICO: una fila por inscripción ----------
+        qry = (
+            db.query(Inscripcion, User, Ciclo)
+            .join(User, User.id == Inscripcion.alumno_id)
+            .join(Ciclo, Ciclo.id == Inscripcion.ciclo_id)
+        )
+        qry = apply_filters(qry)
+
+        # orden
+        order_cols = [User.last_name.asc(), User.first_name.asc()]
+        if start_col is not None:
+            order_cols.extend([desc(start_col), desc(Ciclo.codigo)])
+        else:
+            order_cols.append(desc(Ciclo.codigo))
+        qry = qry.order_by(*order_cols)
+
+        total = qry.count()
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, pages)
+        rows = qry.offset((page - 1) * page_size).limit(page_size).all()
+
+        items = [_to_full_out(u=user, ins=ins) for (ins, user, _ciclo) in rows]
+        return AlumnosListResponse(items=items, total=total, page=page, page_size=page_size, pages=pages)
+
+    # --------- MODO ÚNICO POR ALUMNO (RECOMENDADO) ----------
+    # row_number() sobre Inscripcion, particionando por alumno y ordenando por inscripcion más reciente
+    rn = func.row_number().over(
+        partition_by=User.id,
+        order_by=desc(Inscripcion.created_at)  # usa otra columna si prefieres "más reciente"
+    ).label("rn")
+
+    base = (
+        db.query(
+            Inscripcion.id.label("ins_id"),
+            User.id.label("user_id"),
+            Ciclo.id.label("ciclo_id"),
+            rn,
+        )
         .join(User, User.id == Inscripcion.alumno_id)
         .join(Ciclo, Ciclo.id == Inscripcion.ciclo_id)
     )
+    base = apply_filters(base).subquery()
 
-    # Filtro idioma (case-insensitive si es string)
-    if idioma:
-        try:
-            qry = qry.filter(or_(Ciclo.idioma == idioma, func.lower(Ciclo.idioma) == idioma.lower()))
-        except Exception:
-            qry = qry.filter(Ciclo.idioma == idioma)
-
-    # Filtro por año (fecha de inicio si existe, o prefijo del código)
-    start_col = _ciclo_start_col()
-    if anio:
-        conds = [func.substr(Ciclo.codigo, 1, 4) == str(anio)]
-        if start_col is not None:
-            conds.append(func.extract('year', start_col) == anio)
-        qry = qry.filter(or_(*conds))
-
-    # Búsqueda libre
-    if q:
-        pat = f"%{q.strip()}%"
-        qry = qry.filter(
-            or_(
-                User.first_name.ilike(pat),
-                User.last_name.ilike(pat),
-                User.email.ilike(pat),
-                User.curp.ilike(pat),
-                User.boleta.ilike(pat),
-            )
-        )
-
-    # Ordenamiento (apellido, nombre, luego fecha de inicio si existe; si no, por código)
-    order_cols = [User.last_name.asc(), User.first_name.asc()]
-    if start_col is not None:
-        order_cols.extend([desc(start_col), desc(Ciclo.codigo)])
-    else:
-        order_cols.append(desc(Ciclo.codigo))
-    qry = qry.order_by(*order_cols)
-
-    total = qry.count()
+    # total de alumnos únicos con los mismos filtros
+    total = db.query(func.count(func.distinct(base.c.user_id))).scalar() or 0
     pages = max(1, (total + page_size - 1) // page_size)
     page = min(page, pages)
 
-    offset = (page - 1) * page_size
-    rows = qry.offset(offset).limit(page_size).all()
+    # seleccionar sólo rn=1 (la inscripción elegida para cada alumno) y paginar
+    sub = (
+        db.query(base.c.ins_id, base.c.user_id, base.c.ciclo_id)
+        .filter(base.c.rn == 1)
+        .order_by(base.c.user_id.asc())  # orden estable por alumno
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .subquery()
+    )
+
+    # traer objetos completos para construir el output
+    rows = (
+        db.query(Inscripcion, User, Ciclo)
+        .join(sub, sub.c.ins_id == Inscripcion.id)
+        .join(User, User.id == sub.c.user_id)
+        .join(Ciclo, Ciclo.id == sub.c.ciclo_id)
+        .all()
+    )
 
     items = [_to_full_out(u=user, ins=ins) for (ins, user, _ciclo) in rows]
 
     return AlumnosListResponse(
         items=items,
-        total=total,
+        total=total,      # <- alumnos únicos
         page=page,
         page_size=page_size,
         pages=pages,
     )
-
 
 # ------------------------------
 # GET /coordinacion/alumnos/{alumno_id}/historial
@@ -345,11 +408,11 @@ def historial_alumno(
 ):
     """
     Historial de ciclos del alumno:
-      - Ciclo: codigo/idioma/nivel/modalidad/turno/fechas/horario
-      - Inscripción: status, tipo, fecha_inscripcion
-      - Evaluación: calificacion (si existe)
-      - Asistencia: resumen por inscripción
-      - Docente: id, nombre, email (FK directa o tabla intermedia CicloDocente)
+      - Ciclo: código, idioma, nivel, modalidad, turno, fechas, horario
+      - Inscripción: estado, tipo, fecha_inscripción
+      - Evaluación: calificacion (si existe) + detalle por bloques (nuevo)
+      - Asistencia: resumen por inscripción (porcentaje ponderado)
+      - Docente: id, nombre, email
     """
     # Base: Inscripcion join Ciclo
     q = (
@@ -390,7 +453,7 @@ def historial_alumno(
     ins_ids = [ins.id for (ins, _c) in base_rows]
     ciclo_ids = [c.id for (_ins, c) in base_rows]
 
-    # --- Evaluaciones por inscripción (tolerante) ---
+    # --- Evaluaciones por inscripción (promedio simple si existe en tu modelo) ---
     eval_map: Dict[int, Optional[float]] = {}
     try:
         if ins_ids:
@@ -404,27 +467,86 @@ def historial_alumno(
     except Exception:
         eval_map = {}
 
-    # --- Asistencia por inscripción (tolerante) ---
+    # --- Evaluación DETALLADA por bloques (toma la última por inscripción) ---
+    eval_det_map: Dict[int, EvaluacionDetalle] = {}
+
+    def _clamp_val(v, maxv):
+        try:
+            n = int(round(float(v)))
+        except Exception:
+            return None
+        return max(0, min(maxv, n))
+
+    try:
+        if ins_ids:
+            rows = (
+                db.query(Evaluacion)
+                .filter(Evaluacion.inscripcion_id.in_(ins_ids))
+                .order_by(Evaluacion.inscripcion_id.asc(), Evaluacion.id.desc())
+                .all()
+            )
+            seen: set[int] = set()
+            for ev in rows:
+                iid = int(getattr(ev, "inscripcion_id"))
+                if iid in seen:
+                    continue
+                seen.add(iid)
+
+                me = _clamp_val(getattr(ev, "medio_examen", None), 80)
+                mc = _clamp_val(getattr(ev, "medio_continua", None), 20)
+                fe = _clamp_val(getattr(ev, "final_examen", None), 60)
+                fc = _clamp_val(getattr(ev, "final_continua", None), 20)
+                ft = _clamp_val(getattr(ev, "final_tarea", None), 20)
+
+                subtotal_medio = (me or 0) + (mc or 0)
+                subtotal_final = (fe or 0) + (fc or 0) + (ft or 0)
+                promedio_final = round((subtotal_medio + subtotal_final) / 2.0, 2)
+
+                eval_det_map[iid] = EvaluacionDetalle(
+                    medio_examen=me,
+                    medio_continua=mc,
+                    final_examen=fe,
+                    final_continua=fc,
+                    final_tarea=ft,
+                    subtotal_medio=subtotal_medio,
+                    subtotal_final=subtotal_final,
+                    promedio_final=promedio_final,
+                )
+    except Exception:
+        eval_det_map = {}
+
+    # --- Asistencia por inscripción (robusto: denominador = total de sesiones del ciclo) ---
     asis_map: Dict[int, HistorialAsistenciaSummary] = {}
     try:
         if ins_ids:
             AR = ma.AsistenciaRegistro
             AS = ma.AsistenciaSesion
 
+            PESO_RETARDO = 0.5  # presente=1, justificado=1, retardo=0.5, ausente=0
+
+            # 1) mapa inscripcion_id -> ciclo_id
+            ins_to_ciclo: Dict[int, int] = {ins.id: c.id for (ins, c) in base_rows}
+
+            # 2) total de sesiones por ciclo (denominador consistente)
+            tot_rows = (
+                db.query(AS.ciclo_id, func.count(AS.id))
+                .filter(AS.ciclo_id.in_(ciclo_ids))
+                .group_by(AS.ciclo_id)
+                .all()
+            )
+            tot_por_ciclo: Dict[int, int] = {cid: int(cnt) for (cid, cnt) in tot_rows}
+
+            # 3) sumar presentes / retardos / justificados por inscripción
             presentes = func.sum(case((AR.estado == "presente", 1), else_=0)).label("presentes")
-            ausentes = func.sum(case((AR.estado == "ausente", 1), else_=0)).label("ausentes")
             retardos = func.sum(case((AR.estado == "retardo", 1), else_=0)).label("retardos")
             justificados = func.sum(case((AR.estado == "justificado", 1), else_=0)).label("justificados")
-            total = func.count(AR.id).label("total")
 
-            asis_rows = (
+            sum_rows = (
                 db.query(
                     AR.inscripcion_id,
                     presentes,
-                    ausentes,
                     retardos,
                     justificados,
-                    total,
                 )
                 .join(AS, AS.id == AR.sesion_id)
                 .filter(AR.inscripcion_id.in_(ins_ids))
@@ -432,12 +554,29 @@ def historial_alumno(
                 .all()
             )
 
-            for (iid, p, a, r, j, t) in asis_rows:
-                p = int(p or 0); a = int(a or 0); r = int(r or 0); j = int(j or 0); t = int(t or 0)
-                pct = (p * 100.0 / t) if t else 0.0
+            sums: Dict[int, Tuple[int, int, int]] = {
+                int(iid): (int(p or 0), int(r or 0), int(j or 0))
+                for (iid, p, r, j) in sum_rows
+            }
+
+            # 4) armar respuesta por inscripción usando el denominador del ciclo
+            for iid in ins_ids:
+                ciclo_id = ins_to_ciclo.get(iid)
+                total_ses = int(tot_por_ciclo.get(ciclo_id, 0))
+
+                p, r, j = sums.get(iid, (0, 0, 0))
+                a = max(total_ses - (p + r + j), 0)
+
+                ponderados = p + j + (PESO_RETARDO * r)
+                pct = round((ponderados * 100.0 / total_ses), 2) if total_ses else 0.0
+
                 asis_map[iid] = HistorialAsistenciaSummary(
-                    presentes=p, ausentes=a, retardos=r, justificados=j,
-                    total_sesiones=t, porcentaje_asistencia=round(pct, 2),
+                    presentes=p,
+                    ausentes=a,
+                    retardos=r,
+                    justificados=j,
+                    total_sesiones=total_ses,
+                    porcentaje_asistencia=pct,
                 )
     except Exception:
         asis_map = {}
@@ -483,6 +622,11 @@ def historial_alumno(
         asistencia = asis_map.get(ins.id, HistorialAsistenciaSummary())
         calificacion = eval_map.get(ins.id)
 
+        # detalle por bloques y fallback de calificacion si estaba vacía
+        ev_det = eval_det_map.get(ins.id)
+        if calificacion is None and ev_det:
+            calificacion = ev_det.promedio_final
+
         doc_id, doc_nom, doc_email = (None, None, None)
         if c.id in docente_info_map:
             doc_id, doc_nom, doc_email = docente_info_map[c.id]
@@ -497,7 +641,7 @@ def historial_alumno(
                 modalidad=str(getattr(c, "modalidad", None)) if getattr(c, "modalidad", None) is not None else None,
                 turno=str(getattr(c, "turno", None)) if getattr(c, "turno", None) is not None else None,
 
-                # Fechas tolerantes
+                # Fechas
                 fecha_inicio=_to_iso(_ciclo_start_value(c)),
                 fecha_fin=_to_iso(_ciclo_end_value(c)),
 
@@ -505,7 +649,10 @@ def historial_alumno(
                 inscripcion_estado=getattr(ins, "status", None),
                 inscripcion_tipo=str(getattr(ins, "tipo", None)) if getattr(ins, "tipo", None) is not None else None,
                 fecha_inscripcion=_to_iso(getattr(ins, "created_at", None)) or _to_iso(getattr(ins, "fecha_inscripcion", None)),
+
                 calificacion=calificacion,
+                evaluacion=ev_det,
+
                 docente_id=doc_id,
                 docente_nombre=doc_nom,
                 docente_email=doc_email,

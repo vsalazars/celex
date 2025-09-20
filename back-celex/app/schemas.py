@@ -15,6 +15,9 @@ from pydantic import (
 
 MAX_COMPROBANTE_BYTES = 5 * 1024 * 1024  # 5 MB
 
+Parentesco = Literal["Padre", "Madre", "Tutor legal", "Hermano/a", "Abuelo/a", "Otro"]
+
+
 # ==========================
 # Roles y autenticación
 # ==========================
@@ -85,7 +88,10 @@ class IPNInfo(BaseModel):
     unidad: str
 
 class TutorInfo(BaseModel):
+    nombre: Optional[str] = None
+    parentesco: Optional[Parentesco] = None
     telefono: Optional[str] = None
+
 
 class AlumnoPerfilOut(BaseModel):
     nombre: str
@@ -949,3 +955,5 @@ class HistorialAlumnoResponse(BaseModel):
     alumno_id: int
     total: int
     items: List[HistorialCicloItem]
+
+

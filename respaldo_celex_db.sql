@@ -125,7 +125,7 @@ CREATE TYPE public.modalidad AS ENUM (
 ALTER TYPE public.modalidad OWNER TO postgres;
 
 --
--- Name: modalidadasistencia; Type: TYPE; Schema: public; Owner: vsalazar
+-- Name: modalidadasistencia; Type: TYPE; Schema: public; Owner: postgres
 --
 
 CREATE TYPE public.modalidadasistencia AS ENUM (
@@ -134,7 +134,7 @@ CREATE TYPE public.modalidadasistencia AS ENUM (
 );
 
 
-ALTER TYPE public.modalidadasistencia OWNER TO vsalazar;
+ALTER TYPE public.modalidadasistencia OWNER TO postgres;
 
 --
 -- Name: nivel; Type: TYPE; Schema: public; Owner: postgres
@@ -404,6 +404,45 @@ ALTER SEQUENCE public.ciclos_id_seq OWNER TO postgres;
 --
 
 ALTER SEQUENCE public.ciclos_id_seq OWNED BY public.ciclos.id;
+
+
+--
+-- Name: encuesta_docente_respuestas; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.encuesta_docente_respuestas (
+    id integer NOT NULL,
+    docente_id integer NOT NULL,
+    ciclo_id integer,
+    grupo_id integer,
+    valor integer NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_encresp_valor_1_5 CHECK (((valor >= 1) AND (valor <= 5)))
+);
+
+
+ALTER TABLE public.encuesta_docente_respuestas OWNER TO postgres;
+
+--
+-- Name: encuesta_docente_respuestas_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.encuesta_docente_respuestas_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.encuesta_docente_respuestas_id_seq OWNER TO postgres;
+
+--
+-- Name: encuesta_docente_respuestas_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.encuesta_docente_respuestas_id_seq OWNED BY public.encuesta_docente_respuestas.id;
 
 
 --
@@ -842,7 +881,9 @@ CREATE TABLE public.users (
     addr_cp character varying(10),
     ipn_nivel character varying(30),
     ipn_unidad character varying(120),
-    tutor_telefono character varying(20)
+    tutor_telefono character varying(20),
+    tutor_nombre character varying(120),
+    tutor_parentesco character varying(50)
 );
 
 
@@ -889,6 +930,13 @@ ALTER TABLE ONLY public.asistencia_sesion ALTER COLUMN id SET DEFAULT nextval('p
 --
 
 ALTER TABLE ONLY public.ciclos ALTER COLUMN id SET DEFAULT nextval('public.ciclos_id_seq'::regclass);
+
+
+--
+-- Name: encuesta_docente_respuestas id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.encuesta_docente_respuestas ALTER COLUMN id SET DEFAULT nextval('public.encuesta_docente_respuestas_id_seq'::regclass);
 
 
 --
@@ -966,75 +1014,56 @@ ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_
 --
 
 COPY public.asistencia_registro (id, sesion_id, inscripcion_id, estado, nota, marcado_por_id, created_at, updated_at) FROM stdin;
-23	32	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-26	33	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-29	34	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-32	35	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-35	36	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-38	37	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-41	38	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-44	39	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-47	40	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-50	41	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-53	42	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-56	43	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-59	44	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-62	45	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-65	46	34	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-66	46	35	presente	\N	24	2025-09-06 18:02:14.644951-06	\N
-60	44	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-63	45	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-64	46	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:06:22.876689-06
-3	25	35	ausente	\N	24	2025-09-06 17:47:12.345785-06	2025-09-09 00:08:25.901089-06
-9	27	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-12	28	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-15	29	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-18	30	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-21	31	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-24	32	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-27	33	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-14	29	34	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-06 18:52:06.786099-06
-17	30	34	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-06 18:52:06.786099-06
-20	31	34	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-06 18:52:06.786099-06
-22	32	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-06 18:52:06.786099-06
-25	33	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-06 18:52:06.786099-06
-28	34	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-06 18:52:06.786099-06
-31	35	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-06 18:52:06.786099-06
-30	34	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-33	35	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-36	36	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-39	37	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-42	38	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-45	39	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-46	40	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 22:39:31.572597-06
-49	41	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 22:39:31.572597-06
-52	42	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 22:39:31.572597-06
-55	43	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 22:39:31.572597-06
-58	44	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 22:39:31.572597-06
-61	45	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 22:39:31.572597-06
-2	25	34	ausente	\N	24	2025-09-06 17:47:12.345785-06	2025-09-08 22:47:16.209272-06
-72	2351	34	ausente	\N	24	2025-09-06 19:16:28.393328-06	2025-09-08 22:47:16.209272-06
-73	2351	35	ausente	\N	24	2025-09-06 19:16:28.393328-06	2025-09-08 23:01:32.692365-06
-48	40	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-6	26	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:09:14.345299-06
-1	25	33	presente	\N	24	2025-09-06 17:47:12.345785-06	2025-09-08 23:20:02.53558-06
-4	26	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:20:02.53558-06
-7	27	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:20:02.53558-06
-71	2351	33	presente	\N	24	2025-09-06 19:16:28.393328-06	2025-09-08 23:20:02.53558-06
-5	26	34	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-8	27	34	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-10	28	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-11	28	34	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-13	29	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-16	30	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-19	31	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-34	36	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-37	37	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-40	38	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-43	39	33	presente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-08 23:22:56.890928-06
-51	41	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-54	42	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
-57	43	35	ausente	\N	24	2025-09-06 18:02:14.644951-06	2025-09-09 00:08:25.901089-06
+1	1	36	presente	\N	24	2025-09-18 18:34:35.147522-06	\N
+4	4	36	presente	\N	24	2025-09-18 18:34:35.147522-06	\N
+2	2	36	retardo	\N	24	2025-09-18 18:34:35.147522-06	2025-09-18 18:35:17.489632-06
+3	3	36	retardo	\N	24	2025-09-18 18:34:35.147522-06	2025-09-18 18:35:17.489632-06
+5	41	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+6	41	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+7	42	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+8	42	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+9	43	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+10	43	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+11	44	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+12	44	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+13	45	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+14	45	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+15	46	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+16	46	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+17	47	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+18	47	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+19	48	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+20	48	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+21	49	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+22	49	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+23	50	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+24	50	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+25	51	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+26	51	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+27	52	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+28	52	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+29	53	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+30	53	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+31	54	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+32	54	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+33	55	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+34	55	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+35	56	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+36	56	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+37	57	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+38	57	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+39	58	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+40	58	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+41	59	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+42	59	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+43	60	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+44	60	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+45	61	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+46	61	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+47	62	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+48	62	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+49	63	45	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
+50	63	47	presente	\N	24	2025-09-19 14:16:28.00078-06	\N
 \.
 
 
@@ -1043,79 +1072,33 @@ COPY public.asistencia_registro (id, sesion_id, inscripcion_id, estado, nota, ma
 --
 
 COPY public.asistencia_sesion (id, ciclo_id, fecha, created_at, updated_at) FROM stdin;
-1	18	2025-10-01	2025-09-06 17:41:07.284902-06	\N
-3	18	2025-10-02	2025-09-06 17:41:07.284902-06	\N
-4	18	2025-10-03	2025-09-06 17:41:07.284902-06	\N
-5	18	2025-10-06	2025-09-06 17:41:07.284902-06	\N
-6	18	2025-10-07	2025-09-06 17:41:07.284902-06	\N
-7	18	2025-10-08	2025-09-06 17:41:07.284902-06	\N
-8	18	2025-10-09	2025-09-06 17:41:07.284902-06	\N
-9	18	2025-10-10	2025-09-06 17:41:07.284902-06	\N
-10	18	2025-10-13	2025-09-06 17:41:07.284902-06	\N
-11	18	2025-10-14	2025-09-06 17:41:07.284902-06	\N
-12	18	2025-10-15	2025-09-06 17:41:07.284902-06	\N
-13	18	2025-10-16	2025-09-06 17:41:07.284902-06	\N
-14	18	2025-10-17	2025-09-06 17:41:07.284902-06	\N
-15	18	2025-10-20	2025-09-06 17:41:07.284902-06	\N
-16	18	2025-10-21	2025-09-06 17:41:07.284902-06	\N
-17	18	2025-10-22	2025-09-06 17:41:07.284902-06	\N
-18	18	2025-10-23	2025-09-06 17:41:07.284902-06	\N
-19	18	2025-10-24	2025-09-06 17:41:07.284902-06	\N
-20	18	2025-10-27	2025-09-06 17:41:07.284902-06	\N
-21	18	2025-10-28	2025-09-06 17:41:07.284902-06	\N
-22	18	2025-10-29	2025-09-06 17:41:07.284902-06	\N
-23	18	2025-10-30	2025-09-06 17:41:07.284902-06	\N
-24	18	2025-10-31	2025-09-06 17:41:07.284902-06	\N
-25	17	2025-09-09	2025-09-06 17:47:12.189131-06	\N
-26	17	2025-09-10	2025-09-06 17:47:12.189131-06	\N
-27	17	2025-09-11	2025-09-06 17:47:12.189131-06	\N
-28	17	2025-09-12	2025-09-06 17:47:12.189131-06	\N
-29	17	2025-09-15	2025-09-06 17:47:12.189131-06	\N
-30	17	2025-09-16	2025-09-06 17:47:12.189131-06	\N
-31	17	2025-09-17	2025-09-06 17:47:12.189131-06	\N
-32	17	2025-09-18	2025-09-06 17:47:12.189131-06	\N
-33	17	2025-09-19	2025-09-06 17:47:12.189131-06	\N
-34	17	2025-09-22	2025-09-06 17:47:12.189131-06	\N
-35	17	2025-09-23	2025-09-06 17:47:12.189131-06	\N
-36	17	2025-09-24	2025-09-06 17:47:12.189131-06	\N
-37	17	2025-09-25	2025-09-06 17:47:12.189131-06	\N
-38	17	2025-09-26	2025-09-06 17:47:12.189131-06	\N
-39	17	2025-09-29	2025-09-06 17:47:12.189131-06	\N
-40	17	2025-09-30	2025-09-06 17:47:12.189131-06	\N
-41	17	2025-10-01	2025-09-06 17:47:12.189131-06	\N
-42	17	2025-10-02	2025-09-06 17:47:12.189131-06	\N
-43	17	2025-10-03	2025-09-06 17:47:12.189131-06	\N
-44	17	2025-10-06	2025-09-06 17:47:12.189131-06	\N
-45	17	2025-10-07	2025-09-06 17:47:12.189131-06	\N
-46	17	2025-10-08	2025-09-06 17:47:12.189131-06	\N
-463	19	2025-09-16	2025-09-06 18:12:33.167394-06	\N
-464	19	2025-09-17	2025-09-06 18:12:33.167394-06	\N
-465	19	2025-09-18	2025-09-06 18:12:33.167394-06	\N
-466	19	2025-09-19	2025-09-06 18:12:33.167394-06	\N
-467	19	2025-09-22	2025-09-06 18:12:33.167394-06	\N
-468	19	2025-09-23	2025-09-06 18:12:33.167394-06	\N
-469	19	2025-09-24	2025-09-06 18:12:33.167394-06	\N
-470	19	2025-09-25	2025-09-06 18:12:33.167394-06	\N
-471	19	2025-09-26	2025-09-06 18:12:33.167394-06	\N
-472	19	2025-09-29	2025-09-06 18:12:33.167394-06	\N
-473	19	2025-09-30	2025-09-06 18:12:33.167394-06	\N
-474	19	2025-10-01	2025-09-06 18:12:33.167394-06	\N
-475	19	2025-10-02	2025-09-06 18:12:33.167394-06	\N
-476	19	2025-10-03	2025-09-06 18:12:33.167394-06	\N
-477	19	2025-10-06	2025-09-06 18:12:33.167394-06	\N
-478	19	2025-10-07	2025-09-06 18:12:33.167394-06	\N
-479	19	2025-10-08	2025-09-06 18:12:33.167394-06	\N
-480	19	2025-10-09	2025-09-06 18:12:33.167394-06	\N
-481	19	2025-10-10	2025-09-06 18:12:33.167394-06	\N
-482	19	2025-10-13	2025-09-06 18:12:33.167394-06	\N
-483	19	2025-10-14	2025-09-06 18:12:33.167394-06	\N
-484	19	2025-10-15	2025-09-06 18:12:33.167394-06	\N
-485	19	2025-10-16	2025-09-06 18:12:33.167394-06	\N
-555	20	2025-10-04	2025-09-06 18:19:08.373621-06	\N
-556	20	2025-10-11	2025-09-06 18:19:08.373621-06	\N
-557	20	2025-10-18	2025-09-06 18:19:08.373621-06	\N
-558	20	2025-10-25	2025-09-06 18:19:08.373621-06	\N
-2351	17	2025-09-08	2025-09-06 19:16:28.382041-06	\N
+1	20	2025-10-04	2025-09-18 18:34:35.132564-06	\N
+2	20	2025-10-11	2025-09-18 18:34:35.132564-06	\N
+3	20	2025-10-18	2025-09-18 18:34:35.132564-06	\N
+4	20	2025-10-25	2025-09-18 18:34:35.132564-06	\N
+41	21	2025-10-01	2025-09-19 14:16:27.966921-06	\N
+42	21	2025-10-02	2025-09-19 14:16:27.966921-06	\N
+43	21	2025-10-03	2025-09-19 14:16:27.966921-06	\N
+44	21	2025-10-06	2025-09-19 14:16:27.966921-06	\N
+45	21	2025-10-07	2025-09-19 14:16:27.966921-06	\N
+46	21	2025-10-08	2025-09-19 14:16:27.966921-06	\N
+47	21	2025-10-09	2025-09-19 14:16:27.966921-06	\N
+48	21	2025-10-10	2025-09-19 14:16:27.966921-06	\N
+49	21	2025-10-13	2025-09-19 14:16:27.966921-06	\N
+50	21	2025-10-14	2025-09-19 14:16:27.966921-06	\N
+51	21	2025-10-15	2025-09-19 14:16:27.966921-06	\N
+52	21	2025-10-16	2025-09-19 14:16:27.966921-06	\N
+53	21	2025-10-17	2025-09-19 14:16:27.966921-06	\N
+54	21	2025-10-20	2025-09-19 14:16:27.966921-06	\N
+55	21	2025-10-21	2025-09-19 14:16:27.966921-06	\N
+56	21	2025-10-22	2025-09-19 14:16:27.966921-06	\N
+57	21	2025-10-23	2025-09-19 14:16:27.966921-06	\N
+58	21	2025-10-24	2025-09-19 14:16:27.966921-06	\N
+59	21	2025-10-27	2025-09-19 14:16:27.966921-06	\N
+60	21	2025-10-28	2025-09-19 14:16:27.966921-06	\N
+61	21	2025-10-29	2025-09-19 14:16:27.966921-06	\N
+62	21	2025-10-30	2025-09-19 14:16:27.966921-06	\N
+63	21	2025-10-31	2025-09-19 14:16:27.966921-06	\N
 \.
 
 
@@ -1141,9 +1124,18 @@ COPY public.ciclos (id, codigo, modalidad, turno, insc_inicio, insc_fin, curso_i
 16	curso de prueba 2	sabatino	vespertino	2025-09-06	2025-09-14	2025-09-01	2025-09-10	2025-09-20	2025-10-02	AVISOS DEL CURSO NUMERO 2	2025-09-06 12:33:25.25321-06	2025-09-14 18:13:54.400294-06	frances	20	B1	{sabado}	07:30:00	09:00:00	presencial	410	15
 17	CURSODE 3	intensivo	matutino	2025-09-06	2025-09-08	2025-09-08	2025-10-08	2025-10-02	2025-10-04	notas jj lksj asj klsa jkd jklsdj kldajklladjka dsj a jj k jk kjfdjk f jkl jklfk jaj kfkjl aj falk fklasj fklj safklk sfksa f klsjfll	2025-09-06 16:22:07.25581-06	2025-09-06 19:17:41.228959-06	ingles	3	B1	{lunes,martes,miercoles,jueves,viernes}	06:00:00	08:30:00	presencial	205	24
 13	PRUEBA	intensivo	matutino	2025-09-20	2025-09-20	2025-10-15	2025-11-16	2025-09-28	2025-09-30	MENSAJE DE PRUEBA	2025-08-31 20:44:09.355604-06	2025-09-15 00:48:37.268726-06	ingles	10	B1	{lunes,martes,miercoles,jueves,viernes}	06:30:00	08:30:00	presencial	77	15
-19	ASISTENCIA	intensivo	matutino	2025-09-13	2025-09-19	2025-09-19	2025-09-27	2025-10-08	2025-10-15	BYBYTRHHD G HG HHHG FFG H	2025-09-06 18:12:26.415353-06	2025-09-15 00:49:11.762527-06	ingles	3	B1	{lunes,martes,miercoles,jueves,viernes}	08:00:00	09:30:00	presencial	101	24
 21	CURSO-1	intensivo	matutino	2025-09-08	2025-09-19	2025-10-01	2025-10-31	2025-10-15	2025-09-18	GFDGDFGDGDFGDFGFDGDFG	2025-09-15 00:57:42.9686-06	\N	ingles	10	A1	{lunes,martes,miercoles,jueves,viernes}	07:30:00	08:30:00	presencial	101	24
 22	CURSO-2	sabatino	vespertino	2025-09-12	2025-09-19	2025-10-01	2025-10-31	2025-10-25	2025-10-17	FSDFSDFDSFSDFSDFSDFSD	2025-09-15 00:58:44.567022-06	\N	ingles	15	A2	{sabado}	07:30:00	08:30:00	presencial	105	24
+23	evaluacion del docente	intensivo	matutino	2025-09-16	2025-09-18	2025-09-09	2025-09-18	2025-09-17	2025-09-11	fdsfsfsfsfsdf	2025-09-19 14:18:14.322458-06	2025-09-19 14:20:09.449509-06	ingles	20	A1	{lunes,martes,miercoles,jueves,viernes}	06:00:00	08:00:00	presencial	101	24
+19	ASISTENCIA	intensivo	matutino	2025-09-13	2025-09-19	2025-09-01	2025-09-18	2025-10-08	2025-10-15	BYBYTRHHD G HG HHHG FFG H	2025-09-06 18:12:26.415353-06	2025-09-19 14:40:40.141449-06	ingles	3	B1	{lunes,martes,miercoles,jueves,viernes}	08:30:00	09:30:00	presencial	101	24
+\.
+
+
+--
+-- Data for Name: encuesta_docente_respuestas; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.encuesta_docente_respuestas (id, docente_id, ciclo_id, grupo_id, valor, created_at) FROM stdin;
 \.
 
 
@@ -1155,6 +1147,7 @@ COPY public.evaluaciones (id, inscripcion_id, ciclo_id, medio_examen, medio_cont
 4	33	17	70	10	50	10	10	24	2025-09-08 22:25:28.203845-06	2025-09-08 22:25:28.203845-06	80	70	75.00
 6	35	17	\N	\N	\N	\N	\N	24	2025-09-09 00:08:51.311268-06	2025-09-09 00:08:51.311268-06	0	0	0.00
 5	34	17	80	20	60	10	10	24	2025-09-08 22:25:39.375171-06	2025-09-09 00:19:29.233848-06	100	80	90.00
+7	36	20	70	20	60	20	20	24	2025-09-18 18:35:32.754626-06	2025-09-19 12:45:01.734538-06	90	100	95.00
 \.
 
 
@@ -1212,6 +1205,8 @@ COPY public.inscripciones (id, alumno_id, ciclo_id, status, created_at, referenc
 44	33	16	confirmada	2025-09-14 20:15:52.164147-06	\N	\N	\N	\N	\N	exencion	\N	f	\N	\N	\N	/home/vsalazar/celex/back-celex/uploads/exenciones/af008bbf0dfe4a8e88017a6c4966add8.png	image/png	57346	11	2025-09-15 02:16:04.853546-06	\N	\N	\N
 45	16	21	confirmada	2025-09-16 10:48:43.4746-06	\N	\N	\N	\N	\N	exencion	\N	t	\N	\N	\N	/home/vsalazar/celex/back-celex/uploads/exenciones/10dc9185e7e14094b6069e9d75c9e2f4.png	image/png	57346	11	2025-09-16 16:48:56.02092-06	\N	\N	\N
 46	16	22	confirmada	2025-09-16 11:11:08.169-06	\N	\N	\N	\N	\N	exencion	\N	t	\N	\N	\N	/home/vsalazar/celex/back-celex/uploads/exenciones/07908115cd9f4ba5aa9d8d341a9127e8.png	image/png	114667	11	2025-09-16 17:11:38.045619-06	\N	\N	\N
+47	35	21	confirmada	2025-09-18 17:55:10.972657-06	\N	\N	\N	\N	\N	exencion	\N	t	\N	\N	\N	/home/vsalazars/celex/back-celex/uploads/exenciones/67c6099d7f804626a6144ad7434e0138.pdf	application/pdf	3972847	11	2025-09-18 23:56:52.667765-06	\N	\N	\N
+48	16	19	confirmada	2025-09-19 14:39:06.843397-06	\N	\N	\N	\N	\N	exencion	\N	t	\N	\N	\N	/home/vsalazars/celex/back-celex/uploads/exenciones/cac75838e101499bb5ea11a4c5534d43.jpeg	image/jpeg	50450	11	2025-09-19 20:39:53.403668-06	\N	\N	\N
 \.
 
 
@@ -1379,6 +1374,22 @@ COPY public.survey_answers (id, response_id, question_id, value_int, value_bool,
 126	9	14	3	\N	\N	2025-09-14 20:16:40.291937-06
 127	9	15	2	\N	\N	2025-09-14 20:16:40.291937-06
 128	9	16	\N	\N	este es un cometario de prueba	2025-09-14 20:16:40.291937-06
+129	10	1	4	\N	\N	2025-09-19 14:41:30.626908-06
+130	10	2	3	\N	\N	2025-09-19 14:41:30.626908-06
+131	10	3	5	\N	\N	2025-09-19 14:41:30.626908-06
+132	10	4	2	\N	\N	2025-09-19 14:41:30.626908-06
+133	10	5	3	\N	\N	2025-09-19 14:41:30.626908-06
+134	10	6	4	\N	\N	2025-09-19 14:41:30.626908-06
+135	10	7	3	\N	\N	2025-09-19 14:41:30.626908-06
+136	10	8	4	\N	\N	2025-09-19 14:41:30.626908-06
+137	10	9	3	\N	\N	2025-09-19 14:41:30.626908-06
+138	10	10	5	\N	\N	2025-09-19 14:41:30.626908-06
+139	10	11	4	\N	\N	2025-09-19 14:41:30.626908-06
+140	10	12	5	\N	\N	2025-09-19 14:41:30.626908-06
+141	10	13	4	\N	\N	2025-09-19 14:41:30.626908-06
+142	10	14	5	\N	\N	2025-09-19 14:41:30.626908-06
+143	10	15	2	\N	\N	2025-09-19 14:41:30.626908-06
+144	10	16	\N	\N	fsdfsdfsdfsdfsdfsd	2025-09-19 14:41:30.626908-06
 \.
 
 
@@ -1431,6 +1442,7 @@ COPY public.survey_responses (id, inscripcion_id, ciclo_id, alumno_id, created_a
 7	42	16	31	2025-09-14 19:00:05.90581-06	\N
 8	43	16	32	2025-09-14 19:14:11.169313-06	\N
 9	44	16	33	2025-09-14 20:16:40.291937-06	\N
+10	48	19	16	2025-09-19 14:41:30.626908-06	\N
 \.
 
 
@@ -1438,34 +1450,34 @@ COPY public.survey_responses (id, inscripcion_id, ciclo_id, alumno_id, created_a
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.users (id, first_name, last_name, email, email_verified, hashed_password, is_ipn, boleta, curp, role, is_active, created_at, updated_at, telefono, addr_calle, addr_numero, addr_colonia, addr_municipio, addr_estado, addr_cp, ipn_nivel, ipn_unidad, tutor_telefono) FROM stdin;
-1	Vidal	Salazar Sanchez	vsalazars@ipn.mx	t	$2b$12$1xmDbDA7Jsljg6K1dBGBnua51TY7e9USZ9oyB.zLegdbyQ0aqLaZ2	f	\N	SASV811104HMCLND02	superuser	t	2025-08-23 23:38:52.634036-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-13	Martha	Gomez	culona@mail.com	f	$2b$12$oJ9yPc6fESLwjfwJGMBicuNGa6GKW7cmS6AkYCqqswdEJ7nrcRMP.	f	\N	SASV811104HMCLND06	teacher	f	2025-08-24 22:10:59.375534-06	2025-08-24 22:14:05.822115-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-14	Fer	Lopez	fer@mail.com	f	$2b$12$aph6ob2xn688xxO9zJBOq.98cJ.Dl1G7Eiu/H1gXdBlmSamTy9F3O	f	\N	SASV811104HMCLND07	teacher	f	2025-08-24 22:15:23.689888-06	2025-08-24 22:23:28.222851-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-15	Ara	Zenteno	araq@mail.com	t	$2b$12$szx6dIksqN6csseOSjB.kOSlIHn/SoLNf49yxCJ0Q05bJ0Fmt8OlK	f	\N	SASV811104HMCLND04	teacher	t	2025-08-27 16:14:59.868613-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-11	Miriam	Escudero López	carlos.martinez_delacruz@yahoo.com	t	$2b$12$Vwc8MuT7fPV5LK4z/OuY0.4XpMaVO5gx.FuQwC8N5njyo8gdXDoQS	f	\N	SASV811104HMCLND08	coordinator	t	2025-08-24 19:42:57.689569-06	2025-08-27 20:18:21.433688-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-17	Martha	Culona	marta@mail.com	f	$2b$12$IAWeSVXH3XNISXPyvJDyseTUrK7grnw.PQfwrZO1GTbuOyESWKeoW	t	2026140109	SASV811104HMCLND03	student	t	2025-08-31 17:55:57.927054-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-18	Areli	Nalgo	areli@mail.com	f	$2b$12$vH3nU09L6bGuQXwuYBLsjOKrodxjBp/nIslllgezKIkaXk98XYHZq	f	\N	SASV811104HMCLND21	student	t	2025-08-31 18:54:19.26021-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-19	Carlos Eduardo	Martínez de la Cruz	carlos@mail.com	f	$2b$12$hzCZFEWdVN6GWJvAxcxBW.JEyGRIuICr48eNEn68VFM/NNeXzEuwG	f	\N	SASV811104HMCLND22	student	t	2025-08-31 19:34:45.912325-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-20	Carlos Eduardo	Martínez de la Cruz	carlos2@mail.com	f	$2b$12$V8a7koXg1ZVxA/QF0IpVlu46pChOUwRLy5CwAIy8A7hbZbJmDz4Cq	t	2025087898	SASV811104HMCLND23	student	t	2025-08-31 19:37:06.603383-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-21	alumno1	alumno1	alumno1@mail.com	f	$2b$12$qXnr0WVJqpD/YYzjC2kaBOPUWF2WJJGqgWBQafLgn7iRcuGVKmyFi	t	2023666565	SASV811104HMCLND30	student	t	2025-09-06 14:32:26.015806-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-22	miriam	escudero	miriam@mail.com	f	$2b$12$2rPGH3RRLhbnrMWrsfdUoemp1e.rptVEYezNLYF3Lm.BIYoPr7aZ.	f	\N	SASV811104HMCLND31	student	t	2025-09-06 15:48:59.056555-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-23	ara	zenteno	araceli@mail.com	f	$2b$12$c64qwGTth7.T2byZHYlPx.b/R.XMvsY6bpI1jF43g7Km45P.Eq3IO	f	\N	SASV811104HMCLND32	student	t	2025-09-06 16:07:45.123736-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-24	PAty	Nalgas	capacitacion.technopoli@gmail.com	t	$2b$12$rQH6hGXL1RIU3AI2JQmZi.DfWcRu//qPnxjhSaLUphPe26OFpWOW2	f	\N	SASV811104HMCLND33	teacher	t	2025-09-06 16:45:08.895155-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-12	Araceli	Zenteno Tetona	ara@mail.com	t	$2b$12$Z32/dD.PcXtw5KttagkTtOVCT7HVXJHgwcjsTuKljfdTdUjG0yWdy	f	\N	SASV811104HMCLND05	coordinator	t	2025-08-24 21:49:03.638271-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-32	carmen	carmen	carmen@mail.com	f	$2b$12$25XY0b.VX9pvbWc/ITGoHOr.7R4M4HT/BOmQ4OJRhzbmIf1ly7ZvG	f	\N	SASV811104HMCLNG02	student	t	2025-09-14 19:10:53.943745-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-25	a1	alumno1	a1@mail.com	f	$2b$12$NuOJBZc168TEMcd5S/mz0uOxX2p91ZqKiLBlZvEvID0o4ivxqt8Yy	f	\N	SASV811104HMCLND38	student	t	2025-09-13 16:46:23.922288-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-26	Miriam	Escudero	miri@mail.com	t	$2b$12$870BVLFqiId02RwWWSCgNO/yIHhZBPOnWzcUVFqjWwMm0gXUpgU5q	f	\N	SASV811104HMXLND34	teacher	t	2025-09-14 14:41:38.050611-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-27	Gonzo	Gonzalez	gonzo@mail.com	f	$2b$12$pKx4eTXZsvyFarxlEXXk3evqFr0zI8LqiVV0qGfH.lNgBIsmzvam2	f	\N	SASV811104MMCLND02	student	t	2025-09-14 18:12:45.427441-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-28	Lorena	Culona	lore@mail.com	f	$2b$12$IEgS6CkcM05J43ngWhp15eLzmj.2Zd5yO4wFFgWSOaAPk1J8IFuKy	f	\N	SASV811104HMCLNC02	student	t	2025-09-14 18:23:22.840399-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-29	Elizabeth	Benitez	eli@mail.com	f	$2b$12$YUHnGzdcTDKkm60O4.bfGuPEXvlu2AkjCtsangZePrRFWLBvU4j36	f	\N	SASV811104HMCLNE02	student	t	2025-09-14 18:30:41.872553-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-30	yeni	velia	yeni@mail.com	f	$2b$12$hLdmYiF9tucKLJC6eNBk3e.pgEAS9wVMyllnAIFgbpTlrQeJ70WAO	f	\N	SASV811104HMCLNV02	student	t	2025-09-14 18:52:22.429959-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-31	luisl	liis	luis@mail.com	f	$2b$12$lq3qDCu/2FCm7TdJS9bQn.BNkbU6W1rli4aCT56Obohnt6IMl0Ku.	f	\N	SASV811104HMCLNR02	student	t	2025-09-14 18:58:35.604721-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-33	nancy	camacho	nancy@mail.com	f	$2b$12$cfDQtaRNFCGbeBYJaWZ40eMXdMLTp5WeVcBFf.hGukWPD6lQ478eS	f	\N	SASV811104HMCLNK02	student	t	2025-09-14 20:15:20.327112-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-34	noipn	deprueaba	noipn@mail.com	f	$2b$12$1bFQzVabuILYVWIQDpkFFO/b6qmEzwJxTaz0WkJDkobdyJPf8NsPW	f	\N	SASV811104HMCLNW02	student	t	2025-09-16 14:50:17.065225-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-35	ipn	menoredad	menor@mail.com	f	$2b$12$vB.890nU0DJpqFbayUtXeeCsQWD9q1g12PW84DCgRtfRXWbgbApPO	t	2024100020	SASV091104HMCLND02	student	t	2025-09-16 14:53:40.238814-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-36	menor	noipn	menornoipn@mail.com	f	$2b$12$2khi7Mm0Ab1.p6bcGjrqGep.O34/VVgqlsTevO9s93zoFbGWcoZLa	f	\N	SASV091104HMCLND05	student	t	2025-09-16 14:57:18.461475-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
-16	Lia Romina Nazareth	Salazar Sánchez	vidalsalazarsanchez@gmail.com	f	$2b$12$...QUEVEXCVV43XbDaY48uziY8iqQ8HVA1GE2eFCEjbrW/XJ9H9T2	t	2025087898	SASV811104HMCLND09	student	t	2025-08-28 18:10:41.151123-06	2025-09-16 19:13:36.05549-06	5532354608	norte 22	4121	Sanchez 3a seccion	gustavo a madero	ciudad de mexico	07839	Medio superior	CECyT 15	\N
+COPY public.users (id, first_name, last_name, email, email_verified, hashed_password, is_ipn, boleta, curp, role, is_active, created_at, updated_at, telefono, addr_calle, addr_numero, addr_colonia, addr_municipio, addr_estado, addr_cp, ipn_nivel, ipn_unidad, tutor_telefono, tutor_nombre, tutor_parentesco) FROM stdin;
+1	Vidal	Salazar Sanchez	vsalazars@ipn.mx	t	$2b$12$1xmDbDA7Jsljg6K1dBGBnua51TY7e9USZ9oyB.zLegdbyQ0aqLaZ2	f	\N	SASV811104HMCLND02	superuser	t	2025-08-23 23:38:52.634036-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+13	Martha	Gomez	culona@mail.com	f	$2b$12$oJ9yPc6fESLwjfwJGMBicuNGa6GKW7cmS6AkYCqqswdEJ7nrcRMP.	f	\N	SASV811104HMCLND06	teacher	f	2025-08-24 22:10:59.375534-06	2025-08-24 22:14:05.822115-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+14	Fer	Lopez	fer@mail.com	f	$2b$12$aph6ob2xn688xxO9zJBOq.98cJ.Dl1G7Eiu/H1gXdBlmSamTy9F3O	f	\N	SASV811104HMCLND07	teacher	f	2025-08-24 22:15:23.689888-06	2025-08-24 22:23:28.222851-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+15	Ara	Zenteno	araq@mail.com	t	$2b$12$szx6dIksqN6csseOSjB.kOSlIHn/SoLNf49yxCJ0Q05bJ0Fmt8OlK	f	\N	SASV811104HMCLND04	teacher	t	2025-08-27 16:14:59.868613-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+11	Miriam	Escudero López	carlos.martinez_delacruz@yahoo.com	t	$2b$12$Vwc8MuT7fPV5LK4z/OuY0.4XpMaVO5gx.FuQwC8N5njyo8gdXDoQS	f	\N	SASV811104HMCLND08	coordinator	t	2025-08-24 19:42:57.689569-06	2025-08-27 20:18:21.433688-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+17	Martha	Culona	marta@mail.com	f	$2b$12$IAWeSVXH3XNISXPyvJDyseTUrK7grnw.PQfwrZO1GTbuOyESWKeoW	t	2026140109	SASV811104HMCLND03	student	t	2025-08-31 17:55:57.927054-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+18	Areli	Nalgo	areli@mail.com	f	$2b$12$vH3nU09L6bGuQXwuYBLsjOKrodxjBp/nIslllgezKIkaXk98XYHZq	f	\N	SASV811104HMCLND21	student	t	2025-08-31 18:54:19.26021-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+19	Carlos Eduardo	Martínez de la Cruz	carlos@mail.com	f	$2b$12$hzCZFEWdVN6GWJvAxcxBW.JEyGRIuICr48eNEn68VFM/NNeXzEuwG	f	\N	SASV811104HMCLND22	student	t	2025-08-31 19:34:45.912325-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+20	Carlos Eduardo	Martínez de la Cruz	carlos2@mail.com	f	$2b$12$V8a7koXg1ZVxA/QF0IpVlu46pChOUwRLy5CwAIy8A7hbZbJmDz4Cq	t	2025087898	SASV811104HMCLND23	student	t	2025-08-31 19:37:06.603383-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+21	alumno1	alumno1	alumno1@mail.com	f	$2b$12$qXnr0WVJqpD/YYzjC2kaBOPUWF2WJJGqgWBQafLgn7iRcuGVKmyFi	t	2023666565	SASV811104HMCLND30	student	t	2025-09-06 14:32:26.015806-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+22	miriam	escudero	miriam@mail.com	f	$2b$12$2rPGH3RRLhbnrMWrsfdUoemp1e.rptVEYezNLYF3Lm.BIYoPr7aZ.	f	\N	SASV811104HMCLND31	student	t	2025-09-06 15:48:59.056555-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+23	ara	zenteno	araceli@mail.com	f	$2b$12$c64qwGTth7.T2byZHYlPx.b/R.XMvsY6bpI1jF43g7Km45P.Eq3IO	f	\N	SASV811104HMCLND32	student	t	2025-09-06 16:07:45.123736-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+24	PAty	Nalgas	capacitacion.technopoli@gmail.com	t	$2b$12$rQH6hGXL1RIU3AI2JQmZi.DfWcRu//qPnxjhSaLUphPe26OFpWOW2	f	\N	SASV811104HMCLND33	teacher	t	2025-09-06 16:45:08.895155-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+12	Araceli	Zenteno Tetona	ara@mail.com	t	$2b$12$Z32/dD.PcXtw5KttagkTtOVCT7HVXJHgwcjsTuKljfdTdUjG0yWdy	f	\N	SASV811104HMCLND05	coordinator	t	2025-08-24 21:49:03.638271-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+32	carmen	carmen	carmen@mail.com	f	$2b$12$25XY0b.VX9pvbWc/ITGoHOr.7R4M4HT/BOmQ4OJRhzbmIf1ly7ZvG	f	\N	SASV811104HMCLNG02	student	t	2025-09-14 19:10:53.943745-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+25	a1	alumno1	a1@mail.com	f	$2b$12$NuOJBZc168TEMcd5S/mz0uOxX2p91ZqKiLBlZvEvID0o4ivxqt8Yy	f	\N	SASV811104HMCLND38	student	t	2025-09-13 16:46:23.922288-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+26	Miriam	Escudero	miri@mail.com	t	$2b$12$870BVLFqiId02RwWWSCgNO/yIHhZBPOnWzcUVFqjWwMm0gXUpgU5q	f	\N	SASV811104HMXLND34	teacher	t	2025-09-14 14:41:38.050611-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+27	Gonzo	Gonzalez	gonzo@mail.com	f	$2b$12$pKx4eTXZsvyFarxlEXXk3evqFr0zI8LqiVV0qGfH.lNgBIsmzvam2	f	\N	SASV811104MMCLND02	student	t	2025-09-14 18:12:45.427441-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+28	Lorena	Culona	lore@mail.com	f	$2b$12$IEgS6CkcM05J43ngWhp15eLzmj.2Zd5yO4wFFgWSOaAPk1J8IFuKy	f	\N	SASV811104HMCLNC02	student	t	2025-09-14 18:23:22.840399-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+29	Elizabeth	Benitez	eli@mail.com	f	$2b$12$YUHnGzdcTDKkm60O4.bfGuPEXvlu2AkjCtsangZePrRFWLBvU4j36	f	\N	SASV811104HMCLNE02	student	t	2025-09-14 18:30:41.872553-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+30	yeni	velia	yeni@mail.com	f	$2b$12$hLdmYiF9tucKLJC6eNBk3e.pgEAS9wVMyllnAIFgbpTlrQeJ70WAO	f	\N	SASV811104HMCLNV02	student	t	2025-09-14 18:52:22.429959-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+31	luisl	liis	luis@mail.com	f	$2b$12$lq3qDCu/2FCm7TdJS9bQn.BNkbU6W1rli4aCT56Obohnt6IMl0Ku.	f	\N	SASV811104HMCLNR02	student	t	2025-09-14 18:58:35.604721-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+33	nancy	camacho	nancy@mail.com	f	$2b$12$cfDQtaRNFCGbeBYJaWZ40eMXdMLTp5WeVcBFf.hGukWPD6lQ478eS	f	\N	SASV811104HMCLNK02	student	t	2025-09-14 20:15:20.327112-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+34	noipn	deprueaba	noipn@mail.com	f	$2b$12$1bFQzVabuILYVWIQDpkFFO/b6qmEzwJxTaz0WkJDkobdyJPf8NsPW	f	\N	SASV811104HMCLNW02	student	t	2025-09-16 14:50:17.065225-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+36	menor	noipn	menornoipn@mail.com	f	$2b$12$2khi7Mm0Ab1.p6bcGjrqGep.O34/VVgqlsTevO9s93zoFbGWcoZLa	f	\N	SASV091104HMCLND05	student	t	2025-09-16 14:57:18.461475-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+16	Lia Romina Nazareth	Salazar Sánchez	vidalsalazarsanchez@gmail.com	f	$2b$12$...QUEVEXCVV43XbDaY48uziY8iqQ8HVA1GE2eFCEjbrW/XJ9H9T2	t	2025087898	SASV811104HMCLND09	student	t	2025-08-28 18:10:41.151123-06	2025-09-18 14:42:54.345035-06	5532354608	norte 22	4121	Sanchez 3a seccion	gustavo a madero	ciudad de mexico	07839	Superior	UPIITA	\N	\N	\N
+35	ipn	menoredad	menor@mail.com	f	$2b$12$vB.890nU0DJpqFbayUtXeeCsQWD9q1g12PW84DCgRtfRXWbgbApPO	t	2024100020	SASV091104HMCLND02	student	t	2025-09-16 14:53:40.238814-06	2025-09-19 13:27:37.531048-06	5532356969	lazarop	26	Ejidos	Azcapotzalco	Ciudad de Mexico	07839	Medio superior	CET 1	5532569896	Miriam Escudero  Cara Bonita	Madre
 \.
 
 
@@ -1473,28 +1485,35 @@ COPY public.users (id, first_name, last_name, email, email_verified, hashed_pass
 -- Name: asistencia_registro_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.asistencia_registro_id_seq', 35, true);
+SELECT pg_catalog.setval('public.asistencia_registro_id_seq', 51, true);
 
 
 --
 -- Name: asistencia_sesion_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.asistencia_sesion_id_seq', 4430, true);
+SELECT pg_catalog.setval('public.asistencia_sesion_id_seq', 118, true);
 
 
 --
 -- Name: ciclos_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.ciclos_id_seq', 22, true);
+SELECT pg_catalog.setval('public.ciclos_id_seq', 23, true);
+
+
+--
+-- Name: encuesta_docente_respuestas_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.encuesta_docente_respuestas_id_seq', 1, false);
 
 
 --
 -- Name: evaluaciones_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.evaluaciones_id_seq', 6, true);
+SELECT pg_catalog.setval('public.evaluaciones_id_seq', 7, true);
 
 
 --
@@ -1508,7 +1527,7 @@ SELECT pg_catalog.setval('public.grupos_id_seq', 1, false);
 -- Name: inscripciones_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.inscripciones_id_seq', 46, true);
+SELECT pg_catalog.setval('public.inscripciones_id_seq', 48, true);
 
 
 --
@@ -1529,7 +1548,7 @@ SELECT pg_catalog.setval('public.placement_registros_id_seq', 10, true);
 -- Name: survey_answers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.survey_answers_id_seq', 128, true);
+SELECT pg_catalog.setval('public.survey_answers_id_seq', 144, true);
 
 
 --
@@ -1550,7 +1569,7 @@ SELECT pg_catalog.setval('public.survey_questions_id_seq', 17, true);
 -- Name: survey_responses_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.survey_responses_id_seq', 9, true);
+SELECT pg_catalog.setval('public.survey_responses_id_seq', 10, true);
 
 
 --
@@ -1582,6 +1601,14 @@ ALTER TABLE ONLY public.asistencia_sesion
 
 ALTER TABLE ONLY public.ciclos
     ADD CONSTRAINT ciclos_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: encuesta_docente_respuestas encuesta_docente_respuestas_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.encuesta_docente_respuestas
+    ADD CONSTRAINT encuesta_docente_respuestas_pkey PRIMARY KEY (id);
 
 
 --
@@ -1822,6 +1849,34 @@ CREATE INDEX ix_ciclos_id ON public.ciclos USING btree (id);
 
 
 --
+-- Name: ix_encuesta_docente_respuestas_ciclo_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_encuesta_docente_respuestas_ciclo_id ON public.encuesta_docente_respuestas USING btree (ciclo_id);
+
+
+--
+-- Name: ix_encuesta_docente_respuestas_docente_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_encuesta_docente_respuestas_docente_id ON public.encuesta_docente_respuestas USING btree (docente_id);
+
+
+--
+-- Name: ix_encuesta_docente_respuestas_grupo_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_encuesta_docente_respuestas_grupo_id ON public.encuesta_docente_respuestas USING btree (grupo_id);
+
+
+--
+-- Name: ix_encuesta_docente_respuestas_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_encuesta_docente_respuestas_id ON public.encuesta_docente_respuestas USING btree (id);
+
+
+--
 -- Name: ix_grupos_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2014,7 +2069,7 @@ CREATE INDEX ix_users_id ON public.users USING btree (id);
 -- Name: ux_insc_activa_alumno_ciclo; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE UNIQUE INDEX ux_insc_activa_alumno_ciclo ON public.inscripciones USING btree (alumno_id, ciclo_id) WHERE ((status)::text = ANY ((ARRAY['registrada'::character varying, 'preinscrita'::character varying, 'confirmada'::character varying])::text[]));
+CREATE UNIQUE INDEX ux_insc_activa_alumno_ciclo ON public.inscripciones USING btree (alumno_id, ciclo_id) WHERE ((status)::text = ANY (ARRAY[('registrada'::character varying)::text, ('preinscrita'::character varying)::text, ('confirmada'::character varying)::text]));
 
 
 --
@@ -2060,6 +2115,22 @@ ALTER TABLE ONLY public.asistencia_registro
 
 ALTER TABLE ONLY public.asistencia_registro
     ADD CONSTRAINT asistencia_registro_sesion_id_fkey FOREIGN KEY (sesion_id) REFERENCES public.asistencia_sesion(id) ON DELETE CASCADE;
+
+
+--
+-- Name: encuesta_docente_respuestas encuesta_docente_respuestas_ciclo_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.encuesta_docente_respuestas
+    ADD CONSTRAINT encuesta_docente_respuestas_ciclo_id_fkey FOREIGN KEY (ciclo_id) REFERENCES public.ciclos(id) ON DELETE CASCADE;
+
+
+--
+-- Name: encuesta_docente_respuestas encuesta_docente_respuestas_docente_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.encuesta_docente_respuestas
+    ADD CONSTRAINT encuesta_docente_respuestas_docente_id_fkey FOREIGN KEY (docente_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --

@@ -10,7 +10,8 @@ import {
   Shield,
   LogOut,
   User,
-  Target, // 👈 ícono para Colocación
+  Target, // 👈 Colocación
+  BarChart3, // 👈 NUEVO: icono para Encuestas
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import UserInfo from "./UserInfo";
@@ -18,8 +19,9 @@ import UserInfo from "./UserInfo";
 export type TeacherSection =
   | "overview"
   | "groups"
-  | "attendance" // 👈 existente
-  | "placement"  // 👈 NUEVO
+  | "attendance" // existente
+  | "placement"  // NUEVO
+  | "surveys"    // 👈 NUEVO: Encuestas
   | "materials"
   | "evaluations"
   | "settings"
@@ -37,7 +39,8 @@ export default function DocenteSidebarNav({
   const items: { key: TeacherSection; label: string; icon: ReactNode }[] = [
     { key: "overview", label: "Resumen", icon: <LayoutDashboard className="h-4 w-4" /> },
     { key: "groups", label: "Mis grupos", icon: <Layers className="h-4 w-4" /> },
-    { key: "placement", label: "Colocación", icon: <Target className="h-4 w-4" /> }, // 👈 NUEVO
+    { key: "placement", label: "Colocación", icon: <Target className="h-4 w-4" /> }, // NUEVO
+    { key: "surveys", label: "Encuestas", icon: <BarChart3 className="h-4 w-4" /> }, // 👈 NUEVO
     { key: "materials", label: "Materiales", icon: <FileStack className="h-4 w-4" /> },
     { key: "evaluations", label: "Evaluaciones", icon: <ClipboardCheck className="h-4 w-4" /> },
     { key: "settings", label: "Configuración", icon: <Settings2 className="h-4 w-4" /> },

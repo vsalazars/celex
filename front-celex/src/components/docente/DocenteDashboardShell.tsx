@@ -9,6 +9,7 @@ import EvaluationsSection from "./sections/EvaluationsSection";
 import SettingsSection from "./sections/SettingsSection";
 import SecuritySection from "./sections/SecuritySection";
 import PlacementSection from "./sections/PlacementSection"; // 👈 NUEVO
+import EncuestasSection from "./sections/EncuestasSection"; // 👈 NUEVO
 
 export default function DocenteDashboardShell() {
   const [active, setActive] = useState<TeacherSection>("overview");
@@ -19,7 +20,8 @@ export default function DocenteDashboardShell() {
       <section className="flex-1 p-6">
         {active === "overview"    && <OverviewSection />}
         {active === "groups"      && <GroupsSection />}
-        {active === "placement"   && <PlacementSection />}   {/* 👈 NUEVO */}
+        {active === "placement"   && <PlacementSection />}   {/* NUEVO */}
+        {active === "surveys"     && <EncuestasSection />}   {/* 👈 NUEVO */}
         {active === "materials"   && <MaterialsSection />}
         {active === "evaluations" && <EvaluationsSection />}
         {active === "settings"    && <SettingsSection />}
