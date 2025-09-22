@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date   # ← añade date
 from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, constr, conint  # ← añade constr, conint
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -238,4 +238,70 @@ def stats_admin(
         "cupo_total": cupo_total,
         "ocupados": int(ocupados),
         "disponibles": disponibles,
+    }
+
+
+
+# ==========================
+# PATCH (admin): corregir datos de pago de un registro
+# ==========================
+# ⚠️ Define el modelo **antes** de la ruta para evitar el error de Pydantic v2
+class UpdateRegistroPagoIn(BaseModel):
+    referencia: constr(strip_whitespace=True, min_length=1, max_length=50)
+    # en centavos, > 0 y un límite razonable
+    importe_centavos: conint(strict=True, gt=0, le=1_000_000_000)
+    # acepta objeto date (si te llega "YYYY-MM-DD", FastAPI lo parsea)
+    fecha_pago: date
+
+@router.patch("/registros/{registro_id}/pago-admin")
+def update_registro_pago_admin(
+    registro_id: int,
+    payload: UpdateRegistroPagoIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_coordinator_or_admin),
+):
+    """
+    Permite a coordinación/administración corregir referencia / importe_centavos / fecha_pago
+    de un registro de examen de colocación **antes** de su validación.
+    Estados permitidos para editar: PREINSCRITA.
+    """
+    reg = db.get(PlacementRegistro, registro_id)  # type: ignore[attr-defined]
+    if not reg:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+    # Solo permitir edición cuando aún no está validada
+    estado_actual = getattr(reg.status, "name", None) or str(reg.status).upper()
+    if estado_actual != "PREINSCRITA":
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se puede modificar en estado '{estado_actual}'. Debe estar en PREINSCRITA.",
+        )
+
+    # Fecha no futura
+    if payload.fecha_pago > date.today():
+        raise HTTPException(status_code=422, detail="fecha_pago no puede ser futura")
+
+    # Aplicar cambios
+    reg.referencia = payload.referencia
+    reg.importe_centavos = int(payload.importe_centavos)
+    reg.fecha_pago = payload.fecha_pago
+
+    db.add(reg)
+    db.commit()
+    db.refresh(reg)
+
+    return {
+        "id": reg.id,
+        "exam_id": reg.exam_id,
+        "status": getattr(reg.status, "value", str(reg.status)),
+        "referencia": reg.referencia,
+        "importe_centavos": reg.importe_centavos,
+        "fecha_pago": reg.fecha_pago,
+        "comprobante": _comprobante_to_meta(  # noqa: F821 - helper existente en tu módulo
+            reg.comprobante_path, reg.comprobante_mime, reg.comprobante_size
+        ),
+        "created_at": reg.created_at,
+        "rechazo_motivo": getattr(reg, "rechazo_motivo", None),
+        "validation_notes": getattr(reg, "validation_notes", None),
+        "nivel_idioma": getattr(reg, "nivel_idioma", None),
     }

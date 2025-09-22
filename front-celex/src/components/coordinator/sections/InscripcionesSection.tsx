@@ -40,7 +40,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 
-
 type StatusFiltro =
   | "todas"
   | "registrada"
@@ -106,9 +105,59 @@ export default function InscripcionesSection() {
     motivo: "",
   });
 
+  // ====== Estado de edición de pago (encabezado modal) ======
+  const [editReferencia, setEditReferencia] = useState<string>("");
+  const [editImporteStr, setEditImporteStr] = useState<string>(""); // en $ MXN con decimales
+  const [editFecha, setEditFecha] = useState<string>("");           // YYYY-MM-DD
+  const [savingPago, setSavingPago] = useState<boolean>(false);
+
+  const hoyIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
   function openReject(ins: InscripcionDTO) {
     const nombre = `${ins.alumno?.first_name ?? ""} ${ins.alumno?.last_name ?? ""}`.trim();
     setReject({ open: true, id: ins.id, nombre, motivo: "" });
+  }
+
+  // ====== Helpers de dinero ======
+  function centsToMoney(cents?: number | null): string {
+    if (cents == null) return "";
+    const n = Number(cents) / 100;
+    try {
+      return n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+    } catch {
+      return `$${n.toFixed(2)}`;
+    }
+  }
+  function moneyStrToCents(v: string): number | null {
+    if (!v.trim()) return null;
+    // elimina símbolos/espacios, cambia coma por punto
+    const cleaned = v.replace(/[^\d.,-]/g, "").replace(",", ".");
+    const num = Number(cleaned);
+    if (Number.isNaN(num)) return null;
+    return Math.round(num * 100);
+  }
+
+  // ====== API local: PATCH pago ======
+  async function updatePagoInscripcionCoord(
+    id: number,
+    data: { referencia: string; importe_centavos: number; fecha_pago: string }
+  ) {
+    const token = getToken();
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/coordinacion/inscripciones/${id}/pago`;
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      let msg = `Error ${res.status}`;
+      try { const j = await res.json(); msg = j?.detail || msg; } catch {}
+      throw new Error(msg);
+    }
+    return (await res.json()) as InscripcionDTO;
   }
 
   // ====== Cargar ciclos ======
@@ -183,6 +232,17 @@ export default function InscripcionesSection() {
     setRotation(0);
     setFit("contain");
 
+    // precarga de campos de pago (si es trámite pago)
+    if (ins.tipo === "pago") {
+      setEditReferencia(ins.referencia ?? "");
+      setEditImporteStr(ins.importe_centavos != null ? (Number(ins.importe_centavos) / 100).toFixed(2) : "");
+      setEditFecha(ins.fecha_pago ? String(ins.fecha_pago) : "");
+    } else {
+      setEditReferencia("");
+      setEditImporteStr("");
+      setEditFecha("");
+    }
+
     try {
       const token = getToken();
       const url = new URL(
@@ -227,6 +287,57 @@ export default function InscripcionesSection() {
     setZoom(1);
     setRotation(0);
     setFit("contain");
+    // limpia editor
+    setEditReferencia("");
+    setEditImporteStr("");
+    setEditFecha("");
+    setSavingPago(false);
+  }
+
+  // ====== Guardar corrección de pago ======
+  async function onSavePago() {
+    if (!preview.ins) return;
+    if (preview.ins.tipo !== "pago") return;
+
+    const referencia = editReferencia.trim();
+    const importe_centavos = moneyStrToCents(editImporteStr);
+    const fecha_pago = editFecha;
+
+    if (!referencia) {
+      toast.error("La referencia es requerida");
+      return;
+    }
+    if (importe_centavos == null || importe_centavos <= 0) {
+      toast.error("El importe debe ser un número válido mayor a 0");
+      return;
+    }
+    if (!fecha_pago) {
+      toast.error("La fecha de pago es requerida");
+      return;
+    }
+    if (fecha_pago > hoyIso) {
+      toast.error("La fecha de pago no puede ser futura");
+      return;
+    }
+
+    try {
+      setSavingPago(true);
+      const updated = await updatePagoInscripcionCoord(preview.ins.id, {
+        referencia,
+        importe_centavos,
+        fecha_pago,
+      });
+
+      // actualiza tabla
+      setRows((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
+      // actualiza el objeto en preview
+      setPreview((p) => (p.ins ? { ...p, ins: { ...p.ins!, ...updated } } : p));
+      toast.success("Datos de pago actualizados");
+    } catch (err: any) {
+      toast.error(typeof err?.message === "string" ? err.message : "No se pudo actualizar el pago");
+    } finally {
+      setSavingPago(false);
+    }
   }
 
   // ====== Inicial ======
@@ -305,36 +416,35 @@ export default function InscripcionesSection() {
   }
 
   const STATUS_STYLES: Record<
-  Exclude<StatusFiltro, "todas">,
-  { label: string; className: string }
-> = {
-  registrada: {
-    label: "Registrada",
-    className:
-      "bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-900/40 dark:text-slate-200",
-  },
-  preinscrita: {
-    label: "Preinscrita",
-    className:
-      "bg-amber-100 text-amber-900 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200",
-  },
-  confirmada: {
-    label: "Confirmada",
-    className:
-      "bg-emerald-100 text-emerald-900 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200",
-  },
-  rechazada: {
-    label: "Rechazada",
-    className:
-      "bg-red-100 text-red-900 border-red-200 dark:bg-red-900/30 dark:text-red-200",
-  },
-  cancelada: {
-    label: "Cancelada",
-    className:
-      "bg-zinc-100 text-zinc-900 border-zinc-200 dark:bg-zinc-900/40 dark:text-zinc-200",
-  },
-};
-
+    Exclude<StatusFiltro, "todas">,
+    { label: string; className: string }
+  > = {
+    registrada: {
+      label: "Registrada",
+      className:
+        "bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-900/40 dark:text-slate-200",
+    },
+    preinscrita: {
+      label: "Preinscrita",
+      className:
+        "bg-amber-100 text-amber-900 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200",
+    },
+    confirmada: {
+      label: "Confirmada",
+      className:
+        "bg-emerald-100 text-emerald-900 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200",
+    },
+    rechazada: {
+      label: "Rechazada",
+      className:
+        "bg-red-100 text-red-900 border-red-200 dark:bg-red-900/30 dark:text-red-200",
+    },
+    cancelada: {
+      label: "Cancelada",
+      className:
+        "bg-zinc-100 text-zinc-900 border-zinc-200 dark:bg-zinc-900/40 dark:text-zinc-200",
+    },
+  };
 
   return (
     <>
@@ -516,22 +626,18 @@ export default function InscripcionesSection() {
       {/* ====== VISOR (layout flex: no rebasa; PDF e imágenes adentro) ====== */}
       <Dialog open={preview.open} onOpenChange={(o) => (o ? null : closePreview())}>
         <DialogContent
-            className={
-              `${isFull
-                ? "w-screen h-screen max-w-none max-h-none"
-                : [
-                    // ancho MUY amplio por defecto
-                    "w-[98vw]",
-                    // anula el max-w por defecto del modal
-                    "max-w-none sm:max-w-none",
-                    // y si quieres, limita un poco en pantallas grandes:
-                    "lg:max-w-[1400px] xl:max-w-[1600px]",
-                    // alto
-                    "h-[90vh] max-h-[90vh]"
-                  ].join(" ")
-              } p-0 overflow-hidden`
-            }
-          >
+          className={
+            `${isFull
+              ? "w-screen h-screen max-w-none max-h-none"
+              : [
+                  "w-[98vw]",
+                  "max-w-none sm:max-w-none",
+                  "lg:max-w-[1400px] xl:max-w-[1600px]",
+                  "h-[90vh] max-h-[90vh]"
+                ].join(" ")
+            } p-0 overflow-hidden`
+          }
+        >
           {/* Contenedor en columnas para evitar overflow */}
           <div className="flex h-full flex-col">
             {/* Toolbar */}
@@ -543,9 +649,62 @@ export default function InscripcionesSection() {
                   {preview.tipo === "exencion" && "Comprobante de exención"}
                   {preview.ins ? ` · ${preview.ins.alumno?.first_name || ""} ${preview.ins.alumno?.last_name || ""}` : ""}
                 </DialogTitle>
+                {/* ====== Editor compacto de pago ====== */}
+                {preview.ins?.tipo === "pago" && (
+                  <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {/* Referencia */}
+                    <div className="flex items-center gap-2">
+                      <label className="text-[11px] text-muted-foreground min-w-[72px]">Referencia</label>
+                      <Input
+                        value={editReferencia}
+                        onChange={(e) => setEditReferencia(e.target.value)}
+                        placeholder="Ej. BAN-012345"
+                        className="h-8"
+                      />
+                    </div>
+                    {/* Importe */}
+                    <div className="flex items-center gap-2">
+                      <label className="text-[11px] text-muted-foreground min-w-[56px]">Importe</label>
+                      <Input
+                        value={editImporteStr}
+                        onChange={(e) => setEditImporteStr(e.target.value)}
+                        placeholder="4100.75"
+                        className="h-8"
+                        inputMode="decimal"
+                      />
+                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                        {centsToMoney(moneyStrToCents(editImporteStr) ?? undefined)}
+                      </span>
+                    </div>
+                    {/* Fecha */}
+                    <div className="flex items-center gap-2">
+                      <label className="text-[11px] text-muted-foreground min-w-[44px]">Fecha</label>
+                      <Input
+                        type="date"
+                        value={editFecha}
+                        onChange={(e) => setEditFecha(e.target.value)}
+                        className="h-8"
+                        max={hoyIso}
+                      />
+                    </div>
+                  </div>
+                )}
               </DialogHeader>
 
               <div className="flex items-center gap-2">
+                {/* Guardar pago */}
+                {preview.ins?.tipo === "pago" && (
+                  <Button
+                    size="sm"
+                    onClick={onSavePago}
+                    disabled={savingPago}
+                    title="Guardar corrección de pago"
+                  >
+                    {savingPago ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                    Guardar pago
+                  </Button>
+                )}
+
                 {/* Controles de IMAGEN */}
                 {!preview.isPdf && (
                   <>

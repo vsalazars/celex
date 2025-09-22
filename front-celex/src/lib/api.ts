@@ -1604,3 +1604,25 @@ export async function getCoordComentariosRecientes(params?: {
   });
   return apiFetch<CoordComentario[]>(url, { auth: true });
 }
+
+/* ===== Montos (inscripciones + placement) ===== */
+export type CoordMontosOut = {
+  /** Suma de importes validados de inscripciones (MXN) */
+  inscripciones_total_mxn: number;
+  /** Suma de importes validados de exámenes de colocación (MXN) */
+  placement_total_mxn: number;
+  /** Total combinado (MXN) */
+  total_mxn: number;
+};
+
+/** Montos combinados — sólo aplica cuando el selector está en "Todos los ciclos" */
+export async function getCoordMontos(params?: {
+  anio?: number;
+  idioma?: string;
+}): Promise<CoordMontosOut> {
+  const url = buildURL("/coordinacion/resumen/montos", {
+    anio: params?.anio,
+    idioma: params?.idioma,
+  });
+  return apiFetch<CoordMontosOut>(url, { auth: true });
+}

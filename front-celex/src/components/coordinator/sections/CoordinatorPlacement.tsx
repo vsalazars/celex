@@ -397,8 +397,45 @@ export default function CoordinatorPlacement() {
   const [viewerMime, setViewerMime] = React.useState<string | null>(null);
   const [viewerName, setViewerName] = React.useState<string>("comprobante");
 
+  // === NUEVO: estado para edición en encabezado (corrección por admin) ===
+  const [editRegId, setEditRegId] = React.useState<number | null>(null);
+  const [editStatus, setEditStatus] = React.useState<string>("");
+  const [editReferencia, setEditReferencia] = React.useState<string>("");
+  const [editImporteStr, setEditImporteStr] = React.useState<string>("");
+  const [editFecha, setEditFecha] = React.useState<string>("");
+  const [savingEdit, setSavingEdit] = React.useState<boolean>(false);
+  const todayIso = React.useMemo(() => new Date().toISOString().slice(0,10), []);
+  function moneyStrToCents(v: string): number | null {
+    if (!v.trim()) return null;
+    const cleaned = v.replace(/[^\d.,-]/g, "").replace(",", ".");
+    const num = Number(cleaned);
+    if (Number.isNaN(num)) return null;
+    return Math.round(num * 100);
+  }
+
   const openViewer = async (regId: number) => {
     try {
+      // Prefill edición con datos del registro en memoria
+      const row = payRows.find((r) => r.id === regId);
+      if (row) {
+        setEditRegId(regId);
+        const st = (row.status || "").toLowerCase();
+        setEditStatus(st);
+        setEditReferencia(row.referencia ?? "");
+        setEditImporteStr(
+          typeof row.importe_centavos === "number"
+            ? (row.importe_centavos / 100).toFixed(2)
+            : ""
+        );
+        setEditFecha(row.fecha_pago ?? "");
+      } else {
+        setEditRegId(regId);
+        setEditStatus("");
+        setEditReferencia("");
+        setEditImporteStr("");
+        setEditFecha("");
+      }
+
       const res = await fetch(`${API_URL}/placement-exams/registros/${regId}/comprobante-admin`, {
         headers: { ...authHeaders(), Accept: "*/*" },
       });
@@ -425,6 +462,13 @@ export default function CoordinatorPlacement() {
     setViewerUrl(null);
     setViewerMime(null);
     setViewerOpen(false);
+    // limpiar edición
+    setEditRegId(null);
+    setEditStatus("");
+    setEditReferencia("");
+    setEditImporteStr("");
+    setEditFecha("");
+    setSavingEdit(false);
   };
 
   React.useEffect(() => {
@@ -432,6 +476,47 @@ export default function CoordinatorPlacement() {
       if (viewerUrl) URL.revokeObjectURL(viewerUrl);
     };
   }, [viewerUrl]);
+
+  // === NUEVO: guardar corrección (PATCH admin) ===
+  const saveEditPago = async () => {
+    if (!editRegId) return;
+    const referencia = editReferencia.trim();
+    const importe_centavos = moneyStrToCents(editImporteStr);
+    const fecha_pago = editFecha;
+
+    if (!referencia) { toast.error("La referencia es requerida"); return; }
+    if (importe_centavos == null || importe_centavos <= 0) { toast.error("El importe debe ser válido y > 0"); return; }
+    if (!fecha_pago) { toast.error("La fecha de pago es requerida"); return; }
+    if (fecha_pago > todayIso) { toast.error("La fecha de pago no puede ser futura"); return; }
+
+    try {
+      setSavingEdit(true);
+      const res = await fetch(`${API_URL}/placement-exams/registros/${editRegId}/pago-admin`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ referencia, importe_centavos, fecha_pago }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || `Error ${res.status}`);
+      }
+      const updated = await res.json();
+
+      // Actualiza la tabla del sheet
+      setPayRows((prev) =>
+        prev.map((r) => (r.id === updated.id
+          ? { ...r, referencia: updated.referencia, importe_centavos: updated.importe_centavos, fecha_pago: updated.fecha_pago }
+          : r
+        ))
+      );
+
+      toast.success("Datos de pago actualizados");
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo actualizar el pago");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   /* ====== REJECT MODAL (motivo rechazo) ====== */
   const [rejectOpen, setRejectOpen] = React.useState(false);
@@ -1021,20 +1106,58 @@ export default function CoordinatorPlacement() {
         <DialogContent className="!max-w-[95vw] !w-[95vw] sm:!max-w-6xl p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6">
             <DialogTitle className="truncate">{viewerName}</DialogTitle>
-            <DialogDescription className="flex items-center gap-3">
-              Vista previa del comprobante.{" "}
-              {viewerUrl && (
-                <a
-                  href={viewerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  Abrir en nueva pestaña
-                </a>
-              )}
+            {/* DialogDescription solo texto para evitar <div> dentro de <p> */}
+            <DialogDescription className="text-muted-foreground text-sm">
+              Vista previa del comprobante. Puedes corregir los datos si el registro está <strong>preinscrita</strong>.
             </DialogDescription>
           </DialogHeader>
+
+          {/* ====== Bloque de edición en encabezado (FUERA del DialogDescription) ====== */}
+          {editRegId && editStatus === "preinscrita" && (
+            <div className="px-6 pb-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                <div className="flex flex-col">
+                  <Label className="text-xs">Referencia</Label>
+                  <Input
+                    className="h-8"
+                    value={editReferencia}
+                    onChange={(e) => setEditReferencia(e.target.value)}
+                    placeholder="Ej. BAN-012345"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <Label className="text-xs">Importe (MXN)</Label>
+                  <Input
+                    className="h-8"
+                    value={editImporteStr}
+                    onChange={(e) => setEditImporteStr(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="4100.75"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <Label className="text-xs">Fecha de pago</Label>
+                  <Input
+                    className="h-8"
+                    type="date"
+                    value={editFecha}
+                    onChange={(e) => setEditFecha(e.target.value)}
+                    max={todayIso}
+                  />
+                </div>
+                <div className="flex md:justify-end">
+                  <Button
+                    className="h-8"
+                    onClick={saveEditPago}
+                    disabled={savingEdit}
+                    title="Guardar corrección de pago"
+                  >
+                    {savingEdit ? "Guardando…" : "Guardar"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="px-6 pb-6">
             {viewerUrl ? (

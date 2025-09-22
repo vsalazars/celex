@@ -1142,44 +1142,465 @@ export async function getPlacementExamsCapacityPublic(ids: (number | string)[]) 
   }
 }
 
+// ===== Historial de alumno (Coordinación) =====
+export type HistorialAsistenciaSummary = {
+  presentes: number;
+  ausentes: number;
+  retardos: number;
+  justificados: number;
+  total_sesiones: number;
+  porcentaje_asistencia: number;
+};
+
+export type HistorialCicloItem = {
+  inscripcion_id: number;
+  ciclo_id: number;
+  ciclo_codigo: string;
+  idioma?: string | null;
+  nivel?: string | null;
+  modalidad?: string | null;
+  turno?: string | null;
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+  horario?: string | null;
+
+  inscripcion_estado?: string | null;
+  inscripcion_tipo?: string | null;
+  fecha_inscripcion?: string | null;
+
+  calificacion?: number | null;
+
+  docente_id?: number | null;
+  docente_nombre?: string | null;
+  docente_email?: string | null;
+
+  asistencia: HistorialAsistenciaSummary;
+};
+
+export type HistorialAlumnoResponse = {
+  alumno_id: number;
+  total: number;
+  items: HistorialCicloItem[];
+};
+
+function normalizeHistorialQuery(params?: { idioma?: string; anio?: number | string; estado?: string }) {
+  if (!params) return {};
+  const out: any = {};
+  if (params.idioma) out.idioma = String(params.idioma).toLowerCase();
+  if (params.anio !== undefined && params.anio !== null && String(params.anio).length > 0) {
+    out.anio = Number(params.anio);
+  }
+  if (params.estado) out.estado = String(params.estado).toLowerCase();
+  return out;
+}
+
+// --- Tipos del historial con evaluación detallada ---
+export type HistorialAsistenciaSummary = {
+  presentes: number;
+  ausentes: number;
+  retardos: number;
+  justificados: number;
+  total_sesiones: number;
+  porcentaje_asistencia: number; // 0..100
+};
+
+export type EvaluacionDetalle = {
+  medio_examen?: number | null;    // 0..80
+  medio_continua?: number | null;  // 0..20
+  final_examen?: number | null;    // 0..60
+  final_continua?: number | null;  // 0..20
+  final_tarea?: number | null;     // 0..20
+  subtotal_medio: number;
+  subtotal_final: number;
+  promedio_final: number;
+};
+
+export type HistorialCicloItem = {
+  inscripcion_id: number;
+  ciclo_id: number;
+  ciclo_codigo: string;
+  idioma?: string | null;
+  nivel?: string | null;
+  modalidad?: string | null;
+  turno?: string | null;
+
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+  horario?: string | null;
+
+  inscripcion_estado?: string | null;
+  inscripcion_tipo?: string | null;
+  fecha_inscripcion?: string | null;
+
+  calificacion?: number | null;         // calificación “plana” si existe
+  evaluacion?: EvaluacionDetalle | null; // ⬅️ NUEVO: desglose por bloques
+
+  docente_id?: number | null;
+  docente_nombre?: string | null;
+  docente_email?: string | null;
+
+  asistencia: HistorialAsistenciaSummary;
+};
+
+export type HistorialAlumnoResponse = {
+  alumno_id: number;
+  total: number;
+  items: HistorialCicloItem[];
+};
+
+// --- Cliente del endpoint /coordinacion/alumnos/{alumno_id}/historial ---
+export async function getHistorialAlumno(
+  alumnoId: string | number,
+  filters: { idioma?: string; anio?: string | number; estado?: string } = {}
+) {
+  const url = buildURL(`/coordinacion/alumnos/${alumnoId}/historial`, {
+    idioma: filters.idioma || undefined,
+    anio: filters.anio || undefined,
+    estado: filters.estado || undefined,
+  });
+  return apiFetch<HistorialAlumnoResponse>(url, { auth: true });
+}
 
 
-// ================= Alumno (Coordinación) =================
-export type AlumnoPerfilOut = {
-  nombre: string | null;
-  apellidos: string | null;
-  email: string | null;
-  curp: string | null;
-  telefono?: string | null;
-  direccion?: {
-    calle?: string | null;
-    numero?: string | null;
-    colonia?: string | null;
-    municipio?: string | null;
-    estado?: string | null;
-    cp?: string | null;
-  } | null;
-  is_ipn: boolean;
+
+
+/* ==================== Docente: Encuestas (sesión del profesor) ==================== */
+// Tipos específicos del módulo Docente para evitar conflictos con los de Coordinación
+export type DocCicloLite = {
+  id: number | string;
+  codigo: string;
+  idioma?: string | null;
+  anio?: number | null;
+};
+
+export type DocenteMini = {
+  id: number | string;
+  nombre: string;
+};
+
+export type DocSurveyOptionDTO = { opcion: string; conteo: number };
+export type DocSurveyCategoryDTO = { id: number | string; name: string; order: number };
+
+export type DocSurveyQuestionDTO = {
+  id: number | string;
+  texto: string;
+  opciones: DocSurveyOptionDTO[];
+  total_respuestas?: number | null;
+  promedio?: number | null;      // 1..5 o 0..10
+  promedio_pct?: number | null;  // 0..100
+  favorables_pct?: number | null;
+  categoria?: DocSurveyCategoryDTO | null;
+};
+
+export type DocReporteEncuesta = {
+  ciclo: { id: number | string; codigo: string };
+  preguntas: DocSurveyQuestionDTO[];
+  total_participantes: number;
+  docente?: DocenteMini | null;
+};
+
+export type DocComentarioAlumno = { nombre?: string | null; email?: string | null };
+export type DocComentarioOut = {
+  id?: number | string | null;
+  pregunta_id?: number | string | null;
+  pregunta_texto?: string | null;
+  texto: string;
+  created_at?: string | null;
+  alumno?: DocComentarioAlumno | null;
+};
+export type DocComentariosResponse = {
+  ciclo?: { id: number | string; codigo: string } | null;
+  total: number;
+  items: DocComentarioOut[];
+};
+
+export type DocSeriePunto = {
+  ciclo_id: number | string;
+  ciclo_codigo: string;
+  promedio_pct: number;
+  fecha?: string | null;
+};
+export type DocSerieResponse = {
+  docente: DocenteMini;
+  puntos: DocSeriePunto[];
+};
+
+// ---- Endpoints ----
+
+// Lista de ciclos asignados al docente
+export async function getDocenteCiclos(params?: { anio?: number; idioma?: string }) {
+  const url = buildURL("/docente/ciclos", {
+    anio: params?.anio,
+    idioma: params?.idioma,
+  });
+  return apiFetch<DocCicloLite[]>(url, { auth: true });
+}
+
+// Reporte de encuesta por ciclo (docente)
+export async function getDocenteReporteEncuesta(cicloId: number | string) {
+  const url = buildURL("/docente/reportes/encuesta", { cicloId: String(cicloId) });
+  return apiFetch<DocReporteEncuesta>(url, { auth: true });
+}
+
+// Comentarios de encuesta (open text) del ciclo del docente
+export async function getDocenteEncuestaComentarios(opts: {
+  cicloId: number | string;
+  includeGeneral?: boolean;
+  onlyCommentLike?: boolean;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const url = buildURL("/docente/reportes/encuesta/comentarios", {
+    cicloId: String(opts.cicloId),
+    includeGeneral: opts.includeGeneral ?? undefined,
+    onlyCommentLike: opts.onlyCommentLike ?? undefined,
+    q: opts.q || undefined,
+    limit: opts.limit ?? undefined,
+    offset: opts.offset ?? undefined,
+  });
+  return apiFetch<DocComentariosResponse>(url, { auth: true });
+}
+
+// Serie de promedio % por ciclo para el docente
+export async function getDocenteEncuestaSerie() {
+  const url = buildURL("/docente/reportes/encuesta/serie");
+  return apiFetch<DocSerieResponse>(url, { auth: true });
+}
+
+
+// ===== Docente: serie por pregunta (todos los ciclos del docente en sesión) =====
+export async function getDocenteSerieEncuestaPorPregunta(): Promise<{
+  docente: { id: string | number; nombre: string };
+  series: { id: string; label: string; data: { x: string; y: number }[] }[];
+}> {
+  const url = buildURL("/docente/reportes/encuesta/serie-por-pregunta");
+  return apiFetch(url, { auth: true });
+}
+
+
+/* ==================== Coordinación – Dashboard (con cicloId opcional) ==================== */
+/** Tipos y endpoints LIMPIOS para el dashboard de Coordinación.
+ *  Mantén un solo bloque como este en el archivo para evitar duplicados.
+ */
+
+/* ===== Tipos “lite” para selectores ===== */
+export type DashCicloLite = {
+  id: number | string;
+  codigo: string;
+  idioma?: string | null;
+  anio?: number | null;
+};
+
+export type DashGrupoLite = {
+  id: number | string;
+  nombre: string;
+};
+
+/* ===== Tipos de reportes ===== */
+export type DashAlumnoInscrito = {
+  inscripcion_id: number | string;
   boleta?: string | null;
-  ipn?: { nivel: string | null; unidad: string | null } | null;
-  tutor?: { telefono?: string | null } | null;
+  nombre: string;
+  email?: string | null;
+  fecha_inscripcion?: string | null;
+  estado?: string | null;
 };
 
-export async function getAlumnoPerfilAdmin(alumnoId: number | string): Promise<AlumnoPerfilOut> {
-  const id = encodeURIComponent(String(alumnoId));
-  const url = buildURL(`/coordinacion/alumnos/${id}/perfil`);
-  return apiFetch<AlumnoPerfilOut>(url, { auth: true });
-}
-
-export async function getAlumnoDetalleAdmin(alumnoId: number | string): Promise<AlumnoDetalleOut> {
-  const id = encodeURIComponent(String(alumnoId));
-  const url = buildURL(`/coordinacion/alumnos/${id}/detalle`);
-  return apiFetch<AlumnoDetalleOut>(url, { auth: true });
-}
-
-export type AlumnoDetalleOut = {
-  perfil: AlumnoPerfilOut;
-  inscripciones: InscripcionDTO[];
-  ultima?: InscripcionDTO | null;
+export type DashReporteInscritos = {
+  ciclo: { id: number | string; codigo: string };
+  grupo?: { id: number | string; nombre: string } | null;
+  total: number;
+  alumnos: DashAlumnoInscrito[];
 };
 
+export type DashPagoRow = {
+  inscripcion_id: number | string;
+  alumno: string;
+  email?: string | null;
+  referencia?: string | null;
+  tipo?: "pago" | "exencion";
+  status: "pendiente" | "validado" | "rechazado";
+  importe_centavos: number;
+  fecha_pago?: string | null;
+};
+
+export type DashReportePagos = {
+  ciclo: { id: number | string; codigo: string };
+  grupo?: { id: number | string; nombre: string } | null;
+  total_registros: number;
+  total_validado_centavos: number;
+  rows: DashPagoRow[];
+};
+
+/* ===== Tipos de dashboard (coordinación) ===== */
+export type CoordKpisOut = {
+  grupos_activos: number;
+  docentes_asignados: number;
+  alumnos_matriculados: number;
+  alumnos_ipn: number;
+  alumnos_externos: number;
+  pagos_verificados_pct: number;
+  pagos_monto_total: number;
+  promedio_global_pct: number;
+};
+
+export type CoordCategoriaAgg = {
+  id: number | string;
+  name: string;
+  order: number;
+  promedio_pct: number;
+};
+export type CoordCategoriasAggOut = { categorias: CoordCategoriaAgg[] };
+
+export type CoordPreguntaAgg = {
+  id: number | string;
+  texto: string;
+  category_id?: number | string | null;
+  category_name?: string | null;
+  order: number;
+  promedio_pct: number;
+  respuestas: number;
+};
+export type CoordPreguntasAggOut = { preguntas: CoordPreguntaAgg[] };
+
+export type CoordRankingDoc = {
+  docente_id: number | string;
+  docente: string;
+  promedio_pct: number;
+  grupos: number;
+};
+export type CoordRankingOut = { top: CoordRankingDoc[]; bottom: CoordRankingDoc[] };
+
+export type CoordComentario = {
+  id?: number | string | null;
+  ciclo: string;
+  docente?: string | null;
+  pregunta?: string | null;
+  texto: string;
+  created_at?: string | null;
+};
+
+/* ===== Endpoints (usar apiFetch/buildURL ya definidos arriba en el archivo) ===== */
+
+/** Ciclos para selector del dashboard */
+export async function getDashCiclos(params?: {
+  anio?: string | number;
+  idioma?: string;
+}): Promise<DashCicloLite[]> {
+  const url = buildURL("/coordinacion/reportes/ciclos-lite", {
+    anio: params?.anio,
+    idioma: params?.idioma,
+  });
+  return apiFetch<DashCicloLite[]>(url, { auth: true });
+}
+
+/** Grupos por ciclo (si aplica) */
+export async function getDashGrupos(cicloId: string | number): Promise<DashGrupoLite[]> {
+  const url = buildURL("/coordinacion/grupos", { cicloId: String(cicloId) });
+  return apiFetch<DashGrupoLite[]>(url, { auth: true });
+}
+
+/** Inscritos por ciclo/grupo */
+export async function getDashReporteInscritos(args: {
+  cicloId: string | number;
+  grupoId?: string | number;
+}): Promise<DashReporteInscritos> {
+  const url = buildURL("/coordinacion/reportes/inscritos", {
+    cicloId: String(args.cicloId),
+    grupoId: args.grupoId !== undefined ? String(args.grupoId) : undefined,
+  });
+  return apiFetch<DashReporteInscritos>(url, { auth: true });
+}
+
+/** Pagos por ciclo/grupo */
+export async function getDashReportePagos(args: {
+  cicloId: string | number;
+  grupoId?: string | number;
+}): Promise<DashReportePagos> {
+  const url = buildURL("/coordinacion/reportes/pagos", {
+    cicloId: String(args.cicloId),
+    grupoId: args.grupoId !== undefined ? String(args.grupoId) : undefined,
+  });
+  return apiFetch<DashReportePagos>(url, { auth: true });
+}
+
+/** KPIs — por defecto todos los ciclos; si envías cicloId, filtra a ese ciclo */
+export async function getCoordKpis(params?: {
+  anio?: number;
+  idioma?: string;
+  cicloId?: number; // opcional
+}): Promise<CoordKpisOut> {
+  const url = buildURL("/coordinacion/resumen/kpis", {
+    anio: params?.anio,
+    idioma: params?.idioma,
+    cicloId: params?.cicloId,
+  });
+  return apiFetch<CoordKpisOut>(url, { auth: true });
+}
+
+/** Agregado por categoría (puede ser allCiclos, o cicloId, o último ciclo por defecto) */
+export async function getCoordCategoriasAgg(params: {
+  cicloId?: number;
+  anio?: number;
+  idioma?: string;
+  allCiclos?: boolean;
+}): Promise<CoordCategoriasAggOut> {
+  const url = buildURL("/coordinacion/reportes/categorias", {
+    cicloId: params.cicloId,
+    anio: params.anio,
+    idioma: params.idioma,
+    allCiclos: params.allCiclos,
+  });
+  return apiFetch<CoordCategoriasAggOut>(url, { auth: true });
+}
+
+/** Agregado por pregunta (igual lógica que categorías) */
+export async function getCoordPreguntasAgg(params: {
+  cicloId?: number;
+  anio?: number;
+  idioma?: string;
+  allCiclos?: boolean;
+}): Promise<CoordPreguntasAggOut> {
+  const url = buildURL("/coordinacion/reportes/preguntas", {
+    cicloId: params.cicloId,
+    anio: params.anio,
+    idioma: params.idioma,
+    allCiclos: params.allCiclos,
+  });
+  return apiFetch<CoordPreguntasAggOut>(url, { auth: true });
+}
+
+/** Ranking — global por anio/idioma (sin cicloId) */
+export async function getCoordRanking(params?: {
+  anio?: number;
+  idioma?: string;
+  limitTop?: number;
+  limitBottom?: number;
+}): Promise<CoordRankingOut> {
+  const url = buildURL("/coordinacion/reportes/ranking-docentes", {
+    anio: params?.anio,
+    idioma: params?.idioma,
+    limitTop: params?.limitTop ?? 5,
+    limitBottom: params?.limitBottom ?? 5,
+  });
+  return apiFetch<CoordRankingOut>(url, { auth: true });
+}
+
+/** Comentarios recientes — por defecto todos los ciclos; acepta cicloId */
+export async function getCoordComentariosRecientes(params?: {
+  anio?: number;
+  idioma?: string;
+  limit?: number;
+  q?: string;
+  cicloId?: number; // opcional
+}): Promise<CoordComentario[]> {
+  const url = buildURL("/coordinacion/encuestas/comentarios", {
+    anio: params?.anio,
+    idioma: params?.idioma,
+    limit: params?.limit ?? 20,
+    q: params?.q,
+    cicloId: params?.cicloId,
+  });
+  return apiFetch<CoordComentario[]>(url, { auth: true });
+}

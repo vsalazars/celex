@@ -19,6 +19,8 @@ import {
   BarChart3,
   Landmark,
   MessageSquareText,
+  Banknote,           // ⬅️ nuevo
+  CircleDollarSign,   // ⬅️ nuevo
 } from "lucide-react";
 
 // ===== API real =====
@@ -35,6 +37,9 @@ import {
   type CoordComentario as Comentario,
   type DashCicloLite,
   type CoordPreguntasAggOut,
+  // ⬇️ NUEVO: montos combinados (inscripciones + placement)
+  getCoordMontos,
+  type CoordMontosOut,
 } from "@/lib/api";
 
 /* ========= Charts (Nivo) ========= */
@@ -93,8 +98,10 @@ function Currency({
 }
 
 /* ========= KPI card pro ========= */
-type StatTone = "default" | "success" | "warning";
+type StatTone = "default" | "success" | "warning" | "danger";
 
+
+// 2) Agrega la variante "danger" (rojo) en las clases de tono
 function toneClasses(tone: StatTone) {
   if (tone === "success") {
     return {
@@ -112,6 +119,14 @@ function toneClasses(tone: StatTone) {
       gradient: "bg-gradient-to-b from-amber-50/60 to-transparent dark:from-amber-950/20",
     } as const;
   }
+  if (tone === "danger") {
+    return {
+      ring: "ring-1 ring-red-300/60",
+      iconWrap: "bg-red-50 text-red-700 border border-red-200",
+      badge: "bg-red-100 text-red-700",
+      gradient: "bg-gradient-to-b from-red-50/60 to-transparent dark:from-red-950/20",
+    } as const;
+  }
   return {
     ring: "ring-1 ring-border/60",
     iconWrap: "bg-muted text-muted-foreground border border-border/60",
@@ -119,6 +134,7 @@ function toneClasses(tone: StatTone) {
     gradient: "bg-gradient-to-b from-muted/40 to-transparent",
   } as const;
 }
+
 
 function StatCard({
   label,
@@ -147,9 +163,8 @@ function StatCard({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight leading-none truncate">
-              {value}
-            </div>
+            {/* ⬇️ Sin 'truncate' para no cortar montos */}
+            <div className="mt-1 text-2xl font-semibold tracking-tight leading-none">{value}</div>
             <div className="mt-1 flex items-center gap-2">
               {hint ? (
                 <Badge variant="secondary" className={cls.badge + " border-0 text-[10px] font-medium"}>
@@ -195,6 +210,9 @@ export default function OverviewSection({
   const [comments, setComments] = React.useState<Comentario[]>([]);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Montos (inscripciones + placement)
+  const [montos, setMontos] = React.useState<CoordMontosOut | null>(null);
+
   // ===== Selector de ciclo (compartido) =====
   const [ciclos, setCiclos] = React.useState<DashCicloLite[]>([]);
   const [cicloSel, setCicloSel] = React.useState<string>("all"); // "all" o id
@@ -237,7 +255,7 @@ export default function OverviewSection({
     }
   }
 
-  // ====== KPIs + Comentarios (dependen de cicloSel) ======
+  // ====== KPIs + Comentarios + Montos (dependen de cicloSel) ======
   async function cargarKpisYComentarios() {
     setError(null);
     try {
@@ -248,10 +266,19 @@ export default function OverviewSection({
       ]);
       setKpis(k);
       setComments(cm);
+
+      // ⬇️ si es "Todos los ciclos", traemos montos (placement se agrega aquí)
+      if (cicloSel === "all") {
+        const m = await getCoordMontos({ anio, idioma });
+        setMontos(m);
+      } else {
+        setMontos(null); // ocultar al elegir un ciclo específico
+      }
     } catch (e: any) {
       setError(e?.message || "No se pudieron cargar KPIs/comentarios");
       setKpis(null);
       setComments([]);
+      setMontos(null);
     }
   }
 
@@ -350,7 +377,7 @@ export default function OverviewSection({
           title="Filtrar: todos los ciclos o un ciclo específico"
           aria-label="Seleccionar ciclo"
         >
-          <option value="all">Todos los ciclos</option>
+          <option value="all">Todos los cursos</option>
           {ciclos.map((c) => (
             <option key={String(c.id)} value={String(c.id)}>
               {c.codigo}
@@ -373,6 +400,11 @@ export default function OverviewSection({
     );
   }
 
+  // tono dinámico para la satisfacción global
+const satisfaction = kpis?.promedio_global_pct ?? null;
+const statTone: StatTone =
+satisfaction == null ? "default" : satisfaction >= 80 ? "success" : "danger";
+
   // ====== UI ======
   return (
     <TooltipProvider delayDuration={200}>
@@ -392,8 +424,12 @@ export default function OverviewSection({
           <CicloSelectorInline />
         </div>
 
-        {/* KPIs */}
-        <section aria-label="Indicadores clave" className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
+        {/* KPIs — ahora auto-fit y usan toda la fila; centrado responsivo */}
+        <section
+          aria-label="Indicadores clave"
+          className="grid gap-3"
+          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
+        >
           {loading ? (
             Array.from({ length: 7 }).map((_, i) => (
               <Card key={i} className="rounded-2xl">
@@ -415,7 +451,7 @@ export default function OverviewSection({
                     <StatCard
                       label="Grupos activos"
                       value={kpis ? String(kpis.grupos_activos) : "—"}
-                      hint="Periodo seleccionado"
+                      hint="Cursos de idiomas"
                       icon={<LayoutGrid className="h-4 w-4" />}
                     />
                   </div>
@@ -430,41 +466,39 @@ export default function OverviewSection({
                 icon={<Users className="h-4 w-4" />}
               />
 
+              {/* ✅ Card unificada de alumnos con desglose */}
               <StatCard
-                label="Alumnos totales"
+                label="Alumnos"
                 value={kpis ? String(kpis.alumnos_matriculados) : "—"}
-                hint="Matriculados"
+                hint={kpis ? `IPN: ${kpis.alumnos_ipn} · Externos: ${kpis.alumnos_externos}` : undefined}
                 icon={<GraduationCap className="h-4 w-4" />}
               />
 
+              {/* Monto verificado (inscripciones) — sin truncar */}
               <StatCard
-                label="Alumnos IPN"
-                value={kpis ? String(kpis.alumnos_ipn) : "—"}
-                hint="Subconjunto"
-                icon={<Landmark className="h-4 w-4" />}
-              />
-
-              <StatCard
-                label="Alumnos externos"
-                value={kpis ? String(kpis.alumnos_externos) : "—"}
-                hint="Subconjunto"
-                icon={<Landmark className="h-4 w-4" />}
-              />
-
-              <StatCard
-                label="Monto verificado"
+                label="Monto de inscripciones"
                 value={kpis ? <Currency value={kpis.pagos_monto_total} currency={currency} /> : "—"}
-                hint="Suma validada"
-                icon={<BarChart3 className="h-4 w-4" />}
+                hint="Comprobantes validados"
+                icon={<CircleDollarSign className="h-4 w-4" />}
                 tone="warning"
               />
+
+              {/* ⬇️ Mover “Monto placement” justo DESPUÉS de “Monto verificado” */}
+              {cicloSel === "all" && (
+                <StatCard
+                  label="Monto de exámenes"
+                  value={montos ? <Currency value={montos.placement_total_mxn ?? 0} currency={currency} /> : "—"}
+                  hint="Comprobantes validados"
+                  icon={<CircleDollarSign className="h-4 w-4" />}
+                />
+              )}
 
               <StatCard
                 label="Satisfacción global"
                 value={kpis ? `${kpis.promedio_global_pct.toFixed(1)}%` : "—"}
-                hint="Encuestas agregadas"
+                hint="Encuestas de satisfacción"
                 icon={<TrendingUp className="h-4 w-4" />}
-                tone="success"
+                tone={statTone}
               />
             </>
           )}
@@ -595,7 +629,7 @@ export default function OverviewSection({
                         container: {
                           background: "hsl(var(--background))",
                           color: "hsl(var(--foreground))",
-                          border: "1px solid hsl(var(--border))",
+                          border: "1px solid " + "hsl(var(--border))",
                         },
                       },
                     }}

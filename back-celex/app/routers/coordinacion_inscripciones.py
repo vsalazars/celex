@@ -236,3 +236,71 @@ def download_comprobante_coord(
 
     filename = os.path.basename(file_path)
     return FileResponse(file_path, media_type=mime, filename=filename)
+
+
+
+
+# =========================
+#  PATCH: corregir datos de pago
+# =========================
+from datetime import date
+from pydantic import BaseModel, Field, constr, conint
+
+class UpdatePagoIn(BaseModel):
+    referencia: constr(strip_whitespace=True, min_length=1, max_length=50)
+    importe_centavos: conint(strict=True, gt=0, le=1_000_000_000) = Field(
+        description="Importe en centavos (ej. $123.45 -> 12345)"
+    )
+    fecha_pago: date
+
+@router.patch(
+    "/{inscripcion_id}/pago",
+    response_model=schemas.InscripcionOut,
+    summary="Corregir datos de pago (referencia, importe, fecha)",
+)
+def patch_pago_inscripcion(
+    inscripcion_id: int,
+    payload: UpdatePagoIn,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_coordinator),
+):
+    ins = (
+        db.query(models.Inscripcion)
+        .options(
+            joinedload(models.Inscripcion.alumno),
+            joinedload(models.Inscripcion.ciclo).joinedload(models.Ciclo.docente),
+        )
+        .filter(models.Inscripcion.id == inscripcion_id)
+        .first()
+    )
+    if not ins:
+        raise HTTPException(status_code=404, detail="Inscripción no encontrada")
+
+    # Debe ser trámite de pago
+    if getattr(ins, "tipo", None) != "pago":
+        raise HTTPException(status_code=400, detail="La inscripción no es de tipo 'pago'")
+
+    # Estados permitidos para corregir (ajusta según tu flujo)
+    estados_permitidos = {"registrada", "preinscrita"}
+    if ins.status not in estados_permitidos:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se puede corregir pago en estado '{ins.status}'. Debe estar en registrada o preinscrita.",
+        )
+
+    # Fecha no futura
+    if payload.fecha_pago > date.today():
+        raise HTTPException(status_code=422, detail="fecha_pago no puede ser futura")
+
+    # Aplicar cambios
+    ins.referencia = payload.referencia
+    ins.importe_centavos = int(payload.importe_centavos)
+    ins.fecha_pago = payload.fecha_pago
+
+    db.add(ins)
+    db.commit()
+    db.refresh(ins)
+
+    return _to_inscripcion_out(ins)
+
+

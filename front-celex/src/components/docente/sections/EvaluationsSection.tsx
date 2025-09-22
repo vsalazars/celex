@@ -380,7 +380,7 @@ export default function DocenteEvaluacionesPage() {
             </div>
             {selectedCurso && (
               <div className="space-y-1">
-                <div className="text-sm text-muted-foreground">Seleccionado</div>
+                <div className="text-sm text-muted-foreground"></div>
                 <div className="text-sm font-medium">{selectedCurso.codigo}</div>
                 <div className="text-xs text-muted-foreground">{selectedCurso.idioma?.toUpperCase()} {selectedCurso.nivel} · {selectedCurso.modalidad} · {selectedCurso.turno}</div>
               </div>
@@ -391,7 +391,8 @@ export default function DocenteEvaluacionesPage() {
           <Table className="table-fixed w-full text-[11px]">
             <colgroup>
               <col className="w-[160px]" />
-              <col className="w-[130px]" />
+              {/* <col className="w-[130px]" />  <-- Correo (OCULTO) */}
+
               <col className="w-[100px]" />
               <col className="w-[70px]" />
               <col className="w-[76px]" />
@@ -408,7 +409,9 @@ export default function DocenteEvaluacionesPage() {
             <TableHeader>
               <TableRow className="leading-tight">
                 <TableHead className="min-w-0">Alumno</TableHead>
-                <TableHead className="min-w-0">Correo</TableHead>
+
+                {/* <TableHead className="min-w-0">Correo</TableHead>  <-- Correo (OCULTO) */}
+
                 <Th title="Asist." />
 
                 <Th title="Medio · Examen" hint="0–80" />
@@ -454,7 +457,7 @@ export default function DocenteEvaluacionesPage() {
                         <TableCell>
                           <div className="text-sm">{r.nombre}</div>
                         </TableCell>
-                        <TableCell className="text-sm">{r.correo}</TableCell>
+                        {/* <TableCell className="text-sm">{r.correo}</TableCell>  <-- Correo (OCULTO) */}
                         <TableCell className="text-center">
                           <Badge variant={r.asistenciaPct >= 80 ? "default" : r.asistenciaPct >= 60 ? "secondary" : "destructive"}>
                             {r.asistenciaPct}%
