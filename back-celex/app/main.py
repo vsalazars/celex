@@ -33,7 +33,9 @@ from app.routers import coordinacion_reportes
 from app.routers import public_examenes
 from .routers.alumno_perfil import router as alumno_perfil_router
 from app.routers import coordinacion_alumnos
-from .routers.docente_encuestas import router as docente_encuestas_router
+from .routers import docente_reportes  # 👈 importa el router nuevo
+from .routers import coordinacion_dashboard
+
 
 
 
@@ -72,8 +74,8 @@ app.include_router(coordinacion_reportes.router)
 app.include_router(public_examenes.router)
 app.include_router(alumno_perfil_router)
 app.include_router(coordinacion_alumnos.router)
-app.include_router(docente_encuestas_router)
-
+app.include_router(docente_reportes.router)  # 👈 monta endpoints del docente
+app.include_router(coordinacion_dashboard.router)
 
 
 # 👇 añade este hook de startup

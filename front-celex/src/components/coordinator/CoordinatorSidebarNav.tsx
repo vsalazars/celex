@@ -96,7 +96,7 @@ export default function CoordinatorSidebarNav({
       </nav>
 
       <div className="mt-6 px-2 text-[11px] text-neutral-400">
-        © {new Date().getFullYear()} CELEX · CECyT 7 "Cuauhtémoc"
+        © {new Date().getFullYear()} CELEX · CECyT 15 "Diódoro Antúnez"
       </div>
     </aside>
   );

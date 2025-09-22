@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import DocenteSidebarNav, { TeacherSection } from "./DocenteSidebarNav";
-import OverviewSection from "./sections/OverviewSection";
-import GroupsSection from "./sections/GroupsSection";
-import MaterialsSection from "./sections/MaterialsSection";
-import EvaluationsSection from "./sections/EvaluationsSection";
-import SettingsSection from "./sections/SettingsSection";
-import SecuritySection from "./sections/SecuritySection";
-import PlacementSection from "./sections/PlacementSection"; // 👈 NUEVO
-import EncuestasSection from "./sections/EncuestasSection"; // 👈 NUEVO
+
+import OverviewSection     from "./sections/OverviewSection";
+import GroupsSection       from "./sections/GroupsSection";
+import PlacementSection    from "./sections/PlacementSection";
+import EncuestasSection    from "./sections/DocenteEncuestaView"; // ✅ archivo existente
+import MaterialsSection    from "./sections/MaterialsSection";
+import EvaluationsSection  from "./sections/EvaluationsSection";
+import SettingsSection     from "./sections/SettingsSection";
+import SecuritySection     from "./sections/SecuritySection";
 
 export default function DocenteDashboardShell() {
   const [active, setActive] = useState<TeacherSection>("overview");
@@ -20,8 +21,8 @@ export default function DocenteDashboardShell() {
       <section className="flex-1 p-6">
         {active === "overview"    && <OverviewSection />}
         {active === "groups"      && <GroupsSection />}
-        {active === "placement"   && <PlacementSection />}   {/* NUEVO */}
-        {active === "surveys"     && <EncuestasSection />}   {/* 👈 NUEVO */}
+        {active === "placement"   && <PlacementSection />}
+        {active === "surveys"     && <EncuestasSection />}   {/* ✅ apunta al archivo real */}
         {active === "materials"   && <MaterialsSection />}
         {active === "evaluations" && <EvaluationsSection />}
         {active === "settings"    && <SettingsSection />}
