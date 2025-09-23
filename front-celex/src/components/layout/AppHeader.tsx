@@ -13,11 +13,12 @@ export default function AppHeader({
 
   return (
     <header className="sticky top-0 z-30 w-full border-b bg-white/70 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+      {/* Usamos el mismo ancho y padding que en Page */}
+      <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-6 md:px-8 py-3">
         <div className="flex items-center gap-3">
           {/* Logo */}
           <Image
-            src="/logo.png"   // tu archivo en /public
+            src="/logo.png" // tu archivo en /public
             alt="Logo CELEX"
             width={80}
             height={80}

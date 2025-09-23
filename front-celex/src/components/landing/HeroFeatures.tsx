@@ -594,9 +594,14 @@ export default function HeroFeatures() {
                         <div className="mb-2">
                           <h3 className="font-semibold text-base">{c.codigo}</h3>
                           <div className="mt-1">
-                            <Badge className={`rounded-full border ${tone.badgeClass}`}>
-                              <Users className="mr-1 h-3.5 w-3.5" /> {disp}/{total} · {tone.label}
-                            </Badge>
+                           {/* Cursos */}
+                          <Badge
+                            className={`rounded-full border px-2 py-0.5 text-xs md:text-sm font-medium ${tone.badgeClass}`}
+                          >
+                            <Users className="mr-1 h-3 w-3 md:h-3.5 md:w-3.5" /> {disp}/{total} · {tone.label}
+                          </Badge>
+
+
                           </div>
                         </div>
 
@@ -687,9 +692,12 @@ export default function HeroFeatures() {
                             </h3>
                           </div>
                           <div className="mt-2">
-                            <Badge className={`rounded-full border ${tone.badgeClass}`}>
-                              <Users className="mr-1 h-3.5 w-3.5" /> {disp}/{total} · {tone.label}
+                            <Badge
+                              className={`rounded-full border px-2 py-0.5 text-xs md:text-sm font-medium ${tone.badgeClass}`}
+                            >
+                              <Users className="mr-1 h-3 w-3 md:h-3.5 md:w-3.5" /> {disp}/{total} · {tone.label}
                             </Badge>
+
                           </div>
                         </div>
 

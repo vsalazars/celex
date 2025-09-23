@@ -42,8 +42,8 @@ export default function InfoDialog({
       <DialogContent
         className={[
           "rounded-2xl shadow-xl",
-          // ancho responsivo
-          "w-[min(92vw,64rem)] sm:max-w-3xl md:max-w-5xl",
+          // ancho responsivo más amplio
+          "w-[min(98vw,96rem)] sm:max-w-6xl lg:max-w-7xl",
           className || "",
         ].join(" ")}
       >

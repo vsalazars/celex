@@ -107,7 +107,8 @@ export default function RegisterCard() {
 
   return (
     <div className="relative h-full flex flex-col">
-      <div className="mx-auto w-full max-w-lg flex-1 rounded-3xl border bg-white p-6 shadow-xl flex flex-col">
+      <div className="mx-auto w-full max-w-lg md:max-w-xl flex-1 rounded-3xl border bg-white p-6 shadow-xl flex flex-col">
+
         <div className="mb-6 flex items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-neutral-900 text-white">
             <UserPlus className="h-6 w-6" />
@@ -232,16 +233,22 @@ export default function RegisterCard() {
 
               <div className="space-y-2">
                 <Label htmlFor="reg-email2">Confirma tu correo</Label>
-                <Input
-                  id="reg-email2"
-                  type="email"
-                  placeholder="tunombre@correo.com"
-                  value={regEmail2}
-                  onChange={(e) => setRegEmail2(e.target.value)}
-                  autoComplete="email"
-                  required
-                />
-                {regErrors.email2 && <p className="text-xs text-red-600">{regErrors.email2}</p>}
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                  <Input
+                    id="reg-email2"
+                    type="email"
+                    placeholder="tunombre@correo.com"
+                    value={regEmail2}
+                    onChange={(e) => setRegEmail2(e.target.value)}
+                    className="pl-9"
+                    autoComplete="email"
+                    required
+                  />
+                </div>
+                {regErrors.email2 && (
+                  <p className="text-xs text-red-600">{regErrors.email2}</p>
+                )}
               </div>
             </div>
 
@@ -303,9 +310,7 @@ export default function RegisterCard() {
               {regLoading ? "Creando..." : "Crear cuenta"}
             </Button>
 
-            <p className="text-center text-xs text-neutral-500">
-              Al crear tu cuenta aceptas los lineamientos del CELEX y el tratamiento de datos.
-            </p>
+            
           </form>
         </div>
 

@@ -21,17 +21,19 @@ export default function Page() {
     <main className="min-h-dvh flex flex-col bg-gradient-to-b from-white to-neutral-50">
       <AppHeader onLoginSuccess={(data) => redirectByRole(data.role || "")} />
 
-      {/* Contenido principal: se expande para que las columnas puedan igualar alturas */}
+      {/* Contenido principal */}
       <section className="flex-1">
-        <div className="mx-auto max-w-6xl px-4 py-12 md:py-16">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10 items-stretch">
-            {/* Columna izquierda: Hero / ofertas */}
-            <div className="h-full flex flex-col">
+        {/* max-w-screen-2xl ~1536px para aprovechar más ancho sin ir full-bleed */}
+        <div className="mx-auto max-w-screen-2xl px-6 md:px-8 py-12 md:py-16">
+          {/* 1 columna en móvil, 5 en desktop; proporción 3/2 (Hero/Register) */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-12 items-stretch">
+            {/* Columna izquierda: Hero (3/5) */}
+            <div className="lg:col-span-3 h-full flex flex-col">
               <HeroFeatures />
             </div>
 
-            {/* Columna derecha: Registro */}
-            <div className="h-full flex flex-col">
+            {/* Columna derecha: Registro (2/5) */}
+            <div className="lg:col-span-2 h-full flex flex-col">
               <RegisterCard />
             </div>
           </div>
