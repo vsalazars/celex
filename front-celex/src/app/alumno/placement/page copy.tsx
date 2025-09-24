@@ -373,96 +373,85 @@ function PlacementContent() {
       <div className="flex justify-end">
         <Sheet open={openSheet} onOpenChange={setOpenSheet}>
           <SheetTrigger asChild>
-            <Button 
-              variant="default" 
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              <GraduationCap className="h-4 w-4 mr-2" />
-              Inscribirte
-            </Button>
+            <Button variant="outline">Ver exámenes</Button>
           </SheetTrigger>
-          <SheetContent side="right" className="w-full sm:max-w-4xl overflow-y-auto p-6">
-          <SheetHeader className="mb-4">
-            <SheetTitle>Exámenes disponibles</SheetTitle>
-            <SheetDescription>
-              Solo se muestran exámenes activos y con cupo disponible.
-            </SheetDescription>
-          </SheetHeader>
+          <SheetContent side="right" className="w-full sm:max-w-3xl overflow-y-auto">
+            <SheetHeader className="mb-4">
+              <SheetTitle>Exámenes disponibles</SheetTitle>
+              <SheetDescription>
+                Solo se muestran exámenes activos y con cupo disponible.
+              </SheetDescription>
+            </SheetHeader>
 
-          <div className="pb-6">
-            {loading ? (
-              <div className="flex items-center gap-2 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Cargando…
-              </div>
-            ) : error ? (
-              <p className="text-sm text-red-600 whitespace-pre-wrap">{error}</p>
-            ) : !hasData ? (
-              <p className="text-sm text-muted-foreground">
-                No hay exámenes activos por ahora.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Idioma</TableHead>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Hora</TableHead>
-                      <TableHead>Salón</TableHead>
-                      <TableHead>Cupo (disp/total)</TableHead>
-                      <TableHead>Costo</TableHead>
-                      <TableHead className="text-right">Acción</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {exams.map((ex) => {
-                      const sinCupo =
-                        typeof ex.disponibles === "number" && ex.disponibles <= 0;
-                      return (
-                        <TableRow key={ex.id}>
-                          <TableCell className="font-medium">
-                            {ex.codigo || ex.nombre || `#${ex.id}`}
-                          </TableCell>
-                          <TableCell>{ex.idioma ?? "—"}</TableCell>
-                          <TableCell>{ex.fecha ?? "—"}</TableCell>
-                          <TableCell>{ex.hora ?? "—"}</TableCell>
-                          <TableCell>{ex.salon ?? "—"}</TableCell>
-                          <TableCell>
-                            <CupoCell ex={ex} />
-                          </TableCell>
-                          <TableCell>
-                            {typeof ex.costo === "number"
-                              ? ex.costo.toLocaleString("es-MX", {
-                                  style: "currency",
-                                  currency: "MXN",
-                                })
-                              : "—"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              onClick={() => onOpenInscribir(ex)}
-                              disabled={sinCupo}
-                              className="h-8 rounded-full px-3.5 py-1.5 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
-                              title={sinCupo ? "Sin lugares disponibles" : "Inscribirme"}
-                            >
-                              <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                              <span className="hidden sm:inline">Inscribirme</span>
-                              <span className="sm:hidden">Inscribir</span>
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
-        </SheetContent>
-
+            <div className="pb-6">
+              {loading ? (
+                <div className="flex items-center gap-2 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Cargando…
+                </div>
+              ) : error ? (
+                <p className="text-sm text-red-600 whitespace-pre-wrap">{error}</p>
+              ) : !hasData ? (
+                <p className="text-sm text-muted-foreground">
+                  No hay exámenes activos por ahora.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Idioma</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Hora</TableHead>
+                        <TableHead>Salón</TableHead>
+                        <TableHead>Cupo (disp/total)</TableHead>
+                        <TableHead>Costo</TableHead>
+                        <TableHead className="text-right">Acción</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {exams.map((ex) => {
+                        const sinCupo = typeof ex.disponibles === "number" && ex.disponibles <= 0;
+                        return (
+                          <TableRow key={ex.id}>
+                            <TableCell className="font-medium">
+                              {ex.codigo || ex.nombre || `#${ex.id}`}
+                            </TableCell>
+                            <TableCell>{ex.idioma ?? "—"}</TableCell>
+                            <TableCell>{ex.fecha ?? "—"}</TableCell>
+                            <TableCell>{ex.hora ?? "—"}</TableCell>
+                            <TableCell>{ex.salon ?? "—"}</TableCell>
+                            <TableCell>
+                              <CupoCell ex={ex} />
+                            </TableCell>
+                            <TableCell>
+                              {typeof ex.costo === "number"
+                                ? ex.costo.toLocaleString("es-MX", {
+                                    style: "currency",
+                                    currency: "MXN",
+                                  })
+                                : "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="sm"
+                                onClick={() => onOpenInscribir(ex)}
+                                disabled={sinCupo}
+                                title={sinCupo ? "Sin lugares disponibles" : ""}
+                              >
+                                Inscribirme
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </SheetContent>
         </Sheet>
       </div>
 

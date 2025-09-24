@@ -23,10 +23,12 @@ export default function NavLink({
       href={href}
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors",
+        "flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
         active
-          ? "bg-neutral-900 text-white"
-          : "text-neutral-700 hover:bg-neutral-100"
+          ? // ✅ activo: color principal
+            "bg-primary text-primary-foreground shadow-sm"
+          : // inactivo: gris con hover
+            "text-muted-foreground hover:bg-muted hover:text-foreground"
       )}
     >
       {icon}

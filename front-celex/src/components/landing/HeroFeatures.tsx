@@ -263,7 +263,12 @@ function IconDropdown({
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>{label}{value ? `: ${value}` : ""}</TooltipContent>
+          
+          {/* 👇 Forzamos el tooltip debajo */}
+          <TooltipContent side="bottom" sideOffset={8}>
+            {label}{value ? `: ${value}` : ""}
+          </TooltipContent>
+
           <DropdownMenuContent align="end" className="rounded-xl">
             <DropdownMenuLabel className="text-xs">{label}</DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -468,14 +473,14 @@ export default function HeroFeatures() {
         className="h-9 rounded-xl"
         onClick={() => setTab("cursos")}
       >
-        <ClipboardList className="h-4 w-4 mr-2" /> Cursos
+        <ClipboardList className="h-4 w-4 mr-2" /> Cursos de idiomas
       </Button>
       <Button
         variant={tab === "examenes" ? "default" : "outline"}
         className="h-9 rounded-xl"
         onClick={() => setTab("examenes")}
       >
-        <FileCheck2 className="h-4 w-4 mr-2" /> Colocación
+        <FileCheck2 className="h-4 w-4 mr-2" /> Examen de colocación
       </Button>
     </div>
   );
@@ -506,7 +511,8 @@ export default function HeroFeatures() {
             {activeFilters ? "Limpiar filtros" : "Sin filtros"}
           </Button>
         </TooltipTrigger>
-        <TooltipContent>
+        {/* 👇 Abajo también */}
+        <TooltipContent side="bottom" sideOffset={8}>
           {activeFilters ? "Quitar todos los filtros" : "No hay filtros activos"}
         </TooltipContent>
       </Tooltip>
@@ -600,21 +606,47 @@ export default function HeroFeatures() {
                           >
                             <Users className="mr-1 h-3 w-3 md:h-3.5 md:w-3.5" /> {disp}/{total} · {tone.label}
                           </Badge>
-
-
                           </div>
                         </div>
 
-                        <div className="mt-2 flex flex-wrap gap-2 text-sm">
-                          <Badge variant="secondary" className="capitalize text-sm px-3 py-1">{c.idioma}</Badge>
-                          <Badge variant="secondary" className="capitalize text-sm px-3 py-1">{c.modalidad}</Badge>
-                          <Badge variant="outline" className="capitalize">{c.turno}</Badge>
-                          <span className="inline-flex items-center gap-1 text-xs text-neutral-700">
-                            <GraduationCap className="h-3.5 w-3.5" /> {c.nivel}
-                          </span>
+                       <div className="mt-2 flex flex-nowrap items-center gap-2 text-[13px] leading-tight">
+                          {/* idioma */}
+                          <Badge
+                            variant="secondary"
+                            className="capitalize px-2.5 py-1 whitespace-nowrap min-w-0 shrink truncate"
+                          >
+                            <span className="block max-w-[10ch] truncate">{c.idioma}</span>
+                          </Badge>
+
+                          {/* modalidad */}
+                          <Badge
+                            variant="secondary"
+                            className="capitalize px-2.5 py-1 whitespace-nowrap min-w-0 shrink truncate"
+                          >
+                            <span className="block max-w-[12ch] truncate">{c.modalidad}</span>
+                          </Badge>
+
+                          {/* turno */}
+                          <Badge
+                            variant="outline"
+                            className="capitalize px-2.5 py-1 whitespace-nowrap min-w-0 shrink truncate"
+                          >
+                            <span className="block max-w-[10ch] truncate">{c.turno}</span>
+                          </Badge>
+
+                          {/* nivel */}
+                          <Badge
+                            variant="outline"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 font-medium whitespace-nowrap min-w-0 shrink"
+                          >
+                            <GraduationCap className="h-4 w-4 shrink-0" />
+                            <span className="block truncate">{c.nivel}</span>
+                          </Badge>
+
+                          {/* aula */}
                           {c.aula ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-neutral-700">
-                              <Building2 className="h-3.5 w-3.5" /> {c.aula}
+                            <span className="inline-flex items-center gap-1 text-xs text-neutral-700 whitespace-nowrap shrink-0">
+                              Aula: {c.aula}
                             </span>
                           ) : null}
                         </div>

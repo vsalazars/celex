@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Mail, Lock, Eye, EyeOff, UserPlus, IdCard, BadgeCheck } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, UserRoundPlus, IdCard, BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,13 +110,13 @@ export default function RegisterCard() {
       <div className="mx-auto w-full max-w-lg md:max-w-xl flex-1 rounded-3xl border bg-white p-6 shadow-xl flex flex-col">
 
         <div className="mb-6 flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-neutral-900 text-white">
-            <UserPlus className="h-6 w-6" />
+          <div className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20">
+            <UserRoundPlus className="h-6 w-6" />
           </div>
           <div>
             <h2 className="font-title text-xl">Crear cuenta de usuario</h2>
             <p className="text-sm text-neutral-500">
-              Regístrate para inscribirte a los cursos y exámenes.
+              Regístrate para inscribirte a los cursos y exámenes de colocación.
             </p>
           </div>
         </div>
@@ -129,7 +129,7 @@ export default function RegisterCard() {
                 <span className="text-sm font-medium">¿Perteneces al IPN?</span>
               </div>
               <p className="text-xs text-neutral-500">
-                Actívalo si eres estudiante del Instituto Politécnico Nacional (se pedirá tu boleta).
+                Actívalo si eres estudiante del Instituto Politécnico Nacional, se pedirá tu número de boleta.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -147,7 +147,7 @@ export default function RegisterCard() {
             </div>
           </div>
           <p className="mb-4 text-xs text-neutral-500">
-            Si el switch está desactivado, te registras como <span className="font-medium">Externo</span>.
+            
           </p>
 
           <form onSubmit={handleRegister} className="space-y-5">
@@ -214,13 +214,13 @@ export default function RegisterCard() {
 
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="reg-email">Correo</Label>
+                <Label htmlFor="reg-email">Correo electrónico</Label>
                 <div className="relative">
                   <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
                   <Input
                     id="reg-email"
                     type="email"
-                    placeholder="tunombre@correo.com"
+                    placeholder="usuario@correo.com"
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
                     className="pl-9"
@@ -232,13 +232,13 @@ export default function RegisterCard() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="reg-email2">Confirma tu correo</Label>
+                <Label htmlFor="reg-email2">Confirma correo electrónico</Label>
                 <div className="relative">
                   <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
                   <Input
                     id="reg-email2"
                     type="email"
-                    placeholder="tunombre@correo.com"
+                    placeholder="usuario@correo.com"
                     value={regEmail2}
                     onChange={(e) => setRegEmail2(e.target.value)}
                     className="pl-9"

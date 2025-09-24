@@ -48,7 +48,7 @@ export default function AlumnoDashboardPage() {
 
   return (
     <RequireAuth roles={["student"]}>
-      <AlumnoShell title="Cursos Extracurriculares de Lenguas Extranjeras">
+      <AlumnoShell title="CELEX Diódoro Antúnez Echegaray">
         {loading ? (
           <div className="p-6 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -61,9 +61,14 @@ export default function AlumnoDashboardPage() {
                 <h2 className="text-lg font-semibold">
                   Hola, <span className="text-neutral-900">{nombre}</span>
                 </h2>
-                <Button variant="outline" onClick={handleLogout}>
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Cerrar sesión
+                <Button
+                  onClick={handleLogout}
+                  variant="default"
+                  size="icon"
+                  className="h-10 w-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="h-5 w-5" />
                 </Button>
               </div>
 
