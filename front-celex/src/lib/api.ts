@@ -746,6 +746,8 @@ export async function downloadPlacementComprobante(
   await forceDownloadFromResponse(resp, suggestedName || `comprobante_${registroId}`);
 }
 
+
+
 /* ==================== Reportes (Coordinación) ==================== */
 /** Tipos específicos de reportes para no chocar con CicloDTO, etc. */
 export type ReportCicloLite = {
@@ -1629,3 +1631,26 @@ export async function getCoordMontos(params?: {
 
 
 
+/** ============== Placement Exams LITE (Coordinación) ============== */
+/** Devuelve la lista “lite” para el selector (filtra por año/idioma). 
+ *  Mapea page_size → limit para compat con tu backend.
+ */
+export async function listPlacementExamsLite(params?: {
+  anio?: number | string;
+  idioma?: string;
+  q?: string;
+  page_size?: number; // compat con el front
+  limit?: number;     // opcionalmente puedes pasar limit directo
+}): Promise<PlacementExamLite[]> {
+  const url = buildURL("/coordinacion/placement-exams/lite", {
+    anio: params?.anio !== undefined && params?.anio !== null && String(params.anio).length > 0
+      ? Number(params.anio)
+      : undefined,
+    idioma: params?.idioma,
+    q: params?.q,
+    limit: params?.limit ?? params?.page_size ?? 200,
+  });
+
+  const raw = await apiFetch<PlacementExamLite[] | { items?: PlacementExamLite[] }>(url, { auth: true });
+  return Array.isArray(raw) ? raw : raw?.items ?? [];
+}

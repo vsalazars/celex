@@ -73,10 +73,6 @@ def list_registros_admin(
     db: Session = Depends(get_db),
     _: User = Depends(require_coordinator_or_admin),
 ):
-    """
-    Lista los registros/pagos de un examen para coordinación.
-    Incluye metadatos del comprobante y nivel_idioma (nivel asignado por docente).
-    """
     rows = (
         db.query(PlacementRegistro, User)
         .join(User, User.id == PlacementRegistro.alumno_id)
@@ -98,21 +94,23 @@ def list_registros_admin(
                 },
                 "referencia": reg.referencia,
                 "importe_centavos": reg.importe_centavos,
-                "fecha_pago": reg.fecha_pago,  # FastAPI serializa date a "YYYY-MM-DD"
+                "fecha_pago": reg.fecha_pago,  # "YYYY-MM-DD"
                 "status": reg.status.value if hasattr(reg.status, "value") else str(reg.status),
                 "created_at": reg.created_at,
                 "comprobante": _comprobante_to_meta(
                     reg.comprobante_path, reg.comprobante_mime, reg.comprobante_size
                 ),
-                # 👇 nuevos/alineados
+                # existentes
                 "rechazo_motivo": getattr(reg, "rechazo_motivo", None),
                 "validation_notes": getattr(reg, "validation_notes", None),
                 "nivel_idioma": getattr(reg, "nivel_idioma", None),
+
+                # 👇 NUEVO: SOLO la fecha de validación
+                "validated_at": getattr(reg, "validated_at", None),
             }
         )
 
     return {"items": items}
-
 
 @router.post("/registros/{registro_id}/validate")
 def validate_registro_admin(
@@ -174,6 +172,7 @@ def validate_registro_admin(
         "rechazo_motivo": getattr(reg, "rechazo_motivo", None),
         "validation_notes": getattr(reg, "validation_notes", None),
         "nivel_idioma": getattr(reg, "nivel_idioma", None),
+        "validated_at": getattr(reg, "validated_at", None),
     }
 
 
