@@ -36,13 +36,13 @@ export default function UserInfo() {
       */}
 
       {/* Fallback simple */}
-      <div className="grid h-9 w-9 place-items-center rounded-full bg-neutral-900 text-xs font-semibold text-white">
+      <div className="grid h-9 w-9 place-items-center rounded-full bg-[#7c0040] text-xs font-semibold text-white">
         {initials.toUpperCase()}
       </div>
 
       <div className="min-w-0">
-        {/* Nombre completo sin truncar */}
-        <div className="text-sm font-medium break-words">
+        {/* Nombre completo con primario */}
+        <div className="text-sm font-medium break-words text-[#7c0040]">
           {name || "Coordinador(a)"}
         </div>
         {/* Correo truncable */}

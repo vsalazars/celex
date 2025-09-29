@@ -45,11 +45,15 @@ class PagoRow(BaseModel):
     inscripcion_id: int | str
     alumno: str
     email: Optional[str] = None
-    referencia: Optional[str] = None     # <- referencia del pago (si aplica)
-    tipo: str                            # "pago" | "exencion"
-    status: str                          # "pendiente" | "validado" | "rechazado"
+    referencia: Optional[str] = None
+    tipo: str
+    status: str
     importe_centavos: int
-    fecha_pago: Optional[str] = None
+    fecha_pago: Optional[str] = None        
+    validated_at: Optional[str] = None      
+    validated_by_id: Optional[int | str] = None
+    validated_by_name: Optional[str] = None
+
 
 class ReportePagos(BaseModel):
     ciclo: Dict[str, Any]
@@ -124,10 +128,7 @@ def reporte_inscritos(
     nombres = func.coalesce(func.trim(User.first_name), "")
     alumno_fmt = func.concat(apellidos, literal(", "), nombres).label("nombre")
 
-    # Si tienes extensión unaccent en PostgreSQL, puedes usar:
-    # apellidos_ord = func.lower(func.unaccent(apellidos))
-    # nombres_ord  = func.lower(func.unaccent(nombres))
-    # Si no, usa estas:
+    # Sin unaccent:
     apellidos_ord = func.lower(apellidos)
     nombres_ord  = func.lower(nombres)
 
@@ -149,16 +150,21 @@ def reporte_inscritos(
 
     alumnos: List[AlumnoInscrito] = []
     for r in inscs:
-        fecha = None
+        # ⬇⬇⬇ CAMBIO: conservar fecha+hora (ISO completo) en vez de truncar a %Y-%m-%d
+        fecha_iso = None
         if getattr(r, "fecha_inscripcion", None):
-            fecha = getattr(r, "fecha_inscripcion").strftime("%Y-%m-%d")
+            try:
+                fecha_iso = r.fecha_inscripcion.isoformat()
+            except Exception:
+                fecha_iso = r.fecha_inscripcion.strftime("%Y-%m-%dT%H:%M:%S")
+
         alumnos.append(
             AlumnoInscrito(
                 inscripcion_id=r.inscripcion_id,
                 boleta=r.boleta,
                 nombre=r.nombre or "",  # ya viene "Apellidos, Nombres"
                 email=r.email,
-                fecha_inscripcion=fecha,
+                fecha_inscripcion=fecha_iso,  # 👈 ahora con hora/minutos
                 estado=r.estado,
             )
         )
@@ -170,6 +176,7 @@ def reporte_inscritos(
         alumnos=alumnos,
     )
 
+
 # ==============================
 # Reporte: Pagos (por ciclo)
 # ==============================
@@ -177,35 +184,31 @@ def reporte_inscritos(
 @router.get("/reportes/pagos", response_model=ReportePagos, dependencies=[Depends(require_coordinator_or_admin)])
 def reporte_pagos(
     cicloId: int = Query(...),
-    grupoId: Optional[str] = Query(None),  # reservado para futuro
+    grupoId: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     ciclo = db.query(Ciclo).filter(Ciclo.id == cicloId).first()
     if not ciclo:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
-    # Columnas calculadas para mostrar y ordenar: "Apellidos, Nombres"
     apellidos = func.coalesce(func.trim(User.last_name), "")
-    nombres = func.coalesce(func.trim(User.first_name), "")
+    nombres   = func.coalesce(func.trim(User.first_name), "")
     alumno_fmt = func.concat(apellidos, literal(", "), nombres).label("alumno")
 
-    # Con unaccent (si disponible):
-    # apellidos_ord = func.lower(func.unaccent(apellidos))
-    # nombres_ord  = func.lower(func.unaccent(nombres))
-    # Sin unaccent:
     apellidos_ord = func.lower(apellidos)
-    nombres_ord  = func.lower(nombres)
+    nombres_ord   = func.lower(nombres)
 
     rows = (
         db.query(
             Inscripcion.id.label("inscripcion_id"),
-            alumno_fmt,  # <- "Apellidos, Nombres"
+            alumno_fmt,
             User.email.label("email"),
             Inscripcion.referencia.label("referencia"),
             Inscripcion.tipo.label("tipo"),
             Inscripcion.importe_centavos.label("importe_centavos"),
             Inscripcion.fecha_pago.label("fecha_pago"),
             Inscripcion.validated_by_id.label("validated_by_id"),
+            Inscripcion.validated_at.label("validated_at"),  # 👈 agrega esto
             Inscripcion.rechazo_motivo.label("rechazo_motivo"),
         )
         .join(User, User.id == Inscripcion.alumno_id)
@@ -214,8 +217,8 @@ def reporte_pagos(
         .all()
     )
 
+
     def coerce_tipo(v) -> str:
-        # Enum → usa .value; string → úsala; None → "pago" por defecto
         val = getattr(v, "value", v)
         if val is None:
             val = "pago"
@@ -225,7 +228,6 @@ def reporte_pagos(
     total_validado = 0
 
     for r in rows:
-        # Estatus
         if r.validated_by_id:
             status = "validado"
         elif r.rechazo_motivo:
@@ -236,24 +238,28 @@ def reporte_pagos(
         tipo = coerce_tipo(r.tipo)
         importe = int(r.importe_centavos or 0)
 
-        # Suma solo pagos validados (exenciones NO suman)
         if status == "validado" and tipo == "pago":
             total_validado += importe
 
-        fecha = None
-        if getattr(r, "fecha_pago", None):
-            fecha = getattr(r, "fecha_pago").strftime("%Y-%m-%d")
+        def to_iso(dt):
+            if not dt:
+                return None
+            try:
+                return dt.isoformat()
+            except Exception:
+                return getattr(dt, "strftime", lambda *_: None)("%Y-%m-%dT%H:%M:%S")
 
         out_rows.append(
             PagoRow(
                 inscripcion_id=r.inscripcion_id,
-                alumno=r.alumno or "",  # ya viene "Apellidos, Nombres"
+                alumno=r.alumno or "",
                 email=r.email,
                 referencia=r.referencia,
-                tipo=tipo,  # "pago" | "exencion"
+                tipo=tipo,
                 status=status,
                 importe_centavos=importe,
-                fecha_pago=fecha,
+                fecha_pago=to_iso(r.fecha_pago),       # 👈 ahora con hora
+                validated_at=to_iso(r.validated_at),   # 👈 ahora con hora
             )
         )
 

@@ -12,22 +12,12 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Download, Loader2, Search, AlertTriangle, ChevronUp, ChevronDown } from "lucide-react";
+import { Download, Loader2, Search, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 import { apiFetch, buildURL, getHistorialAlumno } from "@/lib/api";
 import type { Paginated } from "@/lib/types";
 import type { HistorialAlumnoResponse } from "@/lib/api";
-
-/* ===== TanStack React Table ===== */
-import {
-  ColumnDef,
-  SortingState,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
 
 /* ============================
    Tipos locales (flexibles)
@@ -431,113 +421,6 @@ export default function StudentsSection() {
     { value: "japones", label: "Japonés" },
   ];
 
-  /* ========= TanStack: columnas, sorting y tabla (solo para ordenar/renderer) ========= */
-  const [sorting, setSorting] = React.useState<SortingState>([]);
-
-  function SortIcon({ column }: { column: any }) {
-    const s = column.getIsSorted();
-    if (s === "asc") return <ChevronUp className="w-3 h-3 ml-1" />;
-    if (s === "desc") return <ChevronDown className="w-3 h-3 ml-1" />;
-    return null;
-  }
-
-  const columns = React.useMemo<ColumnDef<AlumnoFull>[]>(() => [
-    {
-      id: "alumno",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          Alumno <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (a) =>
-        (a.nombre?.toLowerCase() ||
-          `${a.last_name ?? ""} ${a.first_name ?? ""}`.trim().toLowerCase()),
-      cell: ({ row }) => {
-        const a = row.original;
-        return (
-          <div className="font-medium">{fullName(a)}</div>
-        );
-      },
-      sortingFn: "alphanumeric",
-    },
-    {
-      id: "email",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          Email <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (a) => (a.email ?? "").toLowerCase(),
-      cell: ({ row }) => row.original.email || "-",
-      sortingFn: "alphanumeric",
-    },
-    {
-      id: "curp",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          CURP <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (a) => (a.curp ?? "").toUpperCase(),
-      cell: ({ row }) => row.original.curp || "-",
-      sortingFn: "alphanumeric",
-    },
-  ], []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const table = useReactTable({
-    data: data.items,            // usamos la página actual que ya traes/paginas en tu estado
-    columns,
-    state: { sorting },
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(), // ordena en el cliente la página actual
-    // sin paginación de TanStack; respetamos tu paginación existente
-  });
-
-const SCORE_THRESHOLD = 80;
-
-function getScoreState(score: number | null | undefined) {
-  if (score == null || Number.isNaN(Number(score))) return "neutral" as const;
-  return Number(score) >= SCORE_THRESHOLD ? ("pass" as const) : ("fail" as const);
-}
-
-function calificacionClasses(score: number | null | undefined) {
-  const state = getScoreState(score);
-
-  const base =
-    "h-7 px-3.5 text-base inline-flex items-center rounded-lg border shadow-sm";
-
-  const container =
-    state === "pass"
-      ? "text-emerald-800 border-emerald-300 bg-emerald-50"
-      : state === "fail"
-      ? "text-red-700 border-red-300 bg-red-50"
-      : "text-primary border-primary/30 bg-primary/5";
-
-  const number =
-    state === "pass"
-      ? "ml-1 font-mono tabular-nums font-semibold text-emerald-700"
-      : state === "fail"
-      ? "ml-1 font-mono tabular-nums font-semibold text-red-700"
-      : "ml-1 font-mono tabular-nums font-semibold text-primary";
-
-  return { container: `${base} ${container}`, number };
-}
-
-
-
   /* ============================
      Render
      ============================ */
@@ -586,15 +469,7 @@ function calificacionClasses(score: number | null | undefined) {
                 <SelectValue placeholder="Idioma" />
               </SelectTrigger>
               <SelectContent>
-                {[
-                  { value: ALL, label: "Todos" },
-                  { value: "ingles", label: "Inglés" },
-                  { value: "frances", label: "Francés" },
-                  { value: "aleman", label: "Alemán" },
-                  { value: "italiano", label: "Italiano" },
-                  { value: "chino", label: "Chino" },
-                  { value: "japones", label: "Japonés" },
-                ].map((opt) => (
+                {idiomaOptions.map((opt) => (
                   <SelectItem key={`lang-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -613,17 +488,12 @@ function calificacionClasses(score: number | null | undefined) {
             <ScrollArea className="w-full overflow-auto">
               <Table>
                 <TableHeader className="sticky top-0 bg-white z-10">
-                  {table.getHeaderGroups().map((hg) => (
-                    <TableRow key={hg.id}>
-                      {hg.headers.map((header) => (
-                        <TableHead key={header.id} className={header.index === 0 ? "min-w-[220px]" : header.index === 1 ? "min-w-[260px]" : "min-w-[160px]"}>
-                          {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
+                  <TableRow>
+                    <TableHead className="min-w-[220px]">Alumno</TableHead>
+                    <TableHead className="min-w-[260px]">Email</TableHead>
+                    <TableHead className="min-w-[160px]">CURP</TableHead>
+                  </TableRow>
                 </TableHeader>
-
                 <TableBody>
                   {loading && data.items.length === 0 ? (
                     <TableRow>
@@ -641,18 +511,18 @@ function calificacionClasses(score: number | null | undefined) {
                     </TableRow>
                   ) : null}
 
-                  {table.getRowModel().rows.map((row) => (
+                  {data.items.map((a, idx) => (
                     <TableRow
-                      key={row.id}
+                      key={rowKey(a, idx)}
                       className="cursor-pointer hover:bg-neutral-50"
-                      onClick={() => { setSelected(row.original); setOpenExp(true); }}
+                      onClick={() => { setSelected(a); setOpenExp(true); }}
                       title="Ver expediente"
                     >
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id} className={cell.row.getVisibleCells().indexOf(cell) === 0 ? "align-top" : "align-top"}>
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </TableCell>
-                      ))}
+                      <TableCell className="align-top">
+                        <div className="font-medium">{fullName(a)}</div>
+                      </TableCell>
+                      <TableCell className="align-top">{a.email || "-"}</TableCell>
+                      <TableCell className="align-top">{a.curp || "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -660,7 +530,7 @@ function calificacionClasses(score: number | null | undefined) {
             </ScrollArea>
           </div>
 
-          {/* Paginación (tuya, intacta) */}
+          {/* Paginación */}
           <div className="flex items-center justify-between gap-2 text-sm">
             <div className="text-neutral-500">
               {data.total > 0 ? (
@@ -750,7 +620,7 @@ function calificacionClasses(score: number | null | undefined) {
                 <div className="lg:col-span-3 lg:sticky lg:top=[56px] self-start">
                   <Card className="rounded-xl h-[calc(85vh-56px-2rem)] flex flex-col min-h-0">
                     <CardHeader className="pb-2 shrink-0">
-                      <CardTitle className="text-sm">Datos personales</CardTitle>
+                      <CardTitle className="text-sm">Resumen</CardTitle>
                     </CardHeader>
                     <div className="flex-1 min-h-0 overflow-auto">
                       <CardContent className="space-y-3 text-sm">
@@ -876,16 +746,11 @@ function calificacionClasses(score: number | null | undefined) {
                                         {calReg != null ? (
                                           <Badge
                                             variant="outline"
-                                            className={calificacionClasses(calReg).container}
+                                            className="h-7 px-3.5 text-base" // ⬅️ ahora mismo tamaño que Francés/B1
                                           >
-                                            Calificación:
-                                            <span className={calificacionClasses(calReg).number}>
-                                              {fmtNum(calReg)}
-                                            </span>
+                                            Calificación: <span className="ml-1 font-medium">{fmtNum(calReg)}</span>
                                           </Badge>
                                         ) : null}
-
-
                                           {/* ⬇️ QUITAR ESTE BLOQUE */}
                                             {/*
                                             <Badge variant="outline" className={`h-5 ${badgeTone(it.inscripcion_estado)}`}>

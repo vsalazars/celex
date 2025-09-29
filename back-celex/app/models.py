@@ -189,7 +189,9 @@ class Inscripcion(Base):
     # Pago
     referencia = Column(String(50), nullable=True)
     importe_centavos = Column(Integer, nullable=True)
-    fecha_pago = Column(Date, nullable=True, index=True)
+    
+    fecha_pago = Column(DateTime(timezone=True), nullable=True, index=True)
+
 
     comprobante_path = Column(String(255), nullable=True)
     comprobante_mime = Column(String(100), nullable=True)
@@ -337,7 +339,8 @@ class PlacementRegistro(Base):
 
     referencia = Column(String(50), nullable=True)
     importe_centavos = Column(Integer, nullable=True)
-    fecha_pago = Column(Date, nullable=True)
+    fecha_pago = Column(DateTime(timezone=True), nullable=True, index=True)  # 👈 cambia a DateTime tz
+
 
     comprobante_path = Column(String(255), nullable=True)
     comprobante_mime = Column(String(100), nullable=True)

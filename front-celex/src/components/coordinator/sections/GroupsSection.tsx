@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useForm, Controller, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -46,7 +46,7 @@ import {
 
 import {
   listCiclos, createCiclo, updateCiclo, deleteCiclo, listTeachers,
-  listInscripcionesCiclo, // 👈 NUEVO: API para listar inscritos del ciclo
+  listInscripcionesCiclo,
 } from "@/lib/api";
 
 import {
@@ -56,6 +56,16 @@ import {
 import type {
   CicloDTO, CicloListResponse, ListCiclosParams, Teacher
 } from "@/lib/types";
+
+/* ======== TanStack React Table ======== */
+import {
+  useReactTable,
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  SortingState,
+} from "@tanstack/react-table";
 
 /* ========================= Utils ========================= */
 type DateRange = { from?: Date; to?: Date };
@@ -72,7 +82,7 @@ const isoToDate = (s?: string) => (s ? new Date(`${s}T00:00:00`) : undefined);
 const rangeFromDTO = (r?: { from: string; to: string }): DateRange =>
   r ? ({ from: isoToDate(r.from), to: isoToDate(r.to) }) : {};
 
-// Horas válidas (HH:MM) para selects
+// Horas válidas (HH:MM)
 const buildHorasValidas = (desde = 6, hasta = 22, pasoMin = 30) => {
   const out: string[] = [];
   for (let h = desde; h <= hasta; h++) {
@@ -223,28 +233,24 @@ type InscripcionLite = {
     first_name?: string | null;
     last_name?: string | null;
     email?: string | null;
-    is_ipn?: boolean | null;   // 👈 nuevo
-    boleta?: string | null;    // 👈 nuevo
+    is_ipn?: boolean | null;
+    boleta?: string | null;
   } | null;
 };
 
 
-/* =============== Exportar a PDF (ajustado al ancho de página) =============== */
-// Requiere: npm i jspdf jspdf-autotable
-// Uso: exportInscritosPDF(ciclo, insList)
-
+/* =============== Exportar a PDF (Carta + encabezado en 4 renglones) =============== */
 async function exportInscritosPDF(c: CicloDTO, rows: InscripcionLite[]) {
   if (!c) return;
   const { default: jsPDF } = await import("jspdf");
   const autoTable = (await import("jspdf-autotable")).default as any;
 
-  // Helpers locales
+  // Helpers
   const safe = (s?: string | null) => (s?.toString() || "—").trim();
   const docenteNombre =
     c.docente && (c.docente.first_name || c.docente.last_name)
       ? `${c.docente.first_name ?? ""} ${c.docente.last_name ?? ""}`.trim()
       : "—";
-
   const docenteEmail = c.docente?.email || "—";
   const diasTxt = ((c as any).dias ?? []).length
     ? ((c as any).dias as string[]).map(abreviarDia).join(" • ")
@@ -253,113 +259,158 @@ async function exportInscritosPDF(c: CicloDTO, rows: InscripcionLite[]) {
     (c as any).hora_inicio && (c as any).hora_fin
       ? `${hhmm((c as any).hora_inicio)}–${hhmm((c as any).hora_fin)}`
       : "—";
-
   const cursoTxt = `${c.curso?.from ? dShort(c.curso.from) : "—"} – ${c.curso?.to ? dShort(c.curso.to) : "—"}`;
   const inscTxt = `${c.inscripcion?.from ? dShort(c.inscripcion.from) : "—"} – ${c.inscripcion?.to ? dShort(c.inscripcion.to) : "—"}`;
 
-  // Documento
-  const doc = new jsPDF({ unit: "pt", format: "a4" }); // usa 'landscape' si quieres más ancho
+  // Resumen inscritos
+  const total = rows.length;
+  const ipnCount = rows.reduce((acc, r) => acc + (r.alumno?.is_ipn ? 1 : 0), 0);
+  const externos = Math.max(0, total - ipnCount);
+
+  // Documento: CARTA
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
   const margin = 48;
   const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
   const innerW = pageW - margin * 2;
   let y = margin;
 
-  // Encabezado
+  // === Encabezado
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text(`Listado de inscritos — ${safe(c.codigo)}`, margin, y);
-  y += 20;
+  doc.setFontSize(15);
+  doc.text(`Listado de inscritos`, margin, y);
 
-  // Metadatos del ciclo (2 columnas)
-  doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(10.5);
+  y += 16;
 
-  const leftCol = [
-    `Idioma: ${safe(c.idioma)}`,
-    `Modalidad: ${safe(c.modalidad)}`,
-    `Turno: ${safe(c.turno)}`,
-    `Nivel: ${safe((c as any).nivel as any)}`,
-    `Cupo total: ${safe((c as any).cupo_total as any)}`,
-  ];
-
-  const rightCol = [
-    `Días: ${diasTxt}`,
-    `Horario: ${horarioTxt}`,
-    `Inscripción: ${inscTxt}`,
-    `Curso: ${cursoTxt}`,
-    `Aula / Modalidad asist.: ${safe((c as any).aula)} / ${safe((c as any).modalidad_asistencia)}`,
-  ];
-
-  const lineHeight = 14;
-  const leftX = margin;
-  const rightX = margin + Math.floor(innerW * 0.52); // columna derecha siempre dentro del ancho útil
-
-  leftCol.forEach((t, i) => doc.text(t, leftX, y + i * lineHeight));
-  rightCol.forEach((t, i) => doc.text(t, rightX, y + i * lineHeight));
-  y += leftCol.length * lineHeight + 10;
-
-  // Docente
+    // --- Renglón 1 (más grande) ---
   doc.setFont("helvetica", "bold");
+  doc.setFontSize(12); // un poco más grande que el resto (que está en 10.5)
+  doc.text(
+    `Ciclo: ${safe(c.codigo)}  •  Idioma: ${safe(c.idioma)}  •  Nivel: ${safe((c as any).nivel as any)}`,
+    margin,
+    y
+  );
+  y += 14; // mayor espacio debajo
+
+  // --- Renglón 2 ---
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10.5);
+  doc.text(
+    `Modalidad: ${safe(c.modalidad)}  •  Turno: ${safe(c.turno)}  •  Cupo: ${safe((c as any).cupo_total as any)}  •  Asistencia: ${safe((c as any).modalidad_asistencia)}  •  Aula: ${safe((c as any).aula)}`,
+    margin,
+    y
+  );
+  y += 12;
+
+  // --- Renglón 3 ---
+  doc.text(
+    `Inscripción: ${inscTxt}  •  Curso: ${cursoTxt}`,
+    margin,
+    y
+  );
+  y += 12;
+
+  // --- Renglón 4 ---
+  doc.text(
+    `Días: ${diasTxt}  •  Horario: ${horarioTxt}  •  Examen MT: ${c.examenMT ? dShort(c.examenMT) : "—"}  •  Examen final: ${c.examenFinal ? dShort(c.examenFinal) : "—"}`,
+    margin,
+    y
+  );
+  y += 10;
+
+  // === Chips (Total / IPN / Externos)
+  const chipH = 18;
+  const padX = 8;
+  const radius = 5;
+  const gap = 6;
+  doc.setFontSize(9.5);
+
+  function chip(text: string, x: number, color: [number, number, number]) {
+    const w = doc.getTextWidth(text) + padX * 2;
+    doc.setFillColor(...color);
+    doc.setDrawColor(...color);
+    (doc as any).roundedRect(x, y, w, chipH, radius, radius, "FD");
+    doc.setTextColor(255, 255, 255);
+    doc.text(text, x + padX, y + chipH / 2 + 3, { baseline: "middle" as any });
+    doc.setTextColor(0, 0, 0);
+    return w;
+  }
+
+  let cx = margin;
+  cx += chip(`Total: ${total}`, cx, [51, 103, 214]) + gap;
+  cx += chip(`IPN: ${ipnCount}`, cx, [0, 150, 136]) + gap;
+  cx += chip(`Externos: ${externos}`, cx, [255, 152, 0]);
+  y += chipH + 10;
+
+  // === Docente
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.5);
   doc.text("Docente", margin, y);
   doc.setFont("helvetica", "normal");
-  y += 14;
+  y += 12;
   doc.text(`Nombre: ${docenteNombre}`, margin, y);
-  y += 14;
+  y += 12;
   doc.text(`Email: ${docenteEmail}`, margin, y);
-  y += 18;
+  y += 8;
 
-  // Tabla de inscritos (AJUSTADA AL ANCHO DISPONIBLE)
+  // === Tabla de inscritos
+  doc.setDrawColor(232);
+  doc.line(margin, y, pageW - margin, y);
+  y += 6;
+
   const body = rows.map((r, idx) => {
-    const name = `${safe(r.alumno?.first_name)} ${safe(r.alumno?.last_name)}`.trim() || safe(r.alumno?.email);
-    const email = safe(r.alumno?.email);
-    const boleta = safe(r.alumno?.boleta);
+    const name =
+      `${(r.alumno?.first_name ?? "").trim()} ${(r.alumno?.last_name ?? "").trim()}`.trim() ||
+      (r.alumno?.email ?? "—");
+    const email = r.alumno?.email ?? "—";
+    const boleta = r.alumno?.boleta ?? "—";
     const tipo = r.alumno?.is_ipn ? "IPN" : "Externo";
     const creado = dWhen(r.created_at ?? undefined);
     return [idx + 1, name, email, boleta, tipo, creado];
   });
 
-  // Porcentajes por columna (suman <= 1.0)
-  const COLS = [0.06, 0.30, 0.28, 0.12, 0.08, 0.16]; // #, Nombre, Email, Boleta, Tipo, Inscrito el
+  const COLS = [0.06, 0.30, 0.28, 0.12, 0.08, 0.16];
   const W = COLS.map((f) => Math.floor(innerW * f));
 
-  autoTable(doc, {
+  (autoTable as any)(doc, {
     startY: y,
     head: [["#", "Nombre", "Email", "Boleta", "Tipo", "Inscrito el"]],
     body,
-    // Que la tabla NUNCA exceda el ancho útil
-    tableWidth: innerW,
     margin: { left: margin, right: margin },
-
-    // Envoltura para texto largo y evitar desbordes
-    styles: { fontSize: 9, cellPadding: 6, overflow: "linebreak", cellWidth: "wrap" },
-    headStyles: { fontStyle: "bold" },
-
-    // Anchos proporcionales calculados
+    tableWidth: innerW,
+    styles: { fontSize: 9, cellPadding: 5, overflow: "linebreak", cellWidth: "wrap" },
+    headStyles: { fillColor: [238, 238, 238], textColor: [0, 0, 0], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [250, 250, 250] },
     columnStyles: {
-      0: { halign: "right", cellWidth: W[0] }, // #
-      1: { cellWidth: W[1] },                  // Nombre
-      2: { cellWidth: W[2] },                  // Email
-      3: { cellWidth: W[3] },                  // Boleta
-      4: { halign: "center", cellWidth: W[4] },// Tipo
-      5: { cellWidth: W[5] },                  // Inscrito el
+      0: { halign: "right", cellWidth: W[0] },
+      1: { cellWidth: W[1] },
+      2: { cellWidth: W[2] },
+      3: { cellWidth: W[3] },
+      4: { halign: "center", cellWidth: W[4] },
+      5: { cellWidth: W[5] },
     },
-
     didDrawPage: () => {
       const pageW_ = doc.internal.pageSize.getWidth();
       const pageH_ = doc.internal.pageSize.getHeight();
       doc.setFontSize(8);
+      doc.setTextColor(120);
       doc.text(
         `Generado: ${new Date().toLocaleString("es-MX").replace(/\./g, "")}`,
         margin,
-        pageH_ - 10,
-        { baseline: "bottom" }
+        pageH_ - 12,
+        { baseline: "bottom" as any }
       );
       const pageNo = `Página ${doc.internal.getNumberOfPages()}`;
-      doc.text(pageNo, pageW_ - margin, pageH_ - 10, { align: "right", baseline: "bottom" });
+      doc.text(pageNo, pageW_ - margin, pageH_ - 12, { align: "right", baseline: "bottom" as any });
+      doc.setTextColor(0);
+    },
+    didParseCell: (data: any) => {
+      data.cell.styles.minCellHeight = 13;
     },
   });
 
-  // Descargar
   const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const filename = `${safe(c.codigo)}-inscritos-${ymd}.pdf`.replace(/\s+/g, "_");
   doc.save(filename);
@@ -367,6 +418,8 @@ async function exportInscritosPDF(c: CicloDTO, rows: InscripcionLite[]) {
 
 
 /* ========================= MAIN ========================= */
+const PAGE_SIZE_OPTIONS = [4, 10, 20, 50];
+
 export default function GroupsSection() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"create" | "edit">("create");
@@ -375,8 +428,8 @@ export default function GroupsSection() {
   // Vista: tarjetas o lista
   const [view, setView] = useState<"cards" | "list">("cards");
 
-  // Toolbar
-  const [q, setQ] = useState("");
+  // Toolbar (filtros)
+  const [q, setQ] = useState(""); // (sigue existiendo por si luego quieres reactivar la búsqueda)
   const [fIdioma, setFIdioma] = useState<string | undefined>();
   const [fModalidad, setFModalidad] = useState<string | undefined>();
   const [fTurno, setFTurno] = useState<string | undefined>();
@@ -385,15 +438,28 @@ export default function GroupsSection() {
   // Docentes
   const [teachers, setTeachers] = useState<Teacher[]>([]);
 
-  // Paginación & data
-  const PAGE_SIZE = 8;
+  // Paginación & data (server-side)
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(() => {
+    if (typeof window === "undefined") return PAGE_SIZE_OPTIONS[0];
+    const raw = window.localStorage.getItem("ciclos_page_size");
+    const parsed = raw ? Number(raw) : NaN;
+    return PAGE_SIZE_OPTIONS.includes(parsed) ? parsed : PAGE_SIZE_OPTIONS[0];
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("ciclos_page_size", String(pageSize));
+    }
+  }, [pageSize]);
+
   const [data, setData] = useState<CicloListResponse | null>(null);
   const items = data?.items ?? [];
   const canPrev = (data?.page ?? 1) > 1;
   const canNext = !!data && data.page < data.pages;
 
   // Sheet de inscritos
+  theSheet: {
+  }
   const [openIns, setOpenIns] = useState(false);
   const [insCiclo, setInsCiclo] = useState<CicloDTO | null>(null);
   const [insList, setInsList] = useState<InscripcionLite[]>([]);
@@ -420,7 +486,7 @@ export default function GroupsSection() {
   useEffect(() => {
     const params: ListCiclosParams = {
       page,
-      page_size: PAGE_SIZE,
+      page_size: pageSize,
       q: q || undefined,
       idioma: fIdioma as any,
       modalidad: fModalidad as any,
@@ -431,7 +497,7 @@ export default function GroupsSection() {
       console.error(e);
       toast.error(e?.message || "No se pudo cargar la lista de ciclos");
     });
-  }, [page, q, fIdioma, fModalidad, fTurno, fNivel]);
+  }, [page, pageSize, q, fIdioma, fModalidad, fTurno, fNivel]);
 
   // Cargar docentes (activos)
   useEffect(() => {
@@ -444,7 +510,7 @@ export default function GroupsSection() {
   }, []);
 
   const refreshFirstPage = async () => {
-    await fetchList({ page: 1, page_size: PAGE_SIZE });
+    await fetchList({ page: 1, page_size: pageSize });
     setPage(1);
   };
 
@@ -594,102 +660,181 @@ export default function GroupsSection() {
 
       {/* Toolbar */}
       <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="relative w-full md:max-w-sm">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-400" />
-            <Input
-              value={q}
-              onChange={(e) => { setQ(e.target.value); setPage(1); }}
-              placeholder="Buscar ciclo por código…"
-              className="pl-9 rounded-xl h-9"
-            />
-          </div>
+        {/* === Fila 1: controles principales en un renglón === */}
+        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+          {/* Por página */}
+          <span className="text-xs text-neutral-600">Por página</span>
+          <Select
+            value={String(pageSize)}
+            onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}
+          >
+            <SelectTrigger className="w-[72px] rounded-xl h-9">
+              <SelectValue placeholder={`${PAGE_SIZE_OPTIONS[0]}`} />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map(n => (
+                <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary" className="hidden md:inline-flex gap-1">
-              <Filter className="h-3.5 w-3.5" /> Filtros
-            </Badge>
+       
 
-            <Select value={fIdioma} onValueChange={(v) => { setFIdioma(v); setPage(1); }}>
-              <SelectTrigger className="w-[140px] rounded-xl h-9">
-                <SelectValue placeholder="Idioma" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ingles">Inglés</SelectItem>
-                <SelectItem value="frances">Francés</SelectItem>
-                <SelectItem value="aleman">Alemán</SelectItem>
-                <SelectItem value="italiano">Italiano</SelectItem>
-                <SelectItem value="portugues">Portugués</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Idioma */}
+          <Select value={fIdioma} onValueChange={(v) => { setFIdioma(v); setPage(1); }}>
+            <SelectTrigger className="w-[130px] rounded-xl h-9">
+              <SelectValue placeholder="Idioma" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ingles">Inglés</SelectItem>
+              <SelectItem value="frances">Francés</SelectItem>
+              <SelectItem value="aleman">Alemán</SelectItem>
+              <SelectItem value="italiano">Italiano</SelectItem>
+              <SelectItem value="portugues">Portugués</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <Select value={fModalidad} onValueChange={(v) => { setFModalidad(v); setPage(1); }}>
-              <SelectTrigger className="w-[140px] rounded-xl h-9">
-                <SelectValue placeholder="Modalidad" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="intensivo">Intensivo</SelectItem>
-                <SelectItem value="sabatino">Sabatino</SelectItem>
-                <SelectItem value="semestral">Semestral</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Modalidad */}
+          <Select value={fModalidad} onValueChange={(v) => { setFModalidad(v); setPage(1); }}>
+            <SelectTrigger className="w-[130px] rounded-xl h-9">
+              <SelectValue placeholder="Modalidad" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="intensivo">Intensivo</SelectItem>
+              <SelectItem value="sabatino">Sabatino</SelectItem>
+              <SelectItem value="semestral">Semestral</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <Select value={fTurno} onValueChange={(v) => { setFTurno(v); setPage(1); }}>
-              <SelectTrigger className="w-[140px] rounded-xl h-9">
-                <SelectValue placeholder="Turno" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="matutino">Matutino</SelectItem>
-                <SelectItem value="vespertino">Vespertino</SelectItem>
-                <SelectItem value="mixto">Mixto</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Turno */}
+          <Select value={fTurno} onValueChange={(v) => { setFTurno(v); setPage(1); }}>
+            <SelectTrigger className="w-[130px] rounded-xl h-9">
+              <SelectValue placeholder="Turno" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="matutino">Matutino</SelectItem>
+              <SelectItem value="vespertino">Vespertino</SelectItem>
+              <SelectItem value="mixto">Mixto</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <Select value={fNivel} onValueChange={(v) => { setFNivel(v); setPage(1); }}>
-              <SelectTrigger className="w-[120px] rounded-xl h-9">
-                <SelectValue placeholder="Nivel" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="A1">A1</SelectItem>
-                <SelectItem value="A2">A2</SelectItem>
-                <SelectItem value="B1">B1</SelectItem>
-                <SelectItem value="B2">B2</SelectItem>
-                <SelectItem value="C1">C1</SelectItem>
-                <SelectItem value="C2">C2</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Nivel */}
+          <Select value={fNivel} onValueChange={(v) => { setFNivel(v); setPage(1); }}>
+            <SelectTrigger className="w-[130px] rounded-xl h-9">
+              <SelectValue placeholder="Nivel" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="A1">A1</SelectItem>
+              <SelectItem value="A2">A2</SelectItem>
+              <SelectItem value="B1">B1</SelectItem>
+              <SelectItem value="B2">B2</SelectItem>
+              <SelectItem value="C1">C1</SelectItem>
+              <SelectItem value="C2">C2</SelectItem>
+            </SelectContent>
+          </Select>
 
-            {(fIdioma || fModalidad || fTurno || fNivel || q) ? (
-              <Button
-                variant="outline"
-                className="rounded-xl h-9"
-                onClick={() => { setQ(""); setFIdioma(undefined); setFModalidad(undefined); setFTurno(undefined); setFNivel(undefined); setPage(1); }}
-              >
-                Limpiar
-              </Button>
-            ) : null}
+          {/* Toggle vista + Búsqueda (alineados a la derecha) */}
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              type="button"
+              variant={view === "cards" ? "default" : "outline"}
+              className="rounded-xl h-9"
+              onClick={() => setView("cards")}
+            >
+              Tarjetas
+            </Button>
+            <Button
+              type="button"
+              variant={view === "list" ? "default" : "outline"}
+              className="rounded-xl h-9"
+              onClick={() => setView("list")}
+            >
+              Lista
+            </Button>
 
-            {/* Toggle vista */}
-            <div className="flex items-center gap-2 ml-2">
-              <Button
-                type="button"
-                variant={view === "cards" ? "default" : "outline"}
-                className="rounded-xl h-9"
-                onClick={() => setView("cards")}
-              >
-                Tarjetas
-              </Button>
-              <Button
-                type="button"
-                variant={view === "list" ? "default" : "outline"}
-                className="rounded-xl h-9"
-                onClick={() => setView("list")}
-              >
-                Lista
-              </Button>
+            {/* Búsqueda siempre activa al final */}
+            <div className="relative w-[220px] sm:w-[280px]">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-400" />
+              <Input
+                value={q}
+                onChange={(e) => { setQ(e.target.value); setPage(1); }}
+                placeholder="Buscar ciclo por código…"
+                className="pl-9 rounded-xl h-9"
+              />
             </div>
           </div>
         </div>
+
+        {/* === Fila 2: filtros seleccionados + Limpiar filtros === */}
+        {(fIdioma || fModalidad || fTurno || fNivel) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-neutral-500">Filtros seleccionados:</span>
+
+            {/* Chip: Idioma */}
+            {fIdioma && (
+              <button
+                type="button"
+                onClick={() => { setFIdioma(undefined); setPage(1); }}
+                className="rounded-full border px-2 py-1 text-[11px] bg-white/80 hover:bg-neutral-50 capitalize"
+                title="Quitar filtro: Idioma"
+              >
+                Idioma: {fIdioma} <span className="ml-1">×</span>
+              </button>
+            )}
+
+            {/* Chip: Modalidad */}
+            {fModalidad && (
+              <button
+                type="button"
+                onClick={() => { setFModalidad(undefined); setPage(1); }}
+                className="rounded-full border px-2 py-1 text-[11px] bg-white/80 hover:bg-neutral-50 capitalize"
+                title="Quitar filtro: Modalidad"
+              >
+                Modalidad: {fModalidad} <span className="ml-1">×</span>
+              </button>
+            )}
+
+            {/* Chip: Turno */}
+            {fTurno && (
+              <button
+                type="button"
+                onClick={() => { setFTurno(undefined); setPage(1); }}
+                className="rounded-full border px-2 py-1 text-[11px] bg-white/80 hover:bg-neutral-50 capitalize"
+                title="Quitar filtro: Turno"
+              >
+                Turno: {fTurno} <span className="ml-1">×</span>
+              </button>
+            )}
+
+            {/* Chip: Nivel */}
+            {fNivel && (
+              <button
+                type="button"
+                onClick={() => { setFNivel(undefined); setPage(1); }}
+                className="rounded-full border px-2 py-1 text-[11px] bg-white/80 hover:bg-neutral-50"
+                title="Quitar filtro: Nivel"
+              >
+                Nivel: {fNivel} <span className="ml-1">×</span>
+              </button>
+            )}
+
+            {/* Limpiar todos los filtros */}
+            <button
+              type="button"
+              onClick={() => {
+                setFIdioma(undefined);
+                setFModalidad(undefined);
+                setFTurno(undefined);
+                setFNivel(undefined);
+                setPage(1);
+              }}
+              className="rounded-full border px-2 py-1 text-[11px] bg-white/80 hover:bg-red-50 flex items-center justify-center"
+              title="Limpiar todos los filtros"
+            >
+              <Trash2 className="h-3.5 w-3.5 text-red-500" />
+            </button>
+          </div>
+        )}
 
         <Separator className="my-4" />
 
@@ -706,19 +851,43 @@ export default function GroupsSection() {
               <TableCiclos items={items} onEdit={onEdit} onDelete={onDelete} onShowIns={openInscritos} />
             )}
 
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-neutral-500">
                 Página {data?.page} de {data?.pages} · {data?.total} resultados
               </span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" disabled={!canPrev}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" disabled={!canNext}
-                  onClick={() => setPage((p) => (data ? Math.min(data.pages, p + 1) : p + 1))}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+
+              {/* Selector de página + paginación */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-neutral-600 hidden sm:inline-block">Por página</span>
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}
+                >
+                  <SelectTrigger className="w-[92px] rounded-xl h-9">
+                    <SelectValue placeholder={`${PAGE_SIZE_OPTIONS[0]}`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZE_OPTIONS.map(n => (
+                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline" size="icon" className="h-9 w-9 rounded-xl" disabled={!canPrev}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    aria-label="Página anterior"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline" size="icon" className="h-9 w-9 rounded-xl" disabled={!canNext}
+                    onClick={() => setPage((p) => (data ? Math.min(data.pages, p + 1) : p + 1))}
+                    aria-label="Página siguiente"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </>
@@ -733,7 +902,7 @@ export default function GroupsSection() {
       <Sheet open={openIns} onOpenChange={setOpenIns}>
         <SheetContent
           side="top"
-          className="w-full sm:max-w-xl px-4 sm:px-6"  
+          className="w-full sm:max-w-xl px-4 sm:px-6"
         >
           <SheetHeader className="px-0">
             <SheetTitle>Inscritos — {insCiclo?.codigo ?? "—"}</SheetTitle>
@@ -761,7 +930,6 @@ export default function GroupsSection() {
                   <div className="mt-1 text-2xl font-bold tabular-nums">{total}</div>
                 </div>
               </div>
-
             );
           })()}
 
@@ -814,7 +982,7 @@ export default function GroupsSection() {
               )}
             </div>
           </div>
-         {/* Botón Exportar PDF */}
+          {/* Botón Exportar PDF */}
           <div className="mt-2 mb-6 flex justify-end">
             <Button
               onClick={() => insCiclo && exportInscritosPDF(insCiclo, insList)}
@@ -865,7 +1033,7 @@ export default function GroupsSection() {
             setValue={setValue}
             teachers={teachers}
           />
-          
+
         </DialogContent>
       </Dialog>
     </div>
@@ -892,7 +1060,6 @@ function CardCiclo({ c, onEdit, onDelete, onShowIns }: {
   const modalidadAsistencia = (c as any).modalidad_asistencia as "presencial" | "virtual" | undefined;
   const aula = (c as any).aula as string | undefined;
 
-  // Si el back te regresa `inscritos_count` lo usamos; si no, lo omitimos
   const inscritosCount = (c as any).inscritos_count as number | undefined;
 
   return (
@@ -990,29 +1157,27 @@ function CardCiclo({ c, onEdit, onDelete, onShowIns }: {
         )}
       </div>
 
-      {/* Separador */}
       <div className="my-3"><Separator /></div>
 
-      {/* Bloques de info en grilla */}
       <div className="grid gap-3 sm:grid-cols-3">
-        {/* Días & Horario */}
         <div className="rounded-xl border bg-white/50 p-3">
           <div className="flex items-center gap-1.5 text-xs text-neutral-700">
             <CalendarDays className="h-3.5 w-3.5" />
             <span className="font-medium text-neutral-800">Días</span>
           </div>
           <div className="mt-1 text-[12px] text-neutral-700">
-            {dias.length ? dias.map(abreviarDia).join(" • ") : "—"}
+            {(((c as any).dias ?? []) as string[]).length ? ((c as any).dias as string[]).map(abreviarDia).join(" • ") : "—"}
           </div>
 
           <div className="mt-2 flex items-center gap-1.5 text-xs text-neutral-700">
             <Clock3 className="h-3.5 w-3.5" />
             <span className="font-medium text-neutral-800">Horario</span>
           </div>
-          <div className="mt-1 text-[12px] tabular-nums">{horarioTexto}</div>
+          <div className="mt-1 text-[12px] tabular-nums">
+            {((c as any).hora_inicio && (c as any).hora_fin) ? `${hhmm((c as any).hora_inicio)}–${hhmm((c as any).hora_fin)}` : "—"}
+          </div>
         </div>
 
-        {/* Inscripción & Curso */}
         <div className="rounded-xl border bg-white/50 p-3">
           <div className="text-xs font-medium text-neutral-800">Inscripción</div>
           <div className="mt-1 text-[12px] tabular-nums">
@@ -1025,7 +1190,6 @@ function CardCiclo({ c, onEdit, onDelete, onShowIns }: {
           </div>
         </div>
 
-        {/* Exámenes (si hay) */}
         {(c.examenMT || c.examenFinal) ? (
           <div className="rounded-xl border bg-white/50 p-3">
             {c.examenMT && (
@@ -1043,23 +1207,23 @@ function CardCiclo({ c, onEdit, onDelete, onShowIns }: {
             )}
           </div>
         ) : (
-          <div className="rounded-xl border bg-white/30 p-3 text-[12px] text-neutral-400 flex items-center justify-center">
+          <div className="rounded-2xl border bg-white/30 p-3 text-[12px] text-neutral-400 flex items-center justify-center">
             Sin fechas de exámenes
           </div>
         )}
       </div>
 
-      {/* Acciones secundarias */}
       <div className="mt-3 flex gap-2">
-        <Button variant="outline" onClick={() => onShowIns(c)} className="rounded-xl">
+        <Button variant="outline" onClick={() => onShowIns(c)} className="rounded-xl text-blue-600 border-blue-200 hover:bg-blue-50">
           <Users className="h-4 w-4 mr-2" /> Ver inscritos
         </Button>
-        <Button variant="outline" onClick={() => onEdit(c)} className="rounded-xl">
+
+        <Button variant="outline" onClick={() => onEdit(c)} className="rounded-xl text-green-600 border-green-200 hover:bg-green-50">
           <Pencil className="h-4 w-4 mr-2" /> Editar
         </Button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="outline" className="rounded-xl text-red-600 border-red-200">
+            <Button variant="outline" className="rounded-xl text-red-600 border-red-200 hover:bg-red-50">
               <Trash2 className="h-4 w-4 mr-2" /> Eliminar
             </Button>
           </AlertDialogTrigger>
@@ -1086,6 +1250,22 @@ function CardCiclo({ c, onEdit, onDelete, onShowIns }: {
   );
 }
 
+/* ====== Helpers de TableCiclos (para accessors) ====== */
+function docenteNombre(c: CicloDTO) {
+  return c.docente && (c.docente.first_name || c.docente.last_name)
+    ? `${c.docente.first_name ?? ""} ${c.docente.last_name ?? ""}`.trim()
+    : "—";
+}
+function horarioDe(c: any) {
+  const hIni = c?.hora_inicio as string | undefined;
+  const hFin = c?.hora_fin as string | undefined;
+  return (hIni && hFin) ? `${hhmm(hIni)}–${hhmm(hFin)}` : "—";
+}
+function cursoRango(c: CicloDTO) {
+  return `${c.curso?.from ? dShort(c.curso.from) : "—"} – ${c.curso?.to ? dShort(c.curso.to) : "—"}`;
+}
+
+/* ========================= LISTA con TanStack ========================= */
 function TableCiclos({
   items,
   onEdit,
@@ -1097,94 +1277,186 @@ function TableCiclos({
   onDelete: (c: CicloDTO) => void;
   onShowIns: (c: CicloDTO) => void;
 }) {
+  const [sorting, setSorting] = useState<SortingState>([]);
+
+  const columns = useMemo<ColumnDef<CicloDTO>[]>(() => [
+    {
+      accessorKey: "codigo",
+      header: "Código",
+      cell: ({ row }) => <span className="font-medium">{row.original.codigo}</span>,
+    },
+    {
+      accessorKey: "idioma",
+      header: "Idioma",
+      cell: ({ getValue }) => <span className="capitalize">{String(getValue() ?? "—")}</span>,
+    },
+    {
+      accessorKey: "modalidad",
+      header: "Modalidad",
+      cell: ({ getValue }) => <span className="capitalize">{String(getValue() ?? "—")}</span>,
+    },
+    {
+      accessorKey: "turno",
+      header: "Turno",
+      cell: ({ getValue }) => <span className="capitalize">{String(getValue() ?? "—")}</span>,
+    },
+    {
+      id: "nivel",
+      header: "Nivel",
+      accessorFn: (c: any) => c?.nivel ?? "—",
+    },
+    {
+      id: "horario",
+      header: "Horario",
+      accessorFn: (c: any) => horarioDe(c),
+      cell: ({ getValue }) => <span className="tabular-nums">{String(getValue())}</span>,
+      sortingFn: "alphanumeric",
+    },
+    {
+      id: "curso",
+      header: "Curso",
+      accessorFn: (c: CicloDTO) => cursoRango(c),
+      cell: ({ getValue }) => <span className="tabular-nums">{String(getValue())}</span>,
+      sortingFn: "alphanumeric",
+    },
+    {
+      id: "docente",
+      header: "Docente",
+      accessorFn: (c: CicloDTO) => docenteNombre(c),
+    },
+    {
+      accessorKey: "cupo_total",
+      header: "Cupo",
+      cell: ({ getValue }) => <span className="tabular-nums">{Number(getValue() ?? 0)}</span>,
+      sortingFn: "basic",
+    },
+    {
+      id: "modalidad_asistencia",
+      header: "Modalidad Asist.",
+      accessorFn: (c: any) => c?.modalidad_asistencia ?? "—",
+      cell: ({ getValue }) => <span className="capitalize">{String(getValue() ?? "—")}</span>,
+    },
+    {
+      id: "aula",
+      header: "Aula",
+      accessorFn: (c: any) => c?.aula ?? "—",
+    },
+    {
+      id: "acciones",
+      header: () => <span className="sr-only">Acciones</span>,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const c = row.original;
+        return (
+          <div className="text-right">
+            <div className="inline-flex gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg text-blue-600 border-blue-200 hover:bg-blue-50"
+                onClick={() => onShowIns(c)}
+              >
+                <Users className="h-4 w-4 mr-1" /> Inscritos
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg text-green-600 border-green-200 hover:bg-green-50"
+                onClick={() => onEdit(c)}
+              >
+                <Pencil className="h-4 w-4 mr-1" /> Editar
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg text-red-600 border-red-200 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" /> Eliminar
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Eliminar ciclo</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      ¿Seguro que deseas eliminar <b>{c.codigo}</b>? Esta acción no se puede deshacer.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-red-600 hover:bg-red-700"
+                      onClick={() => onDelete(c)}
+                    >
+                      Sí, eliminar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
+        );
+      },
+    },
+  ], [onDelete, onEdit, onShowIns]);
+
+  const table = useReactTable({
+    data: items,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
   return (
     <div className="rounded-2xl border bg-white/60 p-2 shadow-sm overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="text-[12px] text-neutral-600">
-          <tr className="[&>th]:px-3 [&>th]:py-2 text-left">
-            <th>Código</th>
-            <th>Idioma</th>
-            <th>Modalidad</th>
-            <th>Turno</th>
-            <th>Nivel</th>
-            <th>Horario</th>
-            <th>Curso</th>
-            <th>Docente</th>
-            <th>Cupo</th>
-            <th>Modalidad Asist.</th>
-            <th>Aula</th>
-            <th className="text-right">Acciones</th>
-          </tr>
+          {table.getHeaderGroups().map(hg => (
+            <tr key={hg.id} className="[&>th]:px-3 [&>th]:py-2 text-left">
+              {hg.headers.map(h => {
+                const canSort = h.column.getCanSort();
+                const sortDir = h.column.getIsSorted(); // false | 'asc' | 'desc'
+                return (
+                  <th key={h.id}>
+                    {canSort ? (
+                      <button
+                        className="inline-flex items-center gap-1 select-none"
+                        onClick={h.column.getToggleSortingHandler()}
+                      >
+                        {flexRender(h.column.columnDef.header, h.getContext())}
+                        <span className="text-[10px] text-neutral-400">
+                          {sortDir === "asc" ? "▲" : sortDir === "desc" ? "▼" : ""}
+                        </span>
+                      </button>
+                    ) : (
+                      flexRender(h.column.columnDef.header, h.getContext())
+                    )}
+                  </th>
+                );
+              })}
+            </tr>
+          ))}
         </thead>
         <tbody className="divide-y">
-          {items.map((c) => {
-            const dias = ((c as any).dias ?? []) as string[];
-            const hInicio = (c as any).hora_inicio as string | undefined;
-            const hFin = (c as any).hora_fin as string | undefined;
-            const horario = hInicio && hFin ? `${hhmm(hInicio)}–${hhmm(hFin)}` : "—";
-            const docente =
-              c.docente && (c.docente.first_name || c.docente.last_name)
-                ? `${c.docente.first_name ?? ""} ${c.docente.last_name ?? ""}`.trim()
-                : "—";
-            const cupo = (c as any).cupo_total ?? 0;
-            const nivel = (c as any).nivel as string | undefined;
-            const modalidadAsistencia = (c as any).modalidad_asistencia as "presencial" | "virtual" | undefined;
-            const aula = (c as any).aula as string | undefined;
-
-            return (
-              <tr key={c.id} className="[&>td]:px-3 [&>td]:py-2 align-top">
-                <td className="font-medium">{c.codigo}</td>
-                <td className="capitalize">{c.idioma}</td>
-                <td className="capitalize">{c.modalidad}</td>
-                <td className="capitalize">{c.turno}</td>
-                <td>{nivel ?? "—"}</td>
-                <td className="tabular-nums">{horario}</td>
-                <td className="tabular-nums">
-                  {(c.curso?.from ? dShort(c.curso.from) : "—") +
-                    " – " +
-                    (c.curso?.to ? dShort(c.curso.to) : "—")}
+          {table.getRowModel().rows.map(r => (
+            <tr key={r.id} className="[&>td]:px-3 [&>td]:py-2 align-top">
+              {r.getVisibleCells().map(cell => (
+                <td key={cell.id}>
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
-                <td>{docente}</td>
-                <td className="tabular-nums">{cupo}</td>
-                <td className="capitalize">{modalidadAsistencia ?? "—"}</td>
-                <td>{aula ?? "—"}</td>
-                <td className="text-right">
-                  <div className="inline-flex gap-1">
-                    <Button variant="outline" size="sm" className="h-8 rounded-lg" onClick={() => onShowIns(c)}>
-                      <Users className="h-4 w-4 mr-1" /> Inscritos
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-8 rounded-lg" onClick={() => onEdit(c)}>
-                      <Pencil className="h-4 w-4 mr-1" /> Editar
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-8 rounded-lg text-red-600 border-red-200">
-                          <Trash2 className="h-4 w-4 mr-1" /> Eliminar
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Eliminar ciclo</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            ¿Seguro que deseas eliminar <b>{c.codigo}</b>? Esta acción no se puede deshacer.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction
-                            className="bg-red-600 hover:bg-red-700"
-                            onClick={() => onDelete(c)}
-                          >
-                            Sí, eliminar
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+              ))}
+            </tr>
+          ))}
+          {table.getRowModel().rows.length === 0 && (
+            <tr>
+              <td colSpan={columns.length} className="px-3 py-6 text-center text-neutral-500">
+                Sin resultados.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

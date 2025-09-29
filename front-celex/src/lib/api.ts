@@ -782,12 +782,17 @@ export type ReportPagoRow = {
   inscripcion_id: number | string;
   alumno: string;
   email?: string | null;
-  referencia?: string | null;   // 👈 nuevo
-  tipo?: "pago" | "exencion";   // 👈 NUEVO (opcional por compat)
+  referencia?: string | null;          // ya lo tienes
+  tipo?: "pago" | "exencion";          // ya lo tienes
   status: "pendiente" | "validado" | "rechazado";
   importe_centavos: number;
-  fecha_pago?: string | null;
+  fecha_pago?: string | null;          // ISO con hora
+
+  // 👇 NUEVO: para que el front muestre hora/minutos de validación
+  validated_at?: string | null;        // ISO con hora (timestamptz)
+ 
 };
+
 
 export type ReportReportePagos = {
   ciclo: { id: number | string; codigo: string };

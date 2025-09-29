@@ -412,7 +412,9 @@ class InscripcionOut(BaseModel):
     tipo: InscripcionTipo
 
     # Pago
-    fecha_pago: date | None = None
+ 
+    fecha_pago: datetime | None = None
+
     referencia: Optional[str] = None
     importe_centavos: Optional[int] = Field(default=None, ge=0)
     comprobante: Optional[ComprobanteMeta] = None

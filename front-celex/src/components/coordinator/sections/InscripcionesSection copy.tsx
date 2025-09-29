@@ -23,22 +23,11 @@ import {
 import {
   Loader2, RotateCcw as IconReload, FileDown, Eye,
   Maximize2, Minimize2, ZoomIn, ZoomOut, ExternalLink,
-  RotateCw, RotateCcw, X, ChevronDown, ChevronUp
+  RotateCw, RotateCcw, X
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-
-/* ====== TanStack React Table ====== */
-import {
-  ColumnDef,
-  SortingState,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
 
 type StatusFiltro =
   | "todas"
@@ -82,13 +71,6 @@ export default function InscripcionesSection() {
     loading: false,
     isPdf: false,
   });
-
-  function SortIcon({ column }: { column: any }) {
-    const s = column.getIsSorted();
-    if (s === "asc") return <ChevronUp className="w-3 h-3 ml-1" />;
-    if (s === "desc") return <ChevronDown className="w-3 h-3 ml-1" />;
-    return null;
-  }
 
   // ====== visor ======
   const [isFull, setIsFull] = useState(false);
@@ -454,159 +436,6 @@ export default function InscripcionesSection() {
   const canValidate =
     !!preview.ins && (preview.tipo === "comprobante" || preview.tipo === "exencion");
 
-  /* =========================
-     TanStack: ColumnDef & table
-  ==========================*/
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const columns = useMemo<ColumnDef<InscripcionDTO>[]>(() => {
-  const statusOrder: Record<string, number> = {
-    confirmada: 1,
-    preinscrita: 2,
-    registrada: 3,
-    rechazada: 4,
-    cancelada: 5,
-  };
-
-  
-
-  return [
-    {
-      id: "alumno",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          Alumno <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (r) =>
-        `${r.alumno?.first_name ?? ""} ${r.alumno?.last_name ?? ""}`.trim().toLowerCase(),
-      cell: ({ row }) => {
-        const r = row.original;
-        return (
-          <div className="leading-tight">
-            <div>{r.alumno?.first_name} {r.alumno?.last_name}</div>
-            <div className="text-xs text-muted-foreground">{r.alumno?.email}</div>
-          </div>
-        );
-      },
-      sortingFn: "alphanumeric",
-    },
-    {
-      id: "tipo",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          Tipo <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (r) => {
-        const boleta =
-          (r as any)?.alumno?.boleta ??
-          (r as any)?.alumno?.boleta_ipn ??
-          (r as any)?.alumno?.codigo_ipn ??
-          null;
-        const esIPN = !!boleta || !!r.comprobante_estudios;
-        return esIPN ? "ipn" : "externo";
-      },
-      cell: ({ row }) => renderTipoAlumno(row.original),
-      sortingFn: "alphanumeric",
-    },
-    {
-      id: "estado",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          Estado <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (r) => statusOrder[(r.status as string) ?? "registrada"] ?? 99,
-      cell: ({ row }) => {
-        const r = row.original;
-        const s = (r.status as Exclude<StatusFiltro, "todas">) ?? "registrada";
-        const cfg = STATUS_STYLES[s] ?? STATUS_STYLES.registrada;
-        return (
-          <Badge
-            variant="outline"
-            className={`capitalize px-2 py-0.5 text-[12px] font-medium ${cfg.className}`}
-            title={cfg.label}
-          >
-            {cfg.label}
-          </Badge>
-        );
-      },
-      sortingFn: "basic",
-    },
-    {
-      id: "tramite",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          Trámite <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (r) => (r.tipo ?? "").toString().toLowerCase(),
-      cell: ({ row }) => <span className="capitalize">{row.original.tipo}</span>,
-      sortingFn: "alphanumeric",
-    },
-    {
-      id: "comprobantes",
-      header: () => <div>Comprobantes</div>,
-      cell: ({ row }) => {
-        const r = row.original;
-        return (
-          <div className="flex flex-wrap gap-2">
-            {r.comprobante && (
-              <Button variant="secondary" size="sm" title="Ver comprobante de pago" onClick={() => openPreview(r, "comprobante")}>
-                <Eye className="w-4 h-4 mr-1" /> Ver pago
-              </Button>
-            )}
-            {r.comprobante_estudios && (
-              <Button variant="secondary" size="sm" title="Ver comprobante de estudios (IPN)" onClick={() => openPreview(r, "estudios")}>
-                <Eye className="w-4 h-4 mr-1" /> Ver estudios
-              </Button>
-            )}
-            {r.comprobante_exencion && (
-              <Button variant="secondary" size="sm" title="Ver comprobante de exención" onClick={() => openPreview(r, "exencion")}>
-                <Eye className="w-4 h-4 mr-1" /> Ver exención
-              </Button>
-            )}
-            {!r.comprobante && !r.comprobante_estudios && !r.comprobante_exencion && (
-              <span className="text-xs text-muted-foreground">Sin archivos</span>
-            )}
-          </div>
-        );
-      },
-      enableSorting: false,
-    },
-  ];
-}, []);
-
-
-  const table = useReactTable({
-    data: filteredRows,
-    columns,
-    state: { sorting },
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: {
-      pagination: { pageSize: 10, pageIndex: 0 },
-    },
-  });
-
   return (
     <>
       <Card>
@@ -697,104 +526,76 @@ export default function InscripcionesSection() {
               {cicloId ? "No hay inscripciones para este ciclo y filtros." : "Selecciona un ciclo para comenzar."}
             </p>
           ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map((hg) => (
-                    <TableRow key={hg.id}>
-                      {hg.headers.map((header) => (
-                        <TableHead key={header.id}>
-                          {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {headers.map((h) => <TableHead key={h}>{h}</TableHead>)}
+                </TableRow>
+              </TableHeader>
 
-                <TableBody>
-                  {table.getRowModel().rows.map((row) => (
-                    <TableRow key={row.id}>
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <TableBody>
+                {filteredRows.map((r) => (
+                  <TableRow key={r.id}>
+                    {/* Alumno */}
+                    <TableCell>
+                      <div className="leading-tight">
+                        <div>{r.alumno?.first_name} {r.alumno?.last_name}</div>
+                        <div className="text-xs text-muted-foreground">{r.alumno?.email}</div>
+                      </div>
+                    </TableCell>
 
-              {/* Paginación */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
-                <div className="text-xs text-muted-foreground">
-                  Mostrando{" "}
-                  <span className="tabular-nums">
-                    {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1}
-                    {"–"}
-                    {Math.min(
-                      (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
-                      filteredRows.length
-                    )}
-                  </span>{" "}
-                  de <span className="tabular-nums">{filteredRows.length}</span>
-                </div>
+                    {/* Tipo: IPN (boleta ...) | Externo */}
+                    <TableCell className="whitespace-nowrap">
+                      {renderTipoAlumno(r)}
+                    </TableCell>
 
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={String(table.getState().pagination.pageSize)}
-                    onValueChange={(v) => table.setPageSize(Number(v))}
-                  >
-                    <SelectTrigger className="h-8 w-[140px]">
-                      <SelectValue placeholder="Filas por página" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[10, 20, 30, 50, 100].map((n) => (
-                        <SelectItem key={n} value={String(n)}>{n} por página</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    {/* Estado */}
+                    <TableCell>
+                      {(() => {
+                        const s = (r.status as Exclude<StatusFiltro, "todas">) ?? "registrada";
+                        const cfg = STATUS_STYLES[s] ?? STATUS_STYLES.registrada;
+                        return (
+                          <Badge
+                            variant="outline"
+                            className={`capitalize px-2 py-0.5 text-[12px] font-medium ${cfg.className}`}
+                            title={cfg.label}
+                          >
+                            {cfg.label}
+                          </Badge>
+                        );
+                      })()}
+                    </TableCell>
 
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => table.firstPage()}
-                      disabled={!table.getCanPreviousPage()}
-                    >
-                      «
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => table.previousPage()}
-                      disabled={!table.getCanPreviousPage()}
-                    >
-                      Anterior
-                    </Button>
-                    <div className="px-2 text-sm tabular-nums">
-                      {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => table.nextPage()}
-                      disabled={!table.getCanNextPage()}
-                    >
-                      Siguiente
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+                    {/* Trámite */}
+                    <TableCell className="capitalize">{r.tipo}</TableCell>
 
-                      disabled={!table.getCanNextPage()}
-                    >
-                      »
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </>
+                    {/* Comprobantes */}
+                    <TableCell>
+                      <div className="flex flex-wrap gap-2">
+                        {r.comprobante && (
+                          <Button variant="secondary" size="sm" title="Ver comprobante de pago" onClick={() => openPreview(r, "comprobante")}>
+                            <Eye className="w-4 h-4 mr-1" /> Ver pago
+                          </Button>
+                        )}
+                        {r.comprobante_estudios && (
+                          <Button variant="secondary" size="sm" title="Ver comprobante de estudios (IPN)" onClick={() => openPreview(r, "estudios")}>
+                            <Eye className="w-4 h-4 mr-1" /> Ver estudios
+                          </Button>
+                        )}
+                        {r.comprobante_exencion && (
+                          <Button variant="secondary" size="sm" title="Ver comprobante de exención" onClick={() => openPreview(r, "exencion")}>
+                            <Eye className="w-4 h-4 mr-1" /> Ver exención
+                          </Button>
+                        )}
+                        {!r.comprobante && !r.comprobante_estudios && !r.comprobante_exencion && (
+                          <span className="text-xs text-muted-foreground">Sin archivos</span>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

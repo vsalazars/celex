@@ -102,32 +102,43 @@ function readImporteMXN(row: any) {
   return 0;
 }
 
-// ---- Fechas: 24/Sep/2025 16:35 (24h). Si no hay hora, solo fecha ----
-const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-function formatFechaHora(value?: string | number | Date): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return "—";
+// ---- Fechas: SIEMPRE dd/Mes/yyyy HH:mm (24h, con minutos) ----
+const MONTH_ABBR = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+function normalizeToLocalDate(value?: string | number | Date): Date | null {
+  if (!value) return null;
+  const s = String(value).trim();
+
+  // Si viene sólo "YYYY-MM-DD", fijamos 00:00 locales para evitar horas fantasma.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(`${s}T00:00:00`);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Siempre devuelve "dd/Mes/yyyy HH:mm" en 24h (ej. 25/Sep/2025 07:05) */
+function formatFechaHora24(value?: string | number | Date): string {
+  const d = normalizeToLocalDate(value);
+  if (!d) return "—";
   const dd = String(d.getDate()).padStart(2, "0");
   const mon = MONTH_ABBR[d.getMonth()];
   const yyyy = d.getFullYear();
-  const hasTime =
-    typeof value === "string"
-      ? /[T\s]\d{2}:\d{2}/.test(value)
-      : d.getHours() + d.getMinutes() + d.getSeconds() !== 0;
-  if (!hasTime) return `${dd}/${mon}/${yyyy}`;
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${dd}/${mon}/${yyyy} ${hh}:${mm}`;
 }
 
 function readFechaValidacion(row: any) {
+  // Prioriza validated_at; si no, fecha_validacion; si no, cae a fecha_pago
   const v = row.validated_at || row.fecha_validacion || row.fecha_pago;
-  return v ? formatFechaHora(v) : "—";
+  return v ? formatFechaHora24(v) : "—";
 }
 function readFechaPago(row: any) {
   const v = row.fecha_pago;
-  return v ? formatFechaHora(v) : "—";
+  return v ? formatFechaHora24(v) : "—";
 }
 
 // ---- Badge por estado ----
@@ -188,10 +199,12 @@ type RowUI = {
 };
 
 function buildRowUI(r: any): RowUI {
-  const tsPago = r.fecha_pago ? new Date(r.fecha_pago).getTime() : NaN;
-  const tsVal = (r.validated_at || r.fecha_validacion)
-    ? new Date(r.validated_at || r.fecha_validacion).getTime()
-    : NaN;
+  // Normaliza timestamps para ordenar igual que lo mostrado (00:00 si no hay hora)
+  const normPago = normalizeToLocalDate(r.fecha_pago);
+  const normVal = normalizeToLocalDate(r.validated_at || r.fecha_validacion || r.fecha_pago);
+
+  const tsPago = normPago ? normPago.getTime() : NaN;
+  const tsVal = normVal ? normVal.getTime() : NaN;
 
   return {
     id: r.inscripcion_id ?? r.id ?? String(Math.random()),

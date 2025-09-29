@@ -12,7 +12,7 @@ import {
   Shield,
   LogOut,
   FileSearch,
-  ListChecks, // 👈 NUEVO (icono para Encuesta)
+  ListChecks,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import UserInfo from "@/components/coordinator/UserInfo";
@@ -24,7 +24,7 @@ export type CoordinatorSection =
   | "students"
   | "inscripciones"
   | "placement"
-  | "encuesta"      // 👈 NUEVO
+  | "encuesta"
   | "reports"
   | "settings"
   | "security";
@@ -45,7 +45,7 @@ export default function CoordinatorSidebarNav({
     { key: "students",      label: "Alumnos",        icon: <Users className="h-4 w-4" /> },
     { key: "inscripciones", label: "Inscripciones",  icon: <ClipboardCheck className="h-4 w-4" /> },
     { key: "placement",     label: "Colocación",     icon: <FileSearch className="h-4 w-4" /> },
-    { key: "encuesta",      label: "Encuesta",       icon: <ListChecks className="h-4 w-4" /> }, // 👈 NUEVO
+    { key: "encuesta",      label: "Encuesta",       icon: <ListChecks className="h-4 w-4" /> },
     { key: "reports",       label: "Reportes",       icon: <BarChart3 className="h-4 w-4" /> },
     { key: "settings",      label: "Configuración",  icon: <Settings2 className="h-4 w-4" /> },
     { key: "security",      label: "Seguridad",      icon: <Shield className="h-4 w-4" /> },
@@ -64,31 +64,41 @@ export default function CoordinatorSidebarNav({
   };
 
   return (
-    <aside className="hidden w-80 shrink-0 border-r bg-white/70 p-3 md:block">
+    <aside className="hidden w-80 shrink-0 border-r bg-white/70 p-3 backdrop-blur dark:bg-neutral-900/50 md:block">
       <div className="mb-8 px-2">
         <UserInfo />
       </div>
 
       <nav className="space-y-1">
-        {items.map((it) => (
-          <button
-            key={it.key}
-            onClick={() => onChange(it.key)}
-            className={[
-              "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition",
-              active === it.key
-                ? "bg-neutral-900 text-white"
-                : "hover:bg-neutral-100 text-neutral-700",
-            ].join(" ")}
-          >
-            {it.icon}
-            <span>{it.label}</span>
-          </button>
-        ))}
+        {items.map((it) => {
+          const isActive = active === it.key;
+          return (
+            <button
+              key={it.key}
+              onClick={() => onChange(it.key)}
+              aria-current={isActive ? "page" : undefined}
+              className={`group relative flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7c0040]/50
+                ${
+                  isActive
+                    ? "bg-[#7c0040]/10 text-[#7c0040] dark:bg-[#7c0040]/20"
+                    : "text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800/60"
+                }`}
+            >
+              {/* barrita lateral */}
+              <span
+                className={`absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r
+                ${isActive ? "bg-[#7c0040]" : "bg-transparent"}`}
+              />
+              {it.icon}
+              <span>{it.label}</span>
+            </button>
+          );
+        })}
 
         <button
           onClick={handleLogout}
-          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition"
+          className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 dark:hover:bg-red-900/20"
         >
           <LogOut className="h-4 w-4" />
           <span>Cerrar sesión</span>
