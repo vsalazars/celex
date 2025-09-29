@@ -1,12 +1,11 @@
 # Render Blueprint para CELEX: Postgres + FastAPI + Next.js
-# Coloca este archivo en el directorio raíz del repo (junto a back-celex/ y front-celex/).
 
-previewsEnabled: true  # Opcional: despliegues de PR
+previewsEnabled: true
 
 databases:
   - name: celex-db
-    region: oregon           # Ajusta si usas otra región
-    plan: basic-1gb          # Cambia al plan que prefieras
+    region: oregon
+    plan: basic-1gb
 
 services:
   # === Backend FastAPI ===
@@ -38,18 +37,18 @@ services:
       npm run build
     startCommand: npm run start -- -p $PORT
     envVars:
-      # URL pública del backend para el navegador
-      - key: NEXT_PUBLIC_API_BASE_URL
+      # Host público del backend (solo el host, sin protocolo):
+      - key: NEXT_PUBLIC_API_HOST
         fromService:
           name: celex-backend
           type: web
-          property: url
-      # Host:puerto interno, útil para fetch server-side desde Next
+          property: host
+      # Host:puerto interno para llamadas server-side desde Next:
       - key: INTERNAL_API_HOSTPORT
         fromService:
           name: celex-backend
           type: web
           property: hostport
-      # Fija Node si tu package.json no declara "engines"
+      # Fijar versión de Node si tu package.json no trae "engines"
       - key: NODE_VERSION
         value: 20
