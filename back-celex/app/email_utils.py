@@ -2,22 +2,26 @@
 import smtplib, ssl, email.utils
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
+from email.utils import formataddr
 from app.config import settings
 
 FROM_NAME = "CELEX CECyT 15 Diódoro Antúnez Echegaray"
 
 def send_email(to_email: str, subject: str, body_html: str, body_text: str | None = None) -> bool:
     from_email = settings.FROM_EMAIL or settings.SMTP_USER
-    display_from = f"{FROM_NAME} <{from_email}>"
+
+    # ✅ RFC 2047: display name con acentos correctamente codificado
+    display_from = formataddr((str(Header(FROM_NAME, "utf-8")), from_email))
+    display_to   = to_email  # si quisieras: formataddr((None, to_email))
 
     msg = MIMEMultipart("alternative")
     msg["From"] = display_from
-    msg["To"] = to_email
-    msg["Subject"] = subject
+    msg["To"] = display_to
+    msg["Subject"] = str(Header(subject, "utf-8"))
     msg["Date"] = email.utils.formatdate(localtime=True)
     msg["Message-ID"] = email.utils.make_msgid(domain=from_email.split("@")[-1])
     msg["Reply-To"] = from_email
-    # Ayuda a Gmail/Outlook a clasificar mejor:
     msg["List-Unsubscribe"] = f"<mailto:{from_email}?subject=unsubscribe>"
 
     if body_text:
