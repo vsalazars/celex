@@ -1125,9 +1125,11 @@ COPY public.ciclos (id, codigo, modalidad, turno, insc_inicio, insc_fin, curso_i
 17	CURSODE 3	intensivo	matutino	2025-09-06	2025-09-08	2025-09-08	2025-10-08	2025-10-02	2025-10-04	notas jj lksj asj klsa jkd jklsdj kldajklladjka dsj a jj k jk kjfdjk f jkl jklfk jaj kfkjl aj falk fklasj fklj safklk sfksa f klsjfll	2025-09-06 16:22:07.25581-06	2025-09-06 19:17:41.228959-06	ingles	3	B1	{lunes,martes,miercoles,jueves,viernes}	06:00:00	08:30:00	presencial	205	24
 13	PRUEBA	intensivo	matutino	2025-09-20	2025-09-20	2025-10-15	2025-11-16	2025-09-28	2025-09-30	MENSAJE DE PRUEBA	2025-08-31 20:44:09.355604-06	2025-09-15 00:48:37.268726-06	ingles	10	B1	{lunes,martes,miercoles,jueves,viernes}	06:30:00	08:30:00	presencial	77	15
 21	CURSO-1	intensivo	matutino	2025-09-08	2025-09-19	2025-10-01	2025-10-31	2025-10-15	2025-09-18	GFDGDFGDGDFGDFGFDGDFG	2025-09-15 00:57:42.9686-06	\N	ingles	10	A1	{lunes,martes,miercoles,jueves,viernes}	07:30:00	08:30:00	presencial	101	24
-22	CURSO-2	sabatino	vespertino	2025-09-12	2025-09-19	2025-10-01	2025-10-31	2025-10-25	2025-10-17	FSDFSDFDSFSDFSDFSDFSD	2025-09-15 00:58:44.567022-06	\N	ingles	15	A2	{sabado}	07:30:00	08:30:00	presencial	105	24
-23	evaluacion del docente	intensivo	matutino	2025-09-16	2025-09-18	2025-09-09	2025-09-18	2025-09-17	2025-09-11	fdsfsfsfsfsdf	2025-09-19 14:18:14.322458-06	2025-09-19 14:20:09.449509-06	ingles	20	A1	{lunes,martes,miercoles,jueves,viernes}	06:00:00	08:00:00	presencial	101	24
 19	ASISTENCIA	intensivo	matutino	2025-09-13	2025-09-19	2025-09-01	2025-09-18	2025-10-08	2025-10-15	BYBYTRHHD G HG HHHG FFG H	2025-09-06 18:12:26.415353-06	2025-09-19 14:40:40.141449-06	ingles	3	B1	{lunes,martes,miercoles,jueves,viernes}	08:30:00	09:30:00	presencial	101	24
+23	evaluacion del docente	intensivo	matutino	2025-09-16	2025-09-28	2025-09-09	2025-09-18	2025-09-17	2025-09-11	fdsfsfsfsfsdf	2025-09-19 14:18:14.322458-06	2025-09-22 18:25:13.388401-06	ingles	20	A1	{lunes,martes,miercoles,jueves,viernes}	07:00:00	08:00:00	presencial	101	24
+22	CURSO-2	sabatino	vespertino	2025-09-12	2025-09-28	2025-10-01	2025-10-31	2025-10-25	2025-10-17	FSDFSDFDSFSDFSDFSDFSD	2025-09-15 00:58:44.567022-06	2025-09-22 18:25:28.566184-06	ingles	15	A2	{sabado}	08:00:00	08:30:00	presencial	105	24
+24	ING'G24'SAB	intensivo	matutino	2025-09-23	2025-09-23	2025-09-23	2025-10-14	2025-09-30	2025-10-14	\N	2025-09-23 15:48:41.832894-06	\N	ingles	20	B2	{lunes,martes,miercoles,jueves,viernes}	08:00:00	10:00:00	presencial	405	39
+25	yola	intensivo	matutino	2025-09-28	2025-10-05	2025-10-01	2025-10-09	\N	\N	\N	2025-09-29 12:51:55.722252-06	\N	ingles	5	A1	{lunes,martes,miercoles,jueves,viernes}	07:30:00	08:00:00	presencial	12	24
 \.
 
 
@@ -1207,6 +1209,8 @@ COPY public.inscripciones (id, alumno_id, ciclo_id, status, created_at, referenc
 46	16	22	confirmada	2025-09-16 11:11:08.169-06	\N	\N	\N	\N	\N	exencion	\N	t	\N	\N	\N	/home/vsalazar/celex/back-celex/uploads/exenciones/07908115cd9f4ba5aa9d8d341a9127e8.png	image/png	114667	11	2025-09-16 17:11:38.045619-06	\N	\N	\N
 47	35	21	confirmada	2025-09-18 17:55:10.972657-06	\N	\N	\N	\N	\N	exencion	\N	t	\N	\N	\N	/home/vsalazars/celex/back-celex/uploads/exenciones/67c6099d7f804626a6144ad7434e0138.pdf	application/pdf	3972847	11	2025-09-18 23:56:52.667765-06	\N	\N	\N
 48	16	19	confirmada	2025-09-19 14:39:06.843397-06	\N	\N	\N	\N	\N	exencion	\N	t	\N	\N	\N	/home/vsalazars/celex/back-celex/uploads/exenciones/cac75838e101499bb5ea11a4c5534d43.jpeg	image/jpeg	50450	11	2025-09-19 20:39:53.403668-06	\N	\N	\N
+49	40	24	confirmada	2025-09-23 16:32:29.120937-06	1858362	62000	/home/vsalazars/celex/back-celex/uploads/comprobantes/c5f9c6a418894c27a59ba45b1cec4857.jpeg	image/jpeg	50450	pago	2025-09-23	t	/home/vsalazars/celex/back-celex/uploads/estudios/6240a1969d6a4d1893983716e8391548.jpeg	image/jpeg	50450	\N	\N	\N	11	2025-09-23 22:36:53.100844-06	\N	\N	\N
+50	40	23	confirmada	2025-09-23 16:34:12.82235-06	\N	\N	\N	\N	\N	exencion	\N	t	\N	\N	\N	/home/vsalazars/celex/back-celex/uploads/exenciones/766289219f8742ec9e9de96600da0ff3.jpeg	image/jpeg	50450	11	2025-09-23 22:41:37.631383-06	\N	\N	\N
 \.
 
 
@@ -1225,6 +1229,9 @@ COPY public.placement_exams (id, codigo, idioma, fecha, hora, salon, duracion_mi
 8	martita	ingles	2025-09-20	10:34:00	113	90	30	300	24	martita	\N	\N	borrador	dsa sd dsa as ads sda sda ds dsa a sd ds dsaa sd ada dss da dsaas d s s da	\N	t	\N	\N
 9	COLOCACION-1	ingles	2025-09-20	01:00:00	105	91	30	0	24	COLOCACION-1	\N	\N	borrador	HHBGGHHH  HHG GH GH GHG H HGF GH GG  GHFHG GFH	\N	t	\N	\N
 12	miriam chichona	ingles	2025-09-27	15:31:00	102	90	30	150	24	miriam chichona	\N	\N	borrador	gsg  gsd g gsdggdsdsg	\N	t	2025-09-16	2025-09-20
+13	colocacion	ingles	2025-09-25	18:00:00	\N	90	10	120	24	colocacion	\N	\N	borrador	sasasasasa	\N	t	2025-09-08	2025-09-25
+14	SEP 23	ingles	2025-09-23	17:00:00	305	120	30	220	39	SEP 23	\N	\N	borrador	\N	\N	t	2025-09-23	2025-09-23
+15	paty culote	ingles	2025-09-25	17:50:00	\N	90	30	200	24	paty culote	\N	\N	borrador	dsasdasdsad	\N	t	2025-09-16	2025-09-26
 \.
 
 
@@ -1243,6 +1250,9 @@ COPY public.placement_registros (id, alumno_id, exam_id, status, referencia, imp
 8	16	8	RECHAZADA	gfdgfdgfd	30000	2025-09-12	uploads/placement_pagos/archivo (1).png	image/png	57346	2025-09-13 10:37:06.012491-06	gdfgdgdfgdfg	gdfgdgdfgdfg	11	2025-09-13 10:38:04.823839-06	\N
 10	16	12	VALIDADA	ewrewretre	50000	2025-09-17	uploads/placement_pagos/comprobante_2 (1).jpeg	image/jpeg	271298	2025-09-16 13:42:08.216609-06	\N	\N	11	2025-09-16 13:42:58.75437-06	\N
 9	16	9	CANCELADA	rtytryrtyrt	50000	2025-09-09	uploads/placement_pagos/archivo (1).png	image/png	57346	2025-09-16 10:51:08.687581-06	\N	\N	\N	\N	\N
+11	16	15	VALIDADA	dsasddsaasd	18000	2025-09-17	uploads/placement_pagos/trayectoria ideal de telematica.jpg	image/jpeg	881231	2025-09-24 17:48:41.054432-06	\N	\N	11	2025-09-24 17:48:58.414089-06	\N
+12	41	15	VALIDADA	dfgsgsg	20000	2025-09-12	uploads/placement_pagos/trayectoria ideal de telematica.jpg	image/jpeg	881231	2025-09-24 19:12:52.276773-06	\N	\N	11	2025-09-24 19:13:54.232444-06	\N
+13	42	15	RECHAZADA	fsdsdfsdf	20000	2025-09-24	uploads/placement_pagos/trayectoria ideal de telematica.jpg	image/jpeg	881231	2025-09-24 19:16:19.276969-06	no corresponde	no corresponde	11	2025-09-24 19:16:57.111304-06	\N
 \.
 
 
@@ -1478,6 +1488,15 @@ COPY public.users (id, first_name, last_name, email, email_verified, hashed_pass
 36	menor	noipn	menornoipn@mail.com	f	$2b$12$2khi7Mm0Ab1.p6bcGjrqGep.O34/VVgqlsTevO9s93zoFbGWcoZLa	f	\N	SASV091104HMCLND05	student	t	2025-09-16 14:57:18.461475-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
 16	Lia Romina Nazareth	Salazar Sánchez	vidalsalazarsanchez@gmail.com	f	$2b$12$...QUEVEXCVV43XbDaY48uziY8iqQ8HVA1GE2eFCEjbrW/XJ9H9T2	t	2025087898	SASV811104HMCLND09	student	t	2025-08-28 18:10:41.151123-06	2025-09-18 14:42:54.345035-06	5532354608	norte 22	4121	Sanchez 3a seccion	gustavo a madero	ciudad de mexico	07839	Superior	UPIITA	\N	\N	\N
 35	ipn	menoredad	menor@mail.com	f	$2b$12$vB.890nU0DJpqFbayUtXeeCsQWD9q1g12PW84DCgRtfRXWbgbApPO	t	2024100020	SASV091104HMCLND02	student	t	2025-09-16 14:53:40.238814-06	2025-09-19 13:27:37.531048-06	5532356969	lazarop	26	Ejidos	Azcapotzalco	Ciudad de Mexico	07839	Medio superior	CET 1	5532569896	Miriam Escudero  Cara Bonita	Madre
+37	Carlos Eduardo	martinez	carlmtz264@gmail.com	f	$2b$12$lvJYgh7VAifMncOtHL0jZeUYtUNLFtU4xlFFOPH2CHtJyKO62ZBxK	t	2016602232	MACC970502HDFRRR08	student	t	2025-09-23 15:35:47.449046-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+38	eduardo	gonzalez	carlmtz5823@icloud.com	t	$2b$12$DKmDyOlEPF6QvBWinO63FetxB5qnVfeRpPgQj.vAUe/M8SOYMxvsS	f	\N	CACC970806HDFRRR08	teacher	f	2025-09-23 15:41:09.743135-06	2025-09-23 15:43:37.815811-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+39	eduardo	cruz	dm.cemc22@gmail.com	t	$2b$12$femlcUMtwTn2D8tog3jUXePAcmDwA0jkMCOT/INF4uq6MHMB7S6ee	f	\N	CACC971806HDFRRR08	teacher	t	2025-09-23 15:45:06.516172-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+40	eduardo	juarez	educruz2358@gmail.com	f	$2b$12$OQBfUwx9LAefO404TGV7VujtHEszkvlAwM0qnXF6abN11klVzjG7u	t	2016602231	GAMM970202HDFRRR08	student	t	2025-09-23 16:28:51.746841-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+41	yo	to	yo@mail.com	f	$2b$12$.jZV5JTt7n90Pz7fxm7AO.HfrDuA646Qc.vHQrYgi6HKb22UM3ER2	f	\N	SASV090804HMCLND02	student	t	2025-09-24 19:10:54.993386-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+42	yo2	yo2	yo2@mail.com	f	$2b$12$Zzl5XM50tYTA9eMg1KFl2OgfDJ9C7xlU/DaLnC2PbbLPe2BqMYazS	f	\N	SASV090104HMCLND02	student	t	2025-09-24 19:15:43.463655-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+44	Nojemi	Liopoez	vidalsalazarsanchez@outlook.com	t	$2b$12$6VJxYWZQE5mzL2TL2FAtzuV8Uk22c3rTlhc7gVYE0Kfc1QL3TU25m	f	\N	SASV811004HMCLND06	teacher	f	2025-09-29 10:30:45.827233-06	2025-09-29 10:34:45.977131-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+45	Miriam	Chiches	vsalazar@upiita.mx	t	$2b$12$8l21JPFsmwIOz/c26AxFruAK4Ikans61y.ebtxyoh3EQq5DuJzB0S	f	\N	SCSV811104HMCLND09	teacher	t	2025-09-29 10:36:20.729054-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+51	Nohemi Elizabeth	López Benitez	kilnelb@hotmail.com	t	$2b$12$/od1049x411Zfd28wHQ0rOOVMSluYvLxTsIZOXLLgPfzgHSYvPSCq	f	\N	EASV091104HMCLND02	coordinator	t	2025-09-29 11:03:58.848612-06	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
 \.
 
 
@@ -1499,7 +1518,7 @@ SELECT pg_catalog.setval('public.asistencia_sesion_id_seq', 118, true);
 -- Name: ciclos_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.ciclos_id_seq', 23, true);
+SELECT pg_catalog.setval('public.ciclos_id_seq', 25, true);
 
 
 --
@@ -1527,21 +1546,21 @@ SELECT pg_catalog.setval('public.grupos_id_seq', 1, false);
 -- Name: inscripciones_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.inscripciones_id_seq', 48, true);
+SELECT pg_catalog.setval('public.inscripciones_id_seq', 50, true);
 
 
 --
 -- Name: placement_exams_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.placement_exams_id_seq', 12, true);
+SELECT pg_catalog.setval('public.placement_exams_id_seq', 15, true);
 
 
 --
 -- Name: placement_registros_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.placement_registros_id_seq', 10, true);
+SELECT pg_catalog.setval('public.placement_registros_id_seq', 13, true);
 
 
 --
@@ -1576,7 +1595,7 @@ SELECT pg_catalog.setval('public.survey_responses_id_seq', 10, true);
 -- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.users_id_seq', 36, true);
+SELECT pg_catalog.setval('public.users_id_seq', 51, true);
 
 
 --
