@@ -1,0 +1,55 @@
+# Render Blueprint para CELEX: Postgres + FastAPI + Next.js
+# Coloca este archivo en el directorio raíz del repo (junto a back-celex/ y front-celex/).
+
+previewsEnabled: true  # Opcional: despliegues de PR
+
+databases:
+  - name: celex-db
+    region: oregon           # Ajusta si usas otra región
+    plan: basic-1gb          # Cambia al plan que prefieras
+
+services:
+  # === Backend FastAPI ===
+  - type: web
+    name: celex-backend
+    runtime: python
+    region: oregon
+    rootDir: back-celex
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: celex-db
+          property: connectionString
+      - key: ENV
+        value: production
+
+  # === Frontend Next.js (SSR) ===
+  - type: web
+    name: celex-frontend
+    runtime: node
+    region: oregon
+    rootDir: front-celex
+    buildCommand: |
+      npm ci
+      npm run build
+    startCommand: npm run start -- -p $PORT
+    envVars:
+      # URL pública del backend para el navegador
+      - key: NEXT_PUBLIC_API_BASE_URL
+        fromService:
+          name: celex-backend
+          type: web
+          property: url
+      # Host:puerto interno, útil para fetch server-side desde Next
+      - key: INTERNAL_API_HOSTPORT
+        fromService:
+          name: celex-backend
+          type: web
+          property: hostport
+      # Fija Node si tu package.json no declara "engines"
+      - key: NODE_VERSION
+        value: 20
