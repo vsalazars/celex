@@ -237,7 +237,8 @@ function deriveDisponibles(c: any) {
 const idiomas = ["ingles", "frances", "aleman", "italiano", "portugues"];
 const modalidades = ["intensivo", "sabatino", "semestral"];
 const turnos = ["matutino", "vespertino", "mixto"];
-const niveles = ["A1", "A2", "B1", "B2", "C1", "C2"];
+const niveles = ["Introductorio", "Básico 1", "Básico 2", "Básico 3", "Básico 4", "Básico 5", "Intermedio 1", "Intermedio 2", "Intermedio 3", "Intermedio 4", "Intermedio 5", "Avanzado 1", "Avanzado 2", "Avanzado 3", "Avanzado 4", "Avanzado 5", "Avanzado 6"] as const;
+
 
 function IconDropdown({
   icon: Icon,
@@ -258,13 +259,14 @@ function IconDropdown({
         <DropdownMenu>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant={value ? "default" : "outline"} size="icon" className="h-9 w-9 rounded-xl">
+              {/* ✅ Botón cómodo en móvil */}
+              <Button variant={value ? "default" : "outline"} size="icon" className="h-9 w-9 rounded-xl shrink-0">
                 <Icon className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          
-          {/* 👇 Forzamos el tooltip debajo */}
+
+          {/* Tooltip debajo para que no tape en mobile */}
           <TooltipContent side="bottom" sideOffset={8}>
             {label}{value ? `: ${value}` : ""}
           </TooltipContent>
@@ -467,7 +469,8 @@ export default function HeroFeatures() {
 
   /* ========= UI helpers ========= */
   const tabSwitch = (
-    <div className="flex gap-2">
+    // ✅ Stack en móvil, inline en pantallas grandes
+    <div className="flex flex-col xs:flex-row gap-2">
       <Button
         variant={tab === "cursos" ? "default" : "outline"}
         className="h-9 rounded-xl"
@@ -486,7 +489,8 @@ export default function HeroFeatures() {
   );
 
   const leftControls = (
-    <div className="flex flex-wrap items-center gap-2">
+    // ✅ Wrap y min-w-0 para que no desborde
+    <div className="flex flex-wrap items-center gap-2 min-w-0">
       {tabSwitch}
       <Button
         variant="outline"
@@ -511,7 +515,6 @@ export default function HeroFeatures() {
             {activeFilters ? "Limpiar filtros" : "Sin filtros"}
           </Button>
         </TooltipTrigger>
-        {/* 👇 Abajo también */}
         <TooltipContent side="bottom" sideOffset={8}>
           {activeFilters ? "Quitar todos los filtros" : "No hay filtros activos"}
         </TooltipContent>
@@ -524,7 +527,7 @@ export default function HeroFeatures() {
       <IconDropdown icon={Languages} label="Idioma" items={idiomas} value={idioma} onChange={setIdioma} />
       <IconDropdown icon={Layers} label="Modalidad" items={modalidades} value={modalidad} onChange={setModalidad} />
       <IconDropdown icon={Clock3} label="Turno" items={turnos} value={turno} onChange={setTurno} />
-      <IconDropdown icon={GraduationCap} label="Nivel" items={niveles} value={nivel} onChange={setNivel} />
+      <IconDropdown icon={GraduationCap} label="Nivel" items={niveles as unknown as string[]} value={nivel} onChange={setNivel} />
     </div>
   );
 
@@ -556,117 +559,147 @@ export default function HeroFeatures() {
   }, [tab, totalCursos, totalExams]);
 
   return (
-    <div className="h-full flex flex-col">
+    // ✅ Contenedor fluido y cómodo en móvil
+    <div className="h-full flex flex-col max-w-screen-xl mx-auto w-full px-3 sm:px-4">
       {/* Modal de información */}
       <InfoDialog open={openInfo} onOpenChange={setOpenInfo} />
 
       {/* Toolbar */}
-      <div className="rounded-2xl border bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 justify-between">
+      <div className="rounded-2xl border bg-white p-3 sm:p-4 shadow-sm">
+        {/* ✅ Primera fila: botones principales (stack en móvil) */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 justify-between">
           {leftControls}
         </div>
 
-        <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
-          {tab === "cursos" ? filtrosCursos : filtrosExamenes}
-          {limpiarBtn}
+        {/* ✅ Segunda fila: filtros y limpiar (stack en móvil) */}
+        <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="min-w-0">{tab === "cursos" ? filtrosCursos : filtrosExamenes}</div>
+          <div className="flex-none">{limpiarBtn}</div>
         </div>
       </div>
 
       <Card className="shadow-sm mt-4 flex-1 flex flex-col">
-        <CardHeader>
-          <CardTitle>{headerTitleNode}</CardTitle>
+        <CardHeader className="pb-2 sm:pb-3">
+          <CardTitle className="text-base sm:text-lg">{headerTitleNode}</CardTitle>
         </CardHeader>
-        <CardContent className="flex-1">
+        <CardContent className="flex-1 min-h-0">
           {loading ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+            // ✅ Skeleton responsivo
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="h-28 rounded-2xl border bg-neutral-50 animate-pulse" />
               ))}
             </div>
           ) : tab === "cursos" ? (
             (cursos.length === 0 ? (
-              <div className="rounded-2xl border bg-white/70 p-6 text-sm text-neutral-600">
+              <div className="rounded-2xl border bg-white/70 p-4 sm:p-6 text-sm text-neutral-600">
                 <Info className="mr-2 inline h-4 w-4" /> No hay convocatorias abiertas con los filtros seleccionados.
               </div>
             ) : (
               <>
-                <div className="grid gap-3 sm:grid-cols-2">
+                {/* ✅ Tarjetas responsivas, 1 col en mobile y 2 col en sm+ */}
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                   {cursos.map((c) => {
                     const { disp, total } = deriveDisponibles(c);
                     const tone = capTone(disp);
                     const pct = capPercent(disp, total);
                     return (
-                      <div key={c.id} className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
-                        <div className="mb-2">
-                          <h3 className="font-semibold text-base">{c.codigo}</h3>
+                      <div
+                        key={c.id}
+                        className="rounded-2xl border bg-white p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow"
+                      >
+                        <div className="mb-2 min-w-0">
+                          {/* ✅ Evitar desbordes de código largo */}
+                          <h3 className="font-semibold text-base break-words">{c.codigo}</h3>
                           <div className="mt-1">
-                           {/* Cursos */}
-                          <Badge
-                            className={`rounded-full border px-2 py-0.5 text-xs md:text-sm font-medium ${tone.badgeClass}`}
-                          >
-                            <Users className="mr-1 h-3 w-3 md:h-3.5 md:w-3.5" /> {disp}/{total} · {tone.label}
-                          </Badge>
+                            <Badge
+                              className={`rounded-full border px-2 py-0.5 text-xs md:text-sm font-medium ${tone.badgeClass}`}
+                            >
+                              <Users className="mr-1 h-3 w-3 md:h-3.5 md:w-3.5" /> {disp}/{total} · {tone.label}
+                            </Badge>
                           </div>
                         </div>
 
-                       <div className="mt-2 flex flex-nowrap items-center gap-2 text-[13px] leading-tight">
-                          {/* idioma */}
-                          <Badge
-                            variant="secondary"
-                            className="capitalize px-2.5 py-1 whitespace-nowrap min-w-0 shrink truncate"
-                          >
-                            <span className="block max-w-[10ch] truncate">{c.idioma}</span>
-                          </Badge>
+                        {/* === Badges (Inglés / Intensivo) === */}
+                        {(() => {
+                          const isIngles = String(c.idioma ?? "").toLowerCase() === "ingles";
+                          const isIntensivo = String(c.modalidad ?? "").toLowerCase() === "intensivo";
 
-                          {/* modalidad */}
-                          <Badge
-                            variant="secondary"
-                            className="capitalize px-2.5 py-1 whitespace-nowrap min-w-0 shrink truncate"
-                          >
-                            <span className="block max-w-[12ch] truncate">{c.modalidad}</span>
-                          </Badge>
+                          const purpleBadge = "bg-[#7c0040] text-white border-[#7c0040]";
 
-                          {/* turno */}
-                          <Badge
-                            variant="outline"
-                            className="capitalize px-2.5 py-1 whitespace-nowrap min-w-0 shrink truncate"
-                          >
-                            <span className="block max-w-[10ch] truncate">{c.turno}</span>
-                          </Badge>
+                          return (
+                            <div className="mt-2 text-[13px] leading-tight">
+                              {/* 👉 Scroll horizontal en móvil si falta espacio */}
+                              <div className="w-full flex flex-nowrap items-center gap-2 overflow-x-auto no-scrollbar">
+                                <Badge
+                                  variant="secondary"
+                                  className={`px-2.5 py-0.5 text-[13px] font-normal capitalize ${
+                                    isIngles ? purpleBadge : ""
+                                  }`}
+                                  title={c.idioma}
+                                >
+                                  {c.idioma}
+                                </Badge>
 
-                          {/* nivel */}
-                          <Badge
-                            variant="outline"
-                            className="inline-flex items-center gap-1 px-2.5 py-1 font-medium whitespace-nowrap min-w-0 shrink"
-                          >
-                            <GraduationCap className="h-4 w-4 shrink-0" />
-                            <span className="block truncate">{c.nivel}</span>
-                          </Badge>
+                                <Badge
+                                  variant="secondary"
+                                  className={`px-2.5 py-0.5 text-[13px] font-normal capitalize ${
+                                    isIntensivo ? purpleBadge : ""
+                                  }`}
+                                  title={c.modalidad}
+                                >
+                                  {c.modalidad}
+                                </Badge>
 
-                          {/* aula */}
-                          {c.aula ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-neutral-700 whitespace-nowrap shrink-0">
-                              Aula: {c.aula}
-                            </span>
-                          ) : null}
-                        </div>
+                                <Badge
+                                  variant="outline"
+                                  className="px-2.5 py-0.5 text-[13px] font-normal capitalize"
+                                  title={c.turno}
+                                >
+                                  {c.turno}
+                                </Badge>
 
+                                <Badge
+                                  variant="outline"
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[13px] font-normal capitalize"
+                                  title={c.nivel}
+                                >
+                                  {c.nivel}
+                                </Badge>
+                              </div>
+
+                              {c.aula ? (
+                                <div className="mt-2">
+                                  <Badge
+                                    variant="outline"
+                                    className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[13px] font-normal capitalize"
+                                    title={`Aula: ${c.aula}`}
+                                  >
+                                    {c.aula}
+                                  </Badge>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
+
+                        {/* ✅ Info con columnas que caen a una sola en móvil */}
                         <div className="mt-4 space-y-3 text-sm text-neutral-700 border-t pt-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <CalendarDays className="h-4 w-4" /> <b>Periodo del curso</b>
+                              <CalendarDays className="h-4 w-4 shrink-0" /> <b>Periodo del curso</b>
                             </div>
                             <div className="ml-6">{d(c.curso?.from)} – {d(c.curso?.to)}</div>
                           </div>
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <CalendarDays className="h-4 w-4" /> <b>Inscripción</b>
+                              <CalendarDays className="h-4 w-4 shrink-0" /> <b>Inscripción</b>
                             </div>
                             <div className="ml-6">{d(c.inscripcion?.from)} – {d(c.inscripcion?.to)}</div>
                           </div>
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <Clock3 className="h-4 w-4" /> <b>Horario</b>
+                              <Clock3 className="h-4 w-4 shrink-0" /> <b>Horario</b>
                             </div>
                             <div className="ml-6">{h(c.hora_inicio)} – {h(c.hora_fin)}</div>
                           </div>
@@ -684,7 +717,8 @@ export default function HeroFeatures() {
                   })}
                 </div>
 
-                <div className="mt-4 flex items-center justify-between">
+                {/* ✅ Paginación stack/inline */}
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-xs text-neutral-500">Página {pageCursos} de {pagesCursos}</span>
                   <div className="flex gap-2">
                     <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" disabled={pageCursos <= 1} onClick={() => setPageCursos((p) => Math.max(1, p - 1))}>
@@ -699,12 +733,13 @@ export default function HeroFeatures() {
             ))
           ) : (
             (examsPage.length === 0 ? (
-              <div className="rounded-2xl border bg-white/70 p-6 text-sm text-neutral-600">
+              <div className="rounded-2xl border bg-white/70 p-4 sm:p-6 text-sm text-neutral-600">
                 <Info className="mr-2 inline h-4 w-4" /> No hay exámenes vigentes con los filtros seleccionados.
               </div>
             ) : (
               <>
-                <div className="grid gap-3 sm:grid-cols-2">
+                {/* ✅ Tarjetas responsivas, 1 col en mobile y 2 col en sm+ */}
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                   {examsPage.map((e: PlacementExamLite) => {
                     const keyId = String((e as any).id ?? (e as any).codigo ?? Math.random());
                     const { from, to } = pickInscripcionWindowExam(e);
@@ -716,10 +751,10 @@ export default function HeroFeatures() {
                     const aula = (e as any).salon ?? (e as any).aula ?? (e as any).sala ?? undefined;
 
                     return (
-                      <div key={keyId} className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
-                        <div className="mb-2">
-                          <div className="flex items-center justify-between">
-                            <h3 className="font-semibold text-base">
+                      <div key={keyId} className="rounded-2xl border bg-white p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="mb-2 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="font-semibold text-base break-words">
                               {(e as any).codigo || "Examen"}
                             </h3>
                           </div>
@@ -729,10 +764,10 @@ export default function HeroFeatures() {
                             >
                               <Users className="mr-1 h-3 w-3 md:h-3.5 md:w-3.5" /> {disp}/{total} · {tone.label}
                             </Badge>
-
                           </div>
                         </div>
 
+                        {/* ✅ Chips con wrap */}
                         <div className="mt-2 flex flex-wrap gap-2 text-sm">
                           <Badge variant="secondary" className="capitalize text-sm px-3 py-1">{(e as any).idioma || idioma || "idioma"}</Badge>
                           {(e as any).sede ? (
@@ -743,16 +778,15 @@ export default function HeroFeatures() {
                         <div className="mt-4 space-y-3 text-sm text-neutral-700 border-t pt-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <CalendarDays className="h-4 w-4" /> <b>Fecha del examen</b>
+                              <CalendarDays className="h-4 w-4 shrink-0" /> <b>Fecha del examen</b>
                             </div>
                             <div className="ml-6">{d((e as any).fecha)}</div>
                           </div>
 
-                          {/* ✅ HORA con icono, soporta 'hora' o rango 'hora_inicio – hora_fin', y muestra duración si existe */}
                           {(e as any).hora_inicio || (e as any).hora_fin || (e as any).hora ? (
                             <div>
                               <div className="flex items-center gap-2 mb-1">
-                                <Clock3 className="h-4 w-4" /> <b>Hora</b>
+                                <Clock3 className="h-4 w-4 shrink-0" /> <b>Hora</b>
                               </div>
                               <div className="ml-6">
                                 {((e as any).hora_inicio || (e as any).hora_fin)
@@ -767,11 +801,10 @@ export default function HeroFeatures() {
                             </div>
                           ) : null}
 
-                          {/* ✅ SALÓN con icono */}
                           {aula ? (
                             <div>
                               <div className="flex items-center gap-2 mb-1">
-                                <Building2 className="h-4 w-4" /> <b>Salón</b>
+                                <Building2 className="h-4 w-4 shrink-0" /> <b>Salón</b>
                               </div>
                               <div className="ml-6">{aula}</div>
                             </div>
@@ -791,7 +824,8 @@ export default function HeroFeatures() {
                   })}
                 </div>
 
-                <div className="mt-4 flex items-center justify-between">
+                {/* ✅ Paginación stack/inline */}
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-xs text-neutral-500">Página {pageExams} de {pagesExams}</span>
                   <div className="flex gap-2">
                     <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" disabled={pageExams <= 1} onClick={() => setPageExams((p) => Math.max(1, p - 1))}>

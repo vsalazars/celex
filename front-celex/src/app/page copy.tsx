@@ -18,29 +18,22 @@ export default function Page() {
   };
 
   return (
-    <main
-      className={[
-        // Alto mínimo y fondo
-        "min-h-dvh flex flex-col bg-gradient-to-b from-white to-neutral-50",
-        // Safe areas en iOS (evita recortes con barras)
-        "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
-      ].join(" ")}
-    >
+    <main className="min-h-dvh flex flex-col bg-gradient-to-b from-white to-neutral-50">
       <AppHeader onLoginSuccess={(data) => redirectByRole(data.role || "")} />
 
       {/* Contenido principal */}
       <section className="flex-1">
-        {/* Contenedor fluido con padding responsivo */}
-        <div className="mx-auto max-w-screen-2xl w-full px-4 sm:px-6 md:px-8 py-8 sm:py-12 md:py-16">
-          {/* Grid responsivo: 1 col en móvil, 5 en desktop; relación 3/2 */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 sm:gap-8 lg:gap-12 items-stretch">
+        {/* max-w-screen-2xl ~1536px para aprovechar más ancho sin ir full-bleed */}
+        <div className="mx-auto max-w-screen-2xl px-6 md:px-8 py-12 md:py-16">
+          {/* 1 columna en móvil, 5 en desktop; proporción 3/2 (Hero/Register) */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-12 items-stretch">
             {/* Columna izquierda: Hero (3/5) */}
-            <div className="lg:col-span-3 h-full flex flex-col min-w-0">
+            <div className="lg:col-span-3 h-full flex flex-col">
               <HeroFeatures />
             </div>
 
             {/* Columna derecha: Registro (2/5) */}
-            <div className="lg:col-span-2 h-full flex flex-col min-w-0">
+            <div className="lg:col-span-2 h-full flex flex-col">
               <RegisterCard />
             </div>
           </div>

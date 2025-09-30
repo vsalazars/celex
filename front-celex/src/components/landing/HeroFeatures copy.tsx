@@ -237,7 +237,8 @@ function deriveDisponibles(c: any) {
 const idiomas = ["ingles", "frances", "aleman", "italiano", "portugues"];
 const modalidades = ["intensivo", "sabatino", "semestral"];
 const turnos = ["matutino", "vespertino", "mixto"];
-const niveles = ["A1", "A2", "B1", "B2", "C1", "C2"];
+const niveles = ["Introductorio", "Básico 1", "Básico 2", "Básico 3", "Básico 4", "Básico 5", "Intermedio 1", "Intermedio 2", "Intermedio 3", "Intermedio 4", "Intermedio 5", "Avanzado 1", "Avanzado 2", "Avanzado 3", "Avanzado 4", "Avanzado 5", "Avanzado 6"] as const;
+
 
 function IconDropdown({
   icon: Icon,
@@ -263,7 +264,12 @@ function IconDropdown({
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>{label}{value ? `: ${value}` : ""}</TooltipContent>
+          
+          {/* 👇 Forzamos el tooltip debajo */}
+          <TooltipContent side="bottom" sideOffset={8}>
+            {label}{value ? `: ${value}` : ""}
+          </TooltipContent>
+
           <DropdownMenuContent align="end" className="rounded-xl">
             <DropdownMenuLabel className="text-xs">{label}</DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -468,14 +474,14 @@ export default function HeroFeatures() {
         className="h-9 rounded-xl"
         onClick={() => setTab("cursos")}
       >
-        <ClipboardList className="h-4 w-4 mr-2" /> Cursos
+        <ClipboardList className="h-4 w-4 mr-2" /> Cursos de idiomas
       </Button>
       <Button
         variant={tab === "examenes" ? "default" : "outline"}
         className="h-9 rounded-xl"
         onClick={() => setTab("examenes")}
       >
-        <FileCheck2 className="h-4 w-4 mr-2" /> Colocación
+        <FileCheck2 className="h-4 w-4 mr-2" /> Examen de colocación
       </Button>
     </div>
   );
@@ -506,7 +512,8 @@ export default function HeroFeatures() {
             {activeFilters ? "Limpiar filtros" : "Sin filtros"}
           </Button>
         </TooltipTrigger>
-        <TooltipContent>
+        {/* 👇 Abajo también */}
+        <TooltipContent side="bottom" sideOffset={8}>
           {activeFilters ? "Quitar todos los filtros" : "No hay filtros activos"}
         </TooltipContent>
       </Tooltip>
@@ -594,25 +601,83 @@ export default function HeroFeatures() {
                         <div className="mb-2">
                           <h3 className="font-semibold text-base">{c.codigo}</h3>
                           <div className="mt-1">
-                            <Badge className={`rounded-full border ${tone.badgeClass}`}>
-                              <Users className="mr-1 h-3.5 w-3.5" /> {disp}/{total} · {tone.label}
-                            </Badge>
+                           {/* Cursos */}
+                          <Badge
+                            className={`rounded-full border px-2 py-0.5 text-xs md:text-sm font-medium ${tone.badgeClass}`}
+                          >
+                            <Users className="mr-1 h-3 w-3 md:h-3.5 md:w-3.5" /> {disp}/{total} · {tone.label}
+                          </Badge>
                           </div>
                         </div>
 
-                        <div className="mt-2 flex flex-wrap gap-2 text-sm">
-                          <Badge variant="secondary" className="capitalize text-sm px-3 py-1">{c.idioma}</Badge>
-                          <Badge variant="secondary" className="capitalize text-sm px-3 py-1">{c.modalidad}</Badge>
-                          <Badge variant="outline" className="capitalize">{c.turno}</Badge>
-                          <span className="inline-flex items-center gap-1 text-xs text-neutral-700">
-                            <GraduationCap className="h-3.5 w-3.5" /> {c.nivel}
-                          </span>
-                          {c.aula ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-neutral-700">
-                              <Building2 className="h-3.5 w-3.5" /> {c.aula}
-                            </span>
-                          ) : null}
-                        </div>
+                        {/* === Badges (Inglés / Intensivo con #7c0040, medio punto más chicos) === */}
+                        {(() => {
+                          const isIngles = String(c.idioma ?? "").toLowerCase() === "ingles";
+                          const isIntensivo = String(c.modalidad ?? "").toLowerCase() === "intensivo";
+
+                          const purpleBadge = "bg-[#7c0040] text-white border-[#7c0040]";
+
+                          return (
+                            <div className="mt-2 text-[13px] leading-tight">
+                              {/* 👉 Todos en un solo renglón */}
+                              <div className="w-full flex flex-nowrap items-center gap-2 overflow-x-auto">
+                                {/* idioma */}
+                                <Badge
+                                  variant="secondary"
+                                  className={`px-2.5 py-0.5 text-[13px] font-normal capitalize ${
+                                    isIngles ? purpleBadge : ""
+                                  }`}
+                                  title={c.idioma}
+                                >
+                                  {c.idioma}
+                                </Badge>
+
+                                {/* modalidad */}
+                                <Badge
+                                  variant="secondary"
+                                  className={`px-2.5 py-0.5 text-[13px] font-normal capitalize ${
+                                    isIntensivo ? purpleBadge : ""
+                                  }`}
+                                  title={c.modalidad}
+                                >
+                                  {c.modalidad}
+                                </Badge>
+
+                                {/* turno */}
+                                <Badge
+                                  variant="outline"
+                                  className="px-2.5 py-0.5 text-[13px] font-normal capitalize"
+                                  title={c.turno}
+                                >
+                                  {c.turno}
+                                </Badge>
+
+                                {/* nivel (ej. Básico 1) */}
+                                <Badge
+                                  variant="outline"
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[13px] font-normal capitalize"
+                                  title={c.nivel}
+                                >
+                                  {c.nivel}
+                                </Badge>
+                              </div>
+
+                              {/* Aula (abajo, alineado a la izquierda, mismo tamaño reducido) */}
+                              {c.aula ? (
+                                <div className="mt-2">
+                                  <Badge
+                                    variant="outline"
+                                    className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[13px] font-normal capitalize"
+                                    title={`Aula: ${c.aula}`}
+                                  >
+                                    {c.aula}
+                                  </Badge>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
+
 
                         <div className="mt-4 space-y-3 text-sm text-neutral-700 border-t pt-3">
                           <div>
@@ -687,9 +752,12 @@ export default function HeroFeatures() {
                             </h3>
                           </div>
                           <div className="mt-2">
-                            <Badge className={`rounded-full border ${tone.badgeClass}`}>
-                              <Users className="mr-1 h-3.5 w-3.5" /> {disp}/{total} · {tone.label}
+                            <Badge
+                              className={`rounded-full border px-2 py-0.5 text-xs md:text-sm font-medium ${tone.badgeClass}`}
+                            >
+                              <Users className="mr-1 h-3 w-3 md:h-3.5 md:w-3.5" /> {disp}/{total} · {tone.label}
                             </Badge>
+
                           </div>
                         </div>
 

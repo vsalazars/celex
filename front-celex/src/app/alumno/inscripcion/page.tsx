@@ -539,12 +539,23 @@ export default function AlumnoInscripcionPage() {
                   <SelectValue placeholder="Nivel" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="A1">A1</SelectItem>
-                  <SelectItem value="A2">A2</SelectItem>
-                  <SelectItem value="B1">B1</SelectItem>
-                  <SelectItem value="B2">B2</SelectItem>
-                  <SelectItem value="C1">C1</SelectItem>
-                  <SelectItem value="C2">C2</SelectItem>
+                  <SelectItem value="INTRO">Introductorio</SelectItem>
+                  <SelectItem value="B1">Básico 1</SelectItem>
+                  <SelectItem value="B2">Básico 2</SelectItem>
+                  <SelectItem value="B3">Básico 3</SelectItem>
+                  <SelectItem value="B4">Básico 4</SelectItem>
+                  <SelectItem value="B5">Básico 5</SelectItem>
+                  <SelectItem value="I1">Intermedio 1</SelectItem>
+                  <SelectItem value="I2">Intermedio 2</SelectItem>
+                  <SelectItem value="I3">Intermedio 3</SelectItem>
+                  <SelectItem value="I4">Intermedio 4</SelectItem>
+                  <SelectItem value="I5">Intermedio 5</SelectItem>
+                  <SelectItem value="A1">Avanzado 1</SelectItem>
+                  <SelectItem value="A2">Avanzado 2</SelectItem>
+                  <SelectItem value="A3">Avanzado 3</SelectItem>
+                  <SelectItem value="A4">Avanzado 4</SelectItem>
+                  <SelectItem value="A5">Avanzado 5</SelectItem>
+                  <SelectItem value="A6">Avanzado 6</SelectItem>
                 </SelectContent>
               </Select>
 

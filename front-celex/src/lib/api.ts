@@ -222,7 +222,9 @@ export async function deleteTeacher(id: string | number): Promise<void> {
 export type Idioma = "ingles" | "frances" | "aleman" | "italiano" | "portugues";
 export type Modalidad = "intensivo" | "sabatino" | "semestral";
 export type Turno = "matutino" | "vespertino" | "mixto";
-export type Nivel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+export type Nivel = "Introductorio" | "Básico 1" | "Básico 2" | "Básico 3" | "Básico 4" | "Básico 5" | "Intermedio 1" | "Intermedio 2" | "Intermedio 3" | "Intermedio 4" | "Intermedio 5" | "Avanzado 1" | "Avanzado 2" | "Avanzado 3" | "Avanzado 4" | "Avanzado 5" | "Avanzado 6";
+
+
 export type ModalidadAsistencia = "presencial" | "virtual";
 
 export type PeriodoDTO = { from: string; to: string };

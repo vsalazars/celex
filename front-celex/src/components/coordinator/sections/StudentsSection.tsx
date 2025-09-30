@@ -43,9 +43,9 @@ export type AlumnoFull = {
   boleta?: string | null;
   is_ipn?: boolean;
   telefono?: string | null;
-  tutor_telefono?: string | null; // ← NUEVO: se mostrará solo si viene (menor de edad)
-  tutor_nombre?: string | null;     // ← NUEVO
-  tutor_parentesco?: string | null; // ← NUEVO
+  tutor_telefono?: string | null;
+  tutor_nombre?: string | null;
+  tutor_parentesco?: string | null;
 
   // Dirección
   addr_calle?: string | null;
@@ -54,17 +54,125 @@ export type AlumnoFull = {
   addr_municipio?: string | null;
   addr_estado?: string | null;
   addr_cp?: string | null;
+
   // Inscripción (si se conoce)
   fecha_inscripcion?: string | null;
   estado?: string | null;
   created_at?: string | null;
 
-  // NUEVO (para perfil IPN)
+  // (perfil IPN)
   ipn_nivel?: string | null;
   ipn_unidad_academica?: string | null;
 };
 
 const ALL = "all"; // sentinel para 'Todos'
+
+/* ============================
+   HELPERS DE UI (GLOBALES) — NUEVOS
+   ============================ */
+
+/** Base visual del pill */
+const pillBase =
+  "inline-flex items-center h-7 px-3.5 rounded-full border text-sm font-medium shadow-sm";
+
+/** Normaliza a minúsculas para comparar */
+function k(v?: string | null) {
+  return String(v ?? "").toLowerCase();
+}
+
+/** prettyEnum en scope de módulo (para que PillTag pueda usarlo sin ReferenceError) */
+function prettyEnumGlobal(v?: string | null) {
+  if (!v) return "-";
+  let s = String(v);
+
+  // Si viene "Enum.valor", toma la última parte (después del punto)
+  if (s.includes(".")) {
+    const parts = s.split(".");
+    s = parts[parts.length - 1];
+  }
+
+  s = s.replace(/_/g, " ").toLowerCase();
+
+  const map: Record<string, string> = {
+    // Idiomas
+    ingles: "Inglés",
+    frances: "Francés",
+    aleman: "Alemán",
+    italiano: "Italiano",
+    portugues: "Portugués",
+    japones: "Japonés",
+    chino: "Chino",
+
+    // Modalidades / Turnos / Estados
+    sabatino: "Sabatino",
+    intensivo: "Intensivo",
+    semestral: "Semestral",
+    matutino: "Matutino",
+    vespertino: "Vespertino",
+    mixto: "Mixto",
+    pago: "Pago",
+    exencion: "Exención",
+    confirmada: "Confirmada",
+    rechazada: "Rechazada",
+    preinscrita: "Preinscrita",
+    registrada: "Registrada",
+    cancelada: "Cancelada",
+
+    // Niveles (completos)
+    intro: "Introductorio",
+    introductorio: "Introductorio",
+    b1: "Básico 1",
+    b2: "Básico 2",
+    b3: "Básico 3",
+    b4: "Básico 4",
+    b5: "Básico 5",
+    i1: "Intermedio 1",
+    i2: "Intermedio 2",
+    i3: "Intermedio 3",
+    i4: "Intermedio 4",
+    i5: "Intermedio 5",
+    a1: "Avanzado 1",
+    a2: "Avanzado 2",
+    a3: "Avanzado 3",
+    a4: "Avanzado 4",
+    a5: "Avanzado 5",
+    a6: "Avanzado 6",
+  };
+
+  return map[s] || s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Tono por tipo de etiqueta + valor.
+ *  Requerimiento: GUINDA para Idioma y Nivel; GRISES para Modalidad y Turno.
+ *  Guinda: #7A003C
+ */
+function pillTone(kind: "idioma" | "nivel" | "modalidad" | "turno", value?: string | null) {
+  const GUINDA = "bg-[#7A003C]/10 text-[#7A003C] border-[#7A003C]/30";
+  const GRIS   = "bg-neutral-100 text-neutral-700 border-neutral-200";
+
+  if (kind === "idioma")    return GUINDA;
+  if (kind === "nivel")     return GUINDA;
+  if (kind === "modalidad") return GRIS;
+  if (kind === "turno")     return GRIS;
+  return GRIS;
+}
+
+/** Pill listo para usar (usa prettyEnumGlobal para no depender del scope del componente) */
+function PillTag({
+  kind,
+  value,
+  className,
+}: {
+  kind: "idioma" | "nivel" | "modalidad" | "turno";
+  value?: string | null;
+  className?: string;
+}) {
+  return (
+    <span className={`${pillBase} ${pillTone(kind, value)} ${className ?? ""}`}>
+      {prettyEnumGlobal(value)}
+    </span>
+  );
+}
 
 export default function StudentsSection() {
   const [q, setQ] = React.useState("");
@@ -202,7 +310,7 @@ export default function StudentsSection() {
                   estado: a?.estado,
                   fecha_inscripcion: a?.fecha_inscripcion,
 
-                  // ⬇️ NUEVO: intenta mapear lo de IPN si viene del reporte
+                  // NUEVO: intenta mapear lo de IPN si viene del reporte
                   is_ipn: a?.is_ipn ?? a?.ipn ?? undefined,
                   ipn_nivel: a?.ipn_nivel ?? a?.nivel ?? a?.nivel_ipn ?? null,
                   ipn_unidad_academica:
@@ -275,6 +383,7 @@ export default function StudentsSection() {
     return [a.last_name, a.first_name].filter(Boolean).join(" ") || "(sin nombre)";
   }
 
+  // ⬇️ Tu prettyEnum original (lo dejo intacto)
   function prettyEnum(v?: string | null) {
     if (!v) return "-";
     let s = String(v);
@@ -303,11 +412,31 @@ export default function StudentsSection() {
       mixto: "Mixto",
       pago: "Pago",
       exencion: "Exención",
-      confirmada: "confirmada",
-      rechazada: "rechazada",
-      preinscrita: "preinscrita",
-      registrada: "registrada",
-      cancelada: "cancelada",
+      confirmada: "Confirmada",
+      rechazada: "Rechazada",
+      preinscrita: "Preinscrita",
+      registrada: "Registrada",
+      cancelada: "Cancelada",
+
+      // ⬇️ Niveles completos
+      intro: "Introductorio",
+      introductorio: "Introductorio",
+      b1: "Básico 1",
+      b2: "Básico 2",
+      b3: "Básico 3",
+      b4: "Básico 4",
+      b5: "Básico 5",
+      i1: "Intermedio 1",
+      i2: "Intermedio 2",
+      i3: "Intermedio 3",
+      i4: "Intermedio 4",
+      i5: "Intermedio 5",
+      a1: "Avanzado 1",
+      a2: "Avanzado 2",
+      a3: "Avanzado 3",
+      a4: "Avanzado 4",
+      a5: "Avanzado 5",
+      a6: "Avanzado 6",
     };
 
     return map[s] || s.charAt(0).toUpperCase() + s.slice(1);
@@ -497,46 +626,43 @@ export default function StudentsSection() {
   ], []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const table = useReactTable({
-    data: data.items,            // usamos la página actual que ya traes/paginas en tu estado
+    data: data.items,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(), // ordena en el cliente la página actual
-    // sin paginación de TanStack; respetamos tu paginación existente
+    getSortedRowModel: getSortedRowModel(),
   });
 
-const SCORE_THRESHOLD = 80;
+  const SCORE_THRESHOLD = 80;
 
-function getScoreState(score: number | null | undefined) {
-  if (score == null || Number.isNaN(Number(score))) return "neutral" as const;
-  return Number(score) >= SCORE_THRESHOLD ? ("pass" as const) : ("fail" as const);
-}
+  function getScoreState(score: number | null | undefined) {
+    if (score == null || Number.isNaN(Number(score))) return "neutral" as const;
+    return Number(score) >= SCORE_THRESHOLD ? ("pass" as const) : ("fail" as const);
+  }
 
-function calificacionClasses(score: number | null | undefined) {
-  const state = getScoreState(score);
+  function calificacionClasses(score: number | null | undefined) {
+    const state = getScoreState(score);
 
-  const base =
-    "h-7 px-3.5 text-base inline-flex items-center rounded-lg border shadow-sm";
+    const base =
+      "h-7 px-3.5 text-base inline-flex items-center rounded-lg border shadow-sm";
 
-  const container =
-    state === "pass"
-      ? "text-emerald-800 border-emerald-300 bg-emerald-50"
-      : state === "fail"
-      ? "text-red-700 border-red-300 bg-red-50"
-      : "text-primary border-primary/30 bg-primary/5";
+    const container =
+      state === "pass"
+        ? "text-emerald-800 border-emerald-300 bg-emerald-50"
+        : state === "fail"
+        ? "text-red-700 border-red-300 bg-red-50"
+        : "text-primary border-primary/30 bg-primary/5";
 
-  const number =
-    state === "pass"
-      ? "ml-1 font-mono tabular-nums font-semibold text-emerald-700"
-      : state === "fail"
-      ? "ml-1 font-mono tabular-nums font-semibold text-red-700"
-      : "ml-1 font-mono tabular-nums font-semibold text-primary";
+    const number =
+      state === "pass"
+        ? "ml-1 font-mono tabular-nums font-semibold text-emerald-700"
+        : state === "fail"
+        ? "ml-1 font-mono tabular-nums font-semibold text-red-700"
+        : "ml-1 font-mono tabular-nums font-semibold text-primary";
 
-  return { container: `${base} ${container}`, number };
-}
-
-
+    return { container: `${base} ${container}`, number };
+  }
 
   /* ============================
      Render
@@ -557,7 +683,7 @@ function calificacionClasses(score: number | null | undefined) {
           <CardTitle className="text-base">Listado detallado{fallbackMode ? " (modo agrupado)" : ""}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Filtros: grid responsivo */}
+          {/* Filtros */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-center">
             <div className="relative">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-neutral-500" />
@@ -608,7 +734,7 @@ function calificacionClasses(score: number | null | undefined) {
             </div>
           </div>
 
-          {/* Tabla con header sticky */}
+          {/* Tabla */}
           <div className="border rounded-xl">
             <ScrollArea className="w-full overflow-auto">
               <Table>
@@ -660,7 +786,7 @@ function calificacionClasses(score: number | null | undefined) {
             </ScrollArea>
           </div>
 
-          {/* Paginación (tuya, intacta) */}
+          {/* Paginación */}
           <div className="flex items-center justify-between gap-2 text-sm">
             <div className="text-neutral-500">
               {data.total > 0 ? (
@@ -719,7 +845,7 @@ function calificacionClasses(score: number | null | undefined) {
         </CardContent>
       </Card>
 
-      {/* Modal Expediente — layout 1/4 (resumen) + 3/4 (historial) */}
+      {/* Modal Expediente */}
       <Dialog open={openExp} onOpenChange={setOpenExp}>
         <DialogContent
           className="
@@ -746,7 +872,7 @@ function calificacionClasses(score: number | null | undefined) {
             {/* Cuerpo */}
             <div className="flex-1 min-h-0 overflow-hidden px-5 py-4">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-full items-stretch">
-                {/* Columna izquierda — 1/4 del ancho */}
+                {/* Columna izquierda — 1/4 */}
                 <div className="lg:col-span-3 lg:sticky lg:top=[56px] self-start">
                   <Card className="rounded-xl h-[calc(85vh-56px-2rem)] flex flex-col min-h-0">
                     <CardHeader className="pb-2 shrink-0">
@@ -765,7 +891,7 @@ function calificacionClasses(score: number | null | undefined) {
                               <Field label="CURP" value={selected.curp || "-"} />
                             </div>
 
-                            {/* IPN y Boleta juntos */}
+                            {/* IPN y Boleta */}
                             <div className="flex flex-wrap items-center gap-3">
                               <div className="flex items-center gap-2">
                                 <span className="text-[11px] uppercase tracking-wide text-neutral-500">IPN:</span>
@@ -790,7 +916,7 @@ function calificacionClasses(score: number | null | undefined) {
                               </div>
                             </div>
 
-                            {/* NUEVO: Si es IPN, mostramos Nivel y Unidad académica */}
+                            {/* (IPN extra) */}
                             {selected.is_ipn ? (
                               <div className="space-y-1">
                                 <Field label="Nivel (IPN)" value={prettyEnum(selected.ipn_nivel) || "-"} />
@@ -800,7 +926,6 @@ function calificacionClasses(score: number | null | undefined) {
 
                             <Field label="Teléfono" value={selected.telefono || "-"} />
 
-                            {/* Teléfono del tutor + nombre y parentesco — solo si hay algún dato */}
                             {(selected.tutor_telefono || selected.tutor_nombre || selected.tutor_parentesco) ? (
                               <div className="space-y-1">
                                 {selected.tutor_telefono ? (
@@ -811,7 +936,7 @@ function calificacionClasses(score: number | null | undefined) {
                               </div>
                             ) : null}
 
-                            {/* Dirección en 2 renglones */}
+                            {/* Dirección */}
                             <div className="space-y-0.5">
                               <div className="text-[11px] uppercase tracking-wide text-neutral-500">Dirección</div>
                               <div className="text-sm">
@@ -837,7 +962,7 @@ function calificacionClasses(score: number | null | undefined) {
                   </Card>
                 </div>
 
-                {/* Columna derecha — 3/4 del ancho */}
+                {/* Columna derecha — 3/4 */}
                 <div className="lg:col-span-9 min-h-0">
                   <Card className="rounded-xl h-[calc(85vh-56px-2rem)] flex flex-col min-h-0">
                     <CardHeader className="pb-2 shrink-0">
@@ -867,10 +992,12 @@ function calificacionClasses(score: number | null | undefined) {
                                     <div className="flex items-center justify-between gap-2 flex-wrap">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <div className="font-medium">{it.ciclo_codigo || "(sin código)"}</div>
-                                        <Badge variant="outline" className="h-7 px-3.5 text-base">{prettyEnum(it.idioma)}</Badge>
-                                        {it.nivel ? <Badge variant="outline" className="h-7 px-3.5 text-base">{prettyEnum(it.nivel)}</Badge> : null}
-                                        {it.modalidad ? <Badge variant="outline">{prettyEnum(it.modalidad)}</Badge> : null}
-                                        {it.turno ? <Badge variant="outline">{prettyEnum(it.turno)}</Badge> : null}
+
+                                        {/* ======= PILLs con GUINDA y GRISES ======= */}
+                                        <PillTag kind="idioma" value={it.idioma} className="text-base" />
+                                        {it.nivel ? <PillTag kind="nivel" value={it.nivel} className="text-base" /> : null}
+                                        {it.modalidad ? <PillTag kind="modalidad" value={it.modalidad} /> : null}
+                                        {it.turno ? <PillTag kind="turno" value={it.turno} /> : null}
                                       </div>
                                       <div className="flex items-center gap-2">
                                         {calReg != null ? (
@@ -884,18 +1011,10 @@ function calificacionClasses(score: number | null | undefined) {
                                             </span>
                                           </Badge>
                                         ) : null}
-
-
-                                          {/* ⬇️ QUITAR ESTE BLOQUE */}
-                                            {/*
-                                            <Badge variant="outline" className={`h-5 ${badgeTone(it.inscripcion_estado)}`}>
-                                              {prettyEnum(it.inscripcion_estado)}
-                                            </Badge>
-                                            */}
                                       </div>
                                     </div>
 
-                                    {/* Detalles de fechas/horario/docente */}
+                                    {/* Detalles */}
                                     <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3 text-sm">
                                       <Field label="Horario" value={it.horario || "-"} />
                                       <div className="grid grid-cols-2 gap-3">
@@ -945,9 +1064,7 @@ function calificacionClasses(score: number | null | undefined) {
                                       </div>
                                     </div>
 
-                                    {/* ============================
-                                        NUEVO: Evaluación por bloques
-                                       ============================ */}
+                                    {/* Evaluación */}
                                     {ev ? (
                                       <div className="mt-4 border rounded-lg overflow-hidden">
                                         <div className="px-3 py-2 bg-neutral-50 border-b text-[12px] font-medium flex items-center gap-2">

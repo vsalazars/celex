@@ -89,70 +89,18 @@ function formatDate(iso?: string) {
   return d.toLocaleString();
 }
 
-/* ============================================================================
-   Catálogo de niveles (Ajustado al enum Nivel del backend)
-   - value = clave del enum (INTRO, B1..B5, I1..I5, A1..A6)
-   - label = texto legible
-   - normalizeNivelKey: convierte variantes del back a la clave correcta
-============================================================================ */
-
-const NIVEL_LABELS: Record<string, string> = {
-  INTRO: "Introductorio",
-  B1: "Básico 1",
-  B2: "Básico 2",
-  B3: "Básico 3",
-  B4: "Básico 4",
-  B5: "Básico 5",
-  I1: "Intermedio 1",
-  I2: "Intermedio 2",
-  I3: "Intermedio 3",
-  I4: "Intermedio 4",
-  I5: "Intermedio 5",
-  A1: "Avanzado 1",
-  A2: "Avanzado 2",
-  A3: "Avanzado 3",
-  A4: "Avanzado 4",
-  A5: "Avanzado 5",
-  A6: "Avanzado 6",
-};
-
-// Orden explícito para el select
-const NIVEL_ORDER: string[] = [
-  "INTRO",
-  "B1","B2","B3","B4","B5",
-  "I1","I2","I3","I4","I5",
-  "A1","A2","A3","A4","A5","A6",
+// Catálogo de niveles
+const NIVELES: { value: string; label: string }[] = [
+  { value: "A1", label: "A1 — Principiante" },
+  { value: "A2", label: "A2 — Básico" },
+  { value: "B1", label: "B1 — Intermedio" },
+  { value: "B2", label: "B2 — Intermedio alto" },
+  { value: "C1", label: "C1 — Avanzado" },
+  { value: "C2", label: "C2 — Maestría" },
+  { value: "BASICO", label: "Básico" },
+  { value: "INTERMEDIO", label: "Intermedio" },
+  { value: "AVANZADO", label: "Avanzado" },
 ];
-
-const NIVELES: { value: string; label: string }[] = NIVEL_ORDER.map((k) => ({
-  value: k,
-  label: NIVEL_LABELS[k],
-}));
-
-/** Normaliza lo que venga del back a la CLAVE del enum (INTRO, B1..B5, I1..I5, A1..A6) */
-function normalizeNivelKey(n: string | null | undefined): string | null {
-  if (!n) return null;
-  const k = String(n).trim().toUpperCase();
-
-  // Soportar palabras completas como "INTRODUCTORIO", "BÁSICO 1", "INTERMEDIO 3", "AVANZADO 2"
-  if (k.startsWith("INTRO")) return "INTRO";
-
-  // Intento con patrones "BASICO X", "INTERMEDIO X", "AVANZADO X"
-  const basico = k.match(/^B[ÁA]SICO\s*([1-5])$/);
-  if (basico) return `B${basico[1]}`;
-
-  const inter = k.match(/^INTERMEDIO\s*([1-5])$/);
-  if (inter) return `I${inter[1]}`;
-
-  const avan = k.match(/^AVANZADO\s*([1-6])$/);
-  if (avan) return `A${avan[1]}`;
-
-  // Si ya es una clave válida del enum
-  if (k in NIVEL_LABELS) return k;
-
-  // Cualquier otra cosa no la reconocemos
-  return null;
-}
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Llamadas de red autocontenidas
@@ -329,8 +277,7 @@ export default function PlacementSection() {
       setRegistros(regs);
       const initial: Record<string, string | undefined> = {};
       regs.forEach((r) => {
-        // Normalizamos a la CLAVE del enum (lo que usa el <Select value=...>)
-        initial[String(r.id)] = normalizeNivelKey(r.nivel_asignado) ?? undefined;
+        initial[String(r.id)] = r.nivel_asignado ?? undefined;
       });
       setNivelUIByRegId(initial);
     } catch (err: any) {
@@ -359,7 +306,7 @@ export default function PlacementSection() {
     const prev = r.nivel_asignado ?? null;
 
     try {
-      // Optimista (guardamos la CLAVE en el estado; para mostrar usaremos NIVEL_LABELS)
+      // Optimista
       setRegistros((rows) =>
         rows.map((x) => (String(x.id) === id ? { ...x, nivel_asignado: elegido } : x))
       );
@@ -489,12 +436,9 @@ export default function PlacementSection() {
                     {filteredRegistros.map((r) => {
                       const id = String(r.id);
                       const saving = !!savingByRegId[id];
-                      const seleccionado = nivelUIByRegId[id]; // CLAVE del enum o undefined
+                      const seleccionado = nivelUIByRegId[id];
                       const hasChanges =
-                        (normalizeNivelKey(r.nivel_asignado) ?? undefined) !== (seleccionado ?? undefined);
-
-                      const actualKey = normalizeNivelKey(r.nivel_asignado);
-                      const actualLabel = actualKey ? NIVEL_LABELS[actualKey] : null;
+                        (r.nivel_asignado ?? undefined) !== (seleccionado ?? undefined);
 
                       return (
                         <div
@@ -512,7 +456,7 @@ export default function PlacementSection() {
                                 </div>
                               </div>
                               <Badge variant="outline">
-                                {actualLabel ? `Actual: ${actualLabel}` : "Sin nivel"}
+                                {r.nivel_asignado ? `Actual: ${r.nivel_asignado}` : "Sin nivel"}
                               </Badge>
                             </div>
 
@@ -526,7 +470,7 @@ export default function PlacementSection() {
                                   }
                                   disabled={saving}
                                 >
-                                  <SelectTrigger className="w-56">
+                                  <SelectTrigger className="w-48">
                                     <SelectValue placeholder="Elige nivel" />
                                   </SelectTrigger>
                                   <SelectContent>

@@ -201,12 +201,23 @@ class Idioma(str, Enum):
 
 
 class Nivel(str, Enum):
-    A1 = "A1"
-    A2 = "A2"
-    B1 = "B1"
-    B2 = "B2"
-    C1 = "C1"
-    C2 = "C2"
+    INTRO = "Introductorio"
+    B1 = "Básico 1"
+    B2 = "Básico 2"
+    B3 = "Básico 3"
+    B4 = "Básico 4"
+    B5 = "Básico 5"
+    I1 = "Intermedio 1"
+    I2 = "Intermedio 2"
+    I3 = "Intermedio 3"
+    I4 = "Intermedio 4"
+    I5 = "Intermedio 5"
+    A1 = "Avanzado 1"
+    A2 = "Avanzado 2"
+    A3 = "Avanzado 3"
+    A4 = "Avanzado 4"
+    A5 = "Avanzado 5"
+    A6 = "Avanzado 6"
 
 
 class DiaSemana(str, Enum):

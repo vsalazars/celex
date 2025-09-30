@@ -127,7 +127,10 @@ const FormSchema = z.object({
   idioma: z.enum(["ingles", "frances", "aleman", "italiano", "portugues"], { required_error: "Selecciona idioma" }),
   modalidad: z.enum(["intensivo", "sabatino", "semestral"], { required_error: "Selecciona modalidad" }),
   turno: z.enum(["matutino", "vespertino", "mixto"], { required_error: "Selecciona turno" }),
-  nivel: z.enum(["A1", "A2", "B1", "B2", "C1", "C2"], { required_error: "Selecciona nivel" }),
+  nivel: z.enum(
+    ["Introductorio", "Básico 1", "Básico 2", "Básico 3", "Básico 4", "Básico 5", "Intermedio 1", "Intermedio 2", "Intermedio 3", "Intermedio 4", "Intermedio 5", "Avanzado 1", "Avanzado 2", "Avanzado 3", "Avanzado 4", "Avanzado 5", "Avanzado 6"],
+    { required_error: "Selecciona nivel" }
+  ),
 
   modalidad_asistencia: z.enum(["presencial", "virtual"]).optional(),
   aula: z.string().optional(),
@@ -724,13 +727,25 @@ export default function GroupsSection() {
               <SelectValue placeholder="Nivel" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="A1">A1</SelectItem>
-              <SelectItem value="A2">A2</SelectItem>
-              <SelectItem value="B1">B1</SelectItem>
-              <SelectItem value="B2">B2</SelectItem>
-              <SelectItem value="C1">C1</SelectItem>
-              <SelectItem value="C2">C2</SelectItem>
+              <SelectItem value="Introductorio">Introductorio</SelectItem>
+              <SelectItem value="Básico 1">Básico 1</SelectItem>
+              <SelectItem value="Básico 2">Básico 2</SelectItem>
+              <SelectItem value="Básico 3">Básico 3</SelectItem>
+              <SelectItem value="Básico 4">Básico 4</SelectItem>
+              <SelectItem value="Básico 5">Básico 5</SelectItem>
+              <SelectItem value="Intermedio 1">Intermedio 1</SelectItem>
+              <SelectItem value="Intermedio 2">Intermedio 2</SelectItem>
+              <SelectItem value="Intermedio 3">Intermedio 3</SelectItem>
+              <SelectItem value="Intermedio 4">Intermedio 4</SelectItem>
+              <SelectItem value="Intermedio 5">Intermedio 5</SelectItem>
+              <SelectItem value="Avanzado 1">Avanzado 1</SelectItem>
+              <SelectItem value="Avanzado 2">Avanzado 2</SelectItem>
+              <SelectItem value="Avanzado 3">Avanzado 3</SelectItem>
+              <SelectItem value="Avanzado 4">Avanzado 4</SelectItem>
+              <SelectItem value="Avanzado 5">Avanzado 5</SelectItem>
+              <SelectItem value="Avanzado 6">Avanzado 6</SelectItem>
             </SelectContent>
+
           </Select>
 
           {/* Toggle vista + Búsqueda (alineados a la derecha) */}
@@ -1649,13 +1664,25 @@ function FormCiclo({
                       <SelectValue placeholder="Seleccionar" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="A1">A1</SelectItem>
-                      <SelectItem value="A2">A2</SelectItem>
-                      <SelectItem value="B1">B1</SelectItem>
-                      <SelectItem value="B2">B2</SelectItem>
-                      <SelectItem value="C1">C1</SelectItem>
-                      <SelectItem value="C2">C2</SelectItem>
+                      <SelectItem value="Introductorio">Introductorio</SelectItem>
+                      <SelectItem value="Básico 1">Básico 1</SelectItem>
+                      <SelectItem value="Básico 2">Básico 2</SelectItem>
+                      <SelectItem value="Básico 3">Básico 3</SelectItem>
+                      <SelectItem value="Básico 4">Básico 4</SelectItem>
+                      <SelectItem value="Básico 5">Básico 5</SelectItem>
+                      <SelectItem value="Intermedio 1">Intermedio 1</SelectItem>
+                      <SelectItem value="Intermedio 2">Intermedio 2</SelectItem>
+                      <SelectItem value="Intermedio 3">Intermedio 3</SelectItem>
+                      <SelectItem value="Intermedio 4">Intermedio 4</SelectItem>
+                      <SelectItem value="Intermedio 5">Intermedio 5</SelectItem>
+                      <SelectItem value="Avanzado 1">Avanzado 1</SelectItem>
+                      <SelectItem value="Avanzado 2">Avanzado 2</SelectItem>
+                      <SelectItem value="Avanzado 3">Avanzado 3</SelectItem>
+                      <SelectItem value="Avanzado 4">Avanzado 4</SelectItem>
+                      <SelectItem value="Avanzado 5">Avanzado 5</SelectItem>
+                      <SelectItem value="Avanzado 6">Avanzado 6</SelectItem>
                     </SelectContent>
+
                   </Select>
                 )}
               />
