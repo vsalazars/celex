@@ -141,19 +141,22 @@ export default function RegisterCard() {
         </div>
 
         {/* Botón en un renglón aparte, full width y alineado a la izquierda */}
-        <div className="mb-4">
+        <div className="flex justify-center mb-4">
           <button
             type="button"
             onClick={() => setLoginOpen(true)}
-            className="w-full text-left inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-3 py-2 
-                       text-[11px] sm:text-xs font-medium hover:bg-primary/20 
-                       focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition"
+            className="inline-flex items-center gap-2 rounded-full bg-primary/10 text-primary px-4 py-2
+                      text-sm font-semibold hover:bg-primary/20 
+                      hover:scale-105 hover:shadow-md
+                      focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary 
+                      transition-transform duration-200 ease-in-out"
             aria-label="Abrir inicio de sesión"
           >
-            <LogIn className="h-3.5 w-3.5" />
-            ¿Ya tienes cuenta? Inicia sesión aquí.
+            <LogIn className="h-4 w-4" />
+            ¿Ya tienes cuenta? Inicia sesión
           </button>
         </div>
+
 
         {/* Tarjeta con selector IPN y formulario */}
         <div className="mb-4 rounded-2xl border bg-neutral-50 p-3 sm:p-4">
