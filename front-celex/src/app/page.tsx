@@ -1,4 +1,4 @@
-// page.tsx (solo reemplaza la sección móvil)
+// page.tsx (sección móvil reemplazada con color primario en texto + iconos y borde activo)
 "use client";
 
 import { useState } from "react";
@@ -32,22 +32,37 @@ export default function Page() {
       <section className="flex-1">
         <div className="mx-auto max-w-screen-2xl w-full px-4 sm:px-6 md:px-8 py-6 sm:py-10">
 
-          {/* === MÓVIL: segmented tabs limpio === */}
+          {/* === MÓVIL: segmented tabs con color primario IPN === */}
           <div className="lg:hidden">
             <Tabs value={mobileTab} onValueChange={(v) => setMobileTab(v as MobileTab)} className="w-full">
               <TabsList className="grid grid-cols-2 w-full bg-neutral-100/80 p-1 rounded-2xl">
                 <TabsTrigger
                   value="cursos"
-                  className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                  className="rounded-xl flex items-center justify-center
+                             text-neutral-600 border border-transparent
+                             data-[state=active]:bg-white data-[state=active]:shadow-sm
+                             data-[state=active]:text-[#7c0040] data-[state=active]:border-[#7c0040]
+                             transition-colors"
                 >
-                  <ClipboardList className="h-4 w-4 mr-2" />
+                  <ClipboardList
+                    className="h-4 w-4 mr-2 text-neutral-500
+                               data-[state=active]:text-[#7c0040] transition-colors"
+                  />
                   Cursos
                 </TabsTrigger>
+
                 <TabsTrigger
                   value="registro"
-                  className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                  className="rounded-xl flex items-center justify-center
+                             text-neutral-600 border border-transparent
+                             data-[state=active]:bg-white data-[state=active]:shadow-sm
+                             data-[state=active]:text-[#7c0040] data-[state=active]:border-[#7c0040]
+                             transition-colors"
                 >
-                  <UserRoundPlus className="h-4 w-4 mr-2" />
+                  <UserRoundPlus
+                    className="h-4 w-4 mr-2 text-neutral-500
+                               data-[state=active]:text-[#7c0040] transition-colors"
+                  />
                   Registro/Entrar
                 </TabsTrigger>
               </TabsList>

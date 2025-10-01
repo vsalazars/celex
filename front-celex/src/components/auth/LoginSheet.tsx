@@ -141,7 +141,7 @@ export default function LoginSheet({
                     id="login-email"
                     type="email"
                     inputMode="email"
-                    placeholder="tunombre@correo.com"
+                    placeholder="usuario@correo.com"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     className="pl-9"

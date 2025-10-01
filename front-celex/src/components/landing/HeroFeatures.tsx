@@ -512,14 +512,18 @@ export default function HeroFeatures() {
           {/* Info */}
           <Button
             variant="outline"
-            className="h-9 w-9 rounded-xl p-0 sm:w-auto sm:px-3"
+            className="h-9 w-9 rounded-xl p-0 sm:w-auto sm:px-3 text-neutral-700 dark:text-neutral-300"
             onClick={() => setOpenInfo(true)}
             aria-label="Información"
             title="Información"
           >
-            <Info className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Información</span>
+            {/* el color se fuerza en el SVG durante el latido */}
+            <Info className="info-icon h-4 w-4 sm:mr-2 animate-heartbeat" />
+            <span className="hidden sm:inline font-medium">Información</span>
           </Button>
+
+
+
         </div>
 
         {/* Row 2: iconos de filtros + icono limpiar + resumen con chips removibles */}
@@ -726,14 +730,30 @@ export default function HeroFeatures() {
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-xs text-neutral-500">Página {pageCursos} de {pagesCursos}</span>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" disabled={pageCursos <= 1} onClick={() => setPageCursos((p) => Math.max(1, p - 1))}>
-                      <ChevronLeft className="h-5 w-5" />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="group h-10 w-10 rounded-xl hover:bg-[#7c0040]/5 focus-visible:ring-[#7c0040]"
+                      disabled={pageCursos <= 1}
+                      onClick={() => setPageCursos((p) => Math.max(1, p - 1))}
+                      aria-label="Página anterior"
+                    >
+                      <ChevronLeft className="h-5 w-5 text-[#7c0040] group-disabled:text-neutral-300" />
                     </Button>
-                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" disabled={pageCursos >= pagesCursos} onClick={() => setPageCursos((p) => Math.min(pagesCursos, p + 1))}>
-                      <ChevronRight className="h-5 w-5" />
+
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="group h-10 w-10 rounded-xl hover:bg-[#7c0040]/5 focus-visible:ring-[#7c0040]"
+                      disabled={pageCursos >= pagesCursos}
+                      onClick={() => setPageCursos((p) => Math.min(pagesCursos, p + 1))}
+                      aria-label="Página siguiente"
+                    >
+                      <ChevronRight className="h-5 w-5 text-[#7c0040] group-disabled:text-neutral-300" />
                     </Button>
                   </div>
                 </div>
+
               </>
             ))
           ) : (
@@ -826,14 +846,30 @@ export default function HeroFeatures() {
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-xs text-neutral-500">Página {pageExams} de {pagesExams}</span>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" disabled={pageExams <= 1} onClick={() => setPageExams((p) => Math.max(1, p - 1))}>
-                      <ChevronLeft className="h-5 w-5" />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="group h-10 w-10 rounded-xl hover:bg-[#7c0040]/5 focus-visible:ring-[#7c0040]"
+                      disabled={pageExams <= 1}
+                      onClick={() => setPageExams((p) => Math.max(1, p - 1))}
+                      aria-label="Página anterior"
+                    >
+                      <ChevronLeft className="h-5 w-5 text-[#7c0040] group-disabled:text-neutral-300" />
                     </Button>
-                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" disabled={pageExams >= pagesExams} onClick={() => setPageExams((p) => Math.min(pagesExams, p + 1))}>
-                      <ChevronRight className="h-5 w-5" />
+
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="group h-10 w-10 rounded-xl hover:bg-[#7c0040]/5 focus-visible:ring-[#7c0040]"
+                      disabled={pageExams >= pagesExams}
+                      onClick={() => setPageExams((p) => Math.min(pagesExams, p + 1))}
+                      aria-label="Página siguiente"
+                    >
+                      <ChevronRight className="h-5 w-5 text-[#7c0040] group-disabled:text-neutral-300" />
                     </Button>
                   </div>
                 </div>
+
               </>
             ))
           )}

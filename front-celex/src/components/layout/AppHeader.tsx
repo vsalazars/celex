@@ -22,12 +22,12 @@ export default function AppHeader() {
             />
           </div>
 
-          {/* Texto — sin truncado */}
+          {/* Texto */}
           <div className="min-w-0 whitespace-normal break-words hyphens-auto leading-snug">
-            <h1 className="text-[13px] sm:text-base font-semibold text-neutral-800 tracking-tight">
+            <h1 className="text-[13px] sm:text-base font-bold tracking-tight text-[#7c0040]">
               Instituto Politécnico Nacional
             </h1>
-            <p className="text-[12px] sm:text-sm text-neutral-700">
+            <p className="text-[12px] sm:text-sm text-neutral-800 font-medium">
               CECyT 15 “Diódoro Antúnez Echegaray”
             </p>
             <p className="text-[11.5px] sm:text-sm text-neutral-600">

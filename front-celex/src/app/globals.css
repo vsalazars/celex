@@ -76,6 +76,8 @@
 
   /* estados */
   --destructive: #e53935;
+  --heartbeat-glow: color-mix(in oklab, var(--primary) 75%, white 25%);
+
 }
 
 .dark {
@@ -535,3 +537,26 @@
     border-color: color-mix(in oklab, var(--primary) 45%, transparent) !important;
   }
 }
+
+/* ===== Heartbeat guinda visible también en desktop ===== */
+@keyframes ui-heartbeat-guinda {
+  0%   { transform: scale(1);   filter: drop-shadow(0 0 0 rgba(124,0,64,0)); color: inherit; }
+  6%   { transform: scale(1.15); filter: drop-shadow(0 0 .45rem #7c0040); color: #7c0040; }
+  12%  { transform: scale(1);    filter: drop-shadow(0 0 0 rgba(124,0,64,0)); color: inherit; }
+  18%  { transform: scale(1.15); filter: drop-shadow(0 0 .45rem #7c0040); color: #7c0040; }
+  24%  { transform: scale(1);    filter: drop-shadow(0 0 0 rgba(124,0,64,0)); color: inherit; }
+  100% { transform: scale(1);    filter: drop-shadow(0 0 0 rgba(124,0,64,0)); color: inherit; }
+}
+
+/* aplica directamente sobre el SVG para no depender de la herencia del botón */
+svg.info-icon.animate-heartbeat {
+  animation: ui-heartbeat-guinda 3s ease-in-out infinite;
+  transform-origin: center;
+  will-change: transform, filter, color;
+}
+
+/* accesibilidad */
+@media (prefers-reduced-motion: reduce) {
+  svg.info-icon.animate-heartbeat { animation: none !important; }
+}
+
