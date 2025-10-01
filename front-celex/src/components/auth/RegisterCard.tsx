@@ -70,7 +70,7 @@ export default function RegisterCard() {
     return Object.keys(errs).length === 0;
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!validate()) {
       toast.error("Corrige los campos marcados");
@@ -126,8 +126,8 @@ export default function RegisterCard() {
   return (
     <div className="relative h-full flex flex-col">
       <div className="mx-auto w-full max-w-lg md:max-w-xl flex-1 rounded-3xl border bg-white p-5 sm:p-6 shadow-xl flex flex-col">
-        {/* Encabezado con enlace destacado a "Iniciar sesión" */}
-        <div className="mb-5 sm:mb-6 flex items-start gap-3">
+        {/* Encabezado con icono y título */}
+        <div className="mb-4 sm:mb-5 flex items-start gap-3">
           <div className="grid h-11 w-11 sm:h-12 sm:w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20">
             <UserRoundPlus className="h-5 w-5 sm:h-6 sm:w-6" />
           </div>
@@ -137,24 +137,25 @@ export default function RegisterCard() {
             <p className="text-xs sm:text-sm text-neutral-600">
               Regístrate para inscribirte a cursos y exámenes.
             </p>
-
-            {/* Botón separado en un renglón */}
-            <div className="mt-2">
-              <button
-                type="button"
-                onClick={() => setLoginOpen(true)}
-                className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-0.5 
-                          text-[11px] sm:text-xs font-medium hover:bg-primary/20 
-                          focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition"
-              >
-                <LogIn className="h-3.5 w-3.5" />
-                ¿Ya tienes cuenta? Inicia sesión aquí.
-              </button>
-            </div>
           </div>
         </div>
 
+        {/* Botón en un renglón aparte, full width y alineado a la izquierda */}
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => setLoginOpen(true)}
+            className="w-full text-left inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-3 py-2 
+                       text-[11px] sm:text-xs font-medium hover:bg-primary/20 
+                       focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition"
+            aria-label="Abrir inicio de sesión"
+          >
+            <LogIn className="h-3.5 w-3.5" />
+            ¿Ya tienes cuenta? Inicia sesión aquí.
+          </button>
+        </div>
 
+        {/* Tarjeta con selector IPN y formulario */}
         <div className="mb-4 rounded-2xl border bg-neutral-50 p-3 sm:p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -237,7 +238,7 @@ export default function RegisterCard() {
                     onChange={(e) => setRegBoleta(e.target.value)}
                     placeholder="2025150109"
                     inputMode="numeric"
-                    pattern="\d{10}"
+                    pattern="[0-9]{10}"
                     autoComplete="off"
                     required
                   />

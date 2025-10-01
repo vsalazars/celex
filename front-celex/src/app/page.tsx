@@ -48,7 +48,7 @@ export default function Page() {
                   className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm"
                 >
                   <UserRoundPlus className="h-4 w-4 mr-2" />
-                  Registrarse/Entrar
+                  Registro/Entrar
                 </TabsTrigger>
               </TabsList>
 
