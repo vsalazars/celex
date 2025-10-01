@@ -1,17 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  Mail, Lock, Eye, EyeOff, UserRoundPlus, IdCard, BadgeCheck, LogIn
-} from "lucide-react";
-
+import { Mail, Lock, Eye, EyeOff, UserRoundPlus, IdCard, BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import LoginSheet from "@/components/auth/LoginSheet";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -20,18 +15,6 @@ const boletaRegex = /^\d{10}$/;
 const curpRegex = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]{2}$/i;
 
 export default function RegisterCard() {
-  const router = useRouter();
-
-  const redirectByRole = (role?: string) => {
-    if (role === "student") return router.push("/alumno/dashboard");
-    if (role === "teacher") return router.push("/docente/dashboard");
-    if (role === "coordinator") return router.push("/coordinador/dashboard");
-    if (role === "superuser") return router.push("/admin/dashboard");
-    return router.push("/");
-  };
-
-  const [loginOpen, setLoginOpen] = useState(false);
-
   const [isIPN, setIsIPN] = useState<"ipn" | "externo">("externo");
   const [regNombre, setRegNombre] = useState("");
   const [regApellidos, setRegApellidos] = useState("");
@@ -99,8 +82,7 @@ export default function RegisterCard() {
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
         const msg =
-          (data?.detail &&
-            (Array.isArray(data.detail) ? data.detail[0]?.msg : data.detail)) ||
+          (data?.detail && (Array.isArray(data.detail) ? data.detail[0]?.msg : data.detail)) ||
           "No se pudo crear la cuenta";
         throw new Error(typeof msg === "string" ? msg : "Error de registro");
       }
@@ -125,45 +107,29 @@ export default function RegisterCard() {
 
   return (
     <div className="relative h-full flex flex-col">
-      <div className="mx-auto w-full max-w-lg md:max-w-xl flex-1 rounded-3xl border bg-white p-5 sm:p-6 shadow-xl flex flex-col">
-        {/* Encabezado con enlace destacado a "Iniciar sesión" */}
-        <div className="mb-5 sm:mb-6 flex items-start gap-3">
-          <div className="grid h-11 w-11 sm:h-12 sm:w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20">
-            <UserRoundPlus className="h-5 w-5 sm:h-6 sm:w-6" />
+      <div className="mx-auto w-full max-w-lg md:max-w-xl flex-1 rounded-3xl border bg-white p-6 shadow-xl flex flex-col">
+
+        <div className="mb-6 flex items-center gap-3">
+          <div className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20">
+            <UserRoundPlus className="h-6 w-6" />
           </div>
-
-          <div className="min-w-0 flex-1">
-            <h2 className="font-title text-lg sm:text-xl">Crear cuenta de usuario</h2>
-            <p className="text-xs sm:text-sm text-neutral-600">
-              Regístrate para inscribirte a cursos y exámenes.
+          <div>
+            <h2 className="font-title text-xl">Crear cuenta de usuario</h2>
+            <p className="text-sm text-neutral-500">
+              Regístrate para inscribirte a los cursos y exámenes de colocación.
             </p>
-
-            {/* Botón separado en un renglón */}
-            <div className="mt-2">
-              <button
-                type="button"
-                onClick={() => setLoginOpen(true)}
-                className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-0.5 
-                          text-[11px] sm:text-xs font-medium hover:bg-primary/20 
-                          focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition"
-              >
-                <LogIn className="h-3.5 w-3.5" />
-                ¿Ya tienes cuenta? Inicia sesión aquí.
-              </button>
-            </div>
           </div>
         </div>
 
-
-        <div className="mb-4 rounded-2xl border bg-neutral-50 p-3 sm:p-4">
+        <div className="mb-4 rounded-2xl border bg-neutral-50 p-4">
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
+            <div>
               <div className="flex items-center gap-2">
                 <BadgeCheck className="h-4 w-4 text-emerald-600" />
                 <span className="text-sm font-medium">¿Perteneces al IPN?</span>
               </div>
-              <p className="text-[11px] sm:text-xs text-neutral-500">
-                Actívalo si eres estudiante del Instituto Politécnico Nacional. Se pedirá tu boleta.
+              <p className="text-xs text-neutral-500">
+                Actívalo si eres estudiante del Instituto Politécnico Nacional, se pedirá tu número de boleta.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -180,8 +146,11 @@ export default function RegisterCard() {
               </span>
             </div>
           </div>
+          <p className="mb-4 text-xs text-neutral-500">
+            
+          </p>
 
-          <form onSubmit={handleRegister} className="mt-3 space-y-5" autoComplete="on">
+          <form onSubmit={handleRegister} className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="nombre">Nombre(s)</Label>
@@ -190,7 +159,6 @@ export default function RegisterCard() {
                   value={regNombre}
                   onChange={(e) => setRegNombre(e.target.value)}
                   placeholder="María Fernanda"
-                  autoComplete="given-name"
                   required
                 />
                 {regErrors.nombre && <p className="text-xs text-red-600">{regErrors.nombre}</p>}
@@ -203,7 +171,6 @@ export default function RegisterCard() {
                   value={regApellidos}
                   onChange={(e) => setRegApellidos(e.target.value)}
                   placeholder="García López"
-                  autoComplete="family-name"
                   required
                 />
                 {regErrors.apellidos && <p className="text-xs text-red-600">{regErrors.apellidos}</p>}
@@ -221,13 +188,13 @@ export default function RegisterCard() {
                     onChange={(e) => setCurp(e.target.value.trim().toUpperCase())}
                     className="pl-9"
                     placeholder="GAXX000101HDFLRS09"
-                    autoComplete="off"
                     required
                   />
                 </div>
                 {regErrors.curp && <p className="text-xs text-red-600">{regErrors.curp}</p>}
               </div>
 
+              {/* 👇 Solo mostrar Boleta cuando el switch esté en IPN */}
               {isIPN === "ipn" && (
                 <div className="space-y-2">
                   <Label htmlFor="boleta">Boleta</Label>
@@ -238,7 +205,6 @@ export default function RegisterCard() {
                     placeholder="2025150109"
                     inputMode="numeric"
                     pattern="\d{10}"
-                    autoComplete="off"
                     required
                   />
                   {regErrors.boleta && <p className="text-xs text-red-600">{regErrors.boleta}</p>}
@@ -254,7 +220,6 @@ export default function RegisterCard() {
                   <Input
                     id="reg-email"
                     type="email"
-                    inputMode="email"
                     placeholder="usuario@correo.com"
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
@@ -273,7 +238,6 @@ export default function RegisterCard() {
                   <Input
                     id="reg-email2"
                     type="email"
-                    inputMode="email"
                     placeholder="usuario@correo.com"
                     value={regEmail2}
                     onChange={(e) => setRegEmail2(e.target.value)}
@@ -282,7 +246,9 @@ export default function RegisterCard() {
                     required
                   />
                 </div>
-                {regErrors.email2 && <p className="text-xs text-red-600">{regErrors.email2}</p>}
+                {regErrors.email2 && (
+                  <p className="text-xs text-red-600">{regErrors.email2}</p>
+                )}
               </div>
             </div>
 
@@ -340,24 +306,18 @@ export default function RegisterCard() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={regLoading}>
+            <Button type="submit" className="w-full" disabled={regLoading}>
               {regLoading ? "Creando..." : "Crear cuenta"}
             </Button>
+
+            
           </form>
         </div>
 
         {/* decoraciones */}
         <div className="pointer-events-none absolute -left-6 -top-6 h-24 w-24 rounded-full bg-neutral-200/60 blur-2xl" />
+        <div className="pointer-events-none absolute -right-8 -bottom-8 h-28 w-28 rounded-full bg-neutral-300/60 blur-2xl" />
       </div>
-
-      {/* LoginSheet controlado por el enlace del encabezado */}
-      <LoginSheet
-        id="register-login-sheet"
-        open={loginOpen}
-        setOpen={setLoginOpen}
-        onSuccess={(data) => redirectByRole(data.role)}
-        showTrigger={false}
-      />
     </div>
   );
 }

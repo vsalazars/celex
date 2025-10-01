@@ -41,6 +41,7 @@ import {
   ChevronRight,
   Languages,
   Layers,
+  X,
   XCircle,
   FilterX,
   ClipboardList,
@@ -238,7 +239,7 @@ const idiomas = ["ingles", "frances", "aleman", "italiano", "portugues"];
 const modalidades = ["intensivo", "sabatino", "semestral"];
 const turnos = ["matutino", "vespertino", "mixto"];
 const niveles = ["Introductorio", "Básico 1", "Básico 2", "Básico 3", "Básico 4", "Básico 5", "Intermedio 1", "Intermedio 2", "Intermedio 3", "Intermedio 4", "Intermedio 5", "Avanzado 1", "Avanzado 2", "Avanzado 3", "Avanzado 4", "Avanzado 5", "Avanzado 6"] as const;
-
+const SHOW_FILTER_COUNT = false;
 
 function IconDropdown({
   icon: Icon,
@@ -259,18 +260,14 @@ function IconDropdown({
         <DropdownMenu>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              {/* ✅ Botón cómodo en móvil */}
               <Button variant={value ? "default" : "outline"} size="icon" className="h-9 w-9 rounded-xl shrink-0">
                 <Icon className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-
-          {/* Tooltip debajo para que no tape en mobile */}
           <TooltipContent side="bottom" sideOffset={8}>
             {label}{value ? `: ${value}` : ""}
           </TooltipContent>
-
           <DropdownMenuContent align="end" className="rounded-xl">
             <DropdownMenuLabel className="text-xs">{label}</DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -297,22 +294,18 @@ export default function HeroFeatures() {
   const [turno, setTurno] = useState<string | undefined>();
   const [nivel, setNivel] = useState<string | undefined>();
 
-  // Tamaños de página
   const PAGE_SIZE_CURSOS = 2;
   const PAGE_SIZE_EXAMS = 2;
 
-  // Paginación
   const [pageCursos, setPageCursos] = useState(1);
   const [pageExams, setPageExams] = useState(1);
 
   const [loading, setLoading] = useState(true);
 
-  // Cursos (server-side)
   const [cursos, setCursos] = useState<CicloDTO[]>([]);
   const [pagesCursos, setPagesCursos] = useState(1);
   const [totalCursos, setTotalCursos] = useState(0);
 
-  // Exámenes (client-side)
   const [examsAll, setExamsAll] = useState<PlacementExamLite[]>([]);
   const [examsPage, setExamsPage] = useState<PlacementExamLite[]>([]);
   const [pagesExams, setPagesExams] = useState(1);
@@ -321,7 +314,7 @@ export default function HeroFeatures() {
   const [openInfo, setOpenInfo] = useState(false);
 
   const hasAnyFilterCursos = !!(idioma || modalidad || turno || nivel);
-  const hasAnyFilterExams = !!idioma; // solo idioma aplica a exámenes
+  const hasAnyFilterExams = !!idioma;
   const activeFilters = tab === "cursos" ? hasAnyFilterCursos : hasAnyFilterExams;
 
   function clearAll() {
@@ -333,194 +326,123 @@ export default function HeroFeatures() {
     setPageExams(1);
   }
 
-  // ==== Fetchers ====
-  async function fetchCursos(p: number) {
-    setLoading(true);
-    try {
-      const params: Partial<ListCiclosParams> & {
-        idioma?: string;
-        modalidad?: string;
-        turno?: string;
-        nivel?: string;
-      } = {
-        page: p,
-        page_size: PAGE_SIZE_CURSOS,
-      };
-      if (idioma) params.idioma = idioma as any;
-      if (modalidad) params.modalidad = modalidad as any;
-      if (turno) params.turno = turno as any;
-      if (nivel) params.nivel = nivel as any;
-
-      const resp = await listCiclosPublic(params);
-      setCursos(resp?.items ?? []);
-      setPagesCursos(resp?.pages ?? 1);
-      setTotalCursos(resp?.total ?? 0);
-    } catch (e) {
-      console.error(e);
-      toast.error("No se pudo cargar la lista de cursos.");
-    } finally {
-      setLoading(false);
-    }
+  // === limpiar individual ===
+  type FilterKey = "idioma" | "modalidad" | "turno" | "nivel";
+  function clearOne(key: FilterKey) {
+    if (key === "idioma") setIdioma(undefined);
+    if (key === "modalidad") setModalidad(undefined);
+    if (key === "turno") setTurno(undefined);
+    if (key === "nivel") setNivel(undefined);
+    setPageCursos(1);
+    setPageExams(1);
   }
 
-  function pickInscripcionWindowExam(e: any) {
-    const ins = e?.inscripcion || e?.registro || undefined;
-    const from =
-      ins?.from ??
-      e?.inscripcion_from ??
-      e?.insc_inicio ??
-      e?.registro_inicio ??
-      e?.inscripcion_inicio ??
-      null;
-    const to =
-      ins?.to ??
-      e?.inscripcion_to ??
-      e?.insc_fin ??
-      e?.registro_fin ??
-      e?.inscripcion_fin ??
-      null;
-    return { from, to };
-  }
-
-  async function fetchExams(p: number) {
-    setLoading(true);
-    try {
-      const resp = await listPlacementExamsPublic({
-        idioma: idioma || undefined,
-        vigente: true,
-        include_capacity: true,
-        page: 1,
-        page_size: 100,
-      });
-
-      const rawItems = Array.isArray(resp) ? resp : resp?.items ?? [];
-      const items = rawItems.map(normalizeExamCapacity);
-
-      const todayVigentes = items.filter((e: any) => {
-        const { from, to } = pickInscripcionWindowExam(e);
-        if (from && to) return isTodayBetween(from, to);
-        const f = (e as any)?.fecha;
-        if (!f) return false;
-        const dt = new Date(`${f}T00:00:00`);
-        return !Number.isNaN(dt.getTime()) && dt >= new Date();
-      });
-
-      // Orden por fecha asc, luego código
-      todayVigentes.sort((a: any, b: any) => {
-        const da = new Date(`${a.fecha ?? ""}T00:00:00`).getTime() || 0;
-        const db = new Date(`${b.fecha ?? ""}T00:00:00`).getTime() || 0;
-        if (da !== db) return da - db;
-        const ca = String(a.codigo || "").toLowerCase();
-        const cb = String(b.codigo || "").toLowerCase();
-        return ca.localeCompare(cb, "es");
-      });
-
-      const total = todayVigentes.length;
-      const pages = Math.max(1, Math.ceil(total / PAGE_SIZE_EXAMS));
-      const start = (p - 1) * PAGE_SIZE_EXAMS;
-      const slice = todayVigentes.slice(start, start + PAGE_SIZE_EXAMS);
-
-      setExamsAll(todayVigentes);
-      setPagesExams(pages);
-      setTotalExams(total);
-      setExamsPage(slice);
-    } catch (e) {
-      console.error(e);
-      toast.error("No se pudo cargar la lista de exámenes.");
-      setExamsAll([]);
-      setPagesExams(1);
-      setTotalExams(0);
-      setExamsPage([]);
-    } finally {
-      setLoading(false);
+  // ===== Tokens seleccionados (chips) =====
+  const selectedTokens = useMemo(() => {
+    const tokens: { key: FilterKey; label: string }[] = [];
+    if (idioma) tokens.push({ key: "idioma", label: `Idioma: ${idioma}` });
+    if (tab === "cursos") {
+      if (modalidad) tokens.push({ key: "modalidad", label: `Modalidad: ${modalidad}` });
+      if (turno) tokens.push({ key: "turno", label: `Turno: ${turno}` });
+      if (nivel) tokens.push({ key: "nivel", label: `Nivel: ${nivel}` });
     }
-  }
+    return tokens;
+  }, [tab, idioma, modalidad, turno, nivel]);
 
-  // ==== Effects ====
+  // ======= DATA FETCHING (efectos con dependencias de tamaño fijo) =======
+
+  // 1) Cambia de tab o de página -> trae datos del tab activo
   useEffect(() => {
-    if (tab === "cursos") fetchCursos(pageCursos);
-    else fetchExams(pageExams);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+    const load = async () => {
+      setLoading(true);
+      try {
+        if (tab === "cursos") {
+          const params: Partial<ListCiclosParams> & {
+            idioma?: string;
+            modalidad?: string;
+            turno?: string;
+            nivel?: string;
+          } = {
+            page: pageCursos,
+            page_size: PAGE_SIZE_CURSOS,
+          };
+          if (idioma) params.idioma = idioma as any;
+          if (modalidad) params.modalidad = modalidad as any;
+          if (turno) params.turno = turno as any;
+          if (nivel) params.nivel = nivel as any;
 
-  useEffect(() => {
-    if (tab === "cursos") fetchCursos(pageCursos);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageCursos]);
+          const resp = await listCiclosPublic(params);
+          setCursos(resp?.items ?? []);
+          setPagesCursos(resp?.pages ?? 1);
+          setTotalCursos(resp?.total ?? 0);
+        } else {
+          // Exámenes (paginación real o slicing)
+          const resp = await listPlacementExamsPublic({
+            idioma: idioma || undefined,
+            vigente: true,
+            include_capacity: true,
+            page: 1,
+            page_size: 100,
+          });
 
-  useEffect(() => {
-    if (tab === "examenes") {
-      const total = examsAll.length;
-      const pages = Math.max(1, Math.ceil(total / PAGE_SIZE_EXAMS));
-      const start = (pageExams - 1) * PAGE_SIZE_EXAMS;
-      setExamsPage(examsAll.slice(start, start + PAGE_SIZE_EXAMS));
-      setPagesExams(pages);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageExams, examsAll]);
+          const rawItems = Array.isArray(resp) ? resp : resp?.items ?? [];
+          const items = rawItems.map(normalizeExamCapacity);
 
+          const todayVigentes = items.filter((e: any) => {
+            const ins = e?.inscripcion || e?.registro || undefined;
+            const from = ins?.from ?? e?.inscripcion_from ?? e?.insc_inicio ?? e?.registro_inicio ?? e?.inscripcion_inicio ?? null;
+            const to = ins?.to ?? e?.inscripcion_to ?? e?.insc_fin ?? e?.registro_fin ?? e?.inscripcion_fin ?? null;
+            if (from && to) return isTodayBetween(from, to);
+            const f = (e as any)?.fecha;
+            if (!f) return false;
+            const dt = new Date(`${f}T00:00:00`);
+            return !Number.isNaN(dt.getTime()) && dt >= new Date();
+          });
+
+          todayVigentes.sort((a: any, b: any) => {
+            const da = new Date(`${a.fecha ?? ""}T00:00:00`).getTime() || 0;
+            const db = new Date(`${b.fecha ?? ""}T00:00:00`).getTime() || 0;
+            if (da !== db) return da - db;
+            const ca = String(a.codigo || "").toLowerCase();
+            const cb = String(b.codigo || "").toLowerCase();
+            return ca.localeCompare(cb, "es");
+          });
+
+          const total = todayVigentes.length;
+          const pages = Math.max(1, Math.ceil(total / PAGE_SIZE_EXAMS));
+          const start = (pageExams - 1) * PAGE_SIZE_EXAMS;
+          const slice = todayVigentes.slice(start, start + PAGE_SIZE_EXAMS);
+
+          setExamsAll(todayVigentes);
+          setPagesExams(pages);
+          setTotalExams(total);
+          setExamsPage(slice);
+        }
+      } catch (e) {
+        console.error(e);
+        toast.error(`No se pudo cargar la lista de ${tab === "cursos" ? "cursos" : "exámenes"}.`);
+        if (tab === "cursos") {
+          setCursos([]);
+          setPagesCursos(1);
+          setTotalCursos(0);
+        } else {
+          setExamsAll([]);
+          setPagesExams(1);
+          setTotalExams(0);
+          setExamsPage([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [tab, pageCursos, pageExams, idioma, modalidad, turno, nivel]); // <= tamaño FIJO
+
+  // 2) Cuando cambian filtros, resetea páginas (fetch lo hace el efecto de arriba)
   useEffect(() => {
     setPageCursos(1);
     setPageExams(1);
-    if (tab === "cursos") fetchCursos(1);
-    else fetchExams(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idioma, modalidad, turno, nivel]);
-
-  /* ========= UI helpers ========= */
-  const tabSwitch = (
-    // ✅ Stack en móvil, inline en pantallas grandes
-    <div className="flex flex-col xs:flex-row gap-2">
-      <Button
-        variant={tab === "cursos" ? "default" : "outline"}
-        className="h-9 rounded-xl"
-        onClick={() => setTab("cursos")}
-      >
-        <ClipboardList className="h-4 w-4 mr-2" /> Cursos de idiomas
-      </Button>
-      <Button
-        variant={tab === "examenes" ? "default" : "outline"}
-        className="h-9 rounded-xl"
-        onClick={() => setTab("examenes")}
-      >
-        <FileCheck2 className="h-4 w-4 mr-2" /> Examen de colocación
-      </Button>
-    </div>
-  );
-
-  const leftControls = (
-    // ✅ Wrap y min-w-0 para que no desborde
-    <div className="flex flex-wrap items-center gap-2 min-w-0">
-      {tabSwitch}
-      <Button
-        variant="outline"
-        className="h-9 rounded-xl"
-        onClick={() => setOpenInfo(true)}
-      >
-        <Info className="h-4 w-4 mr-2" /> Información y cuotas
-      </Button>
-    </div>
-  );
-
-  const limpiarBtn = (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={activeFilters ? "default" : "outline"}
-            className="h-9 rounded-xl"
-            onClick={clearAll}
-          >
-            {activeFilters ? <XCircle className="h-4 w-4 mr-2" /> : <FilterX className="h-4 w-4 mr-2" />}
-            {activeFilters ? "Limpiar filtros" : "Sin filtros"}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" sideOffset={8}>
-          {activeFilters ? "Quitar todos los filtros" : "No hay filtros activos"}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
+  }, [idioma, modalidad, turno, nivel]); // <= tamaño FIJO
 
   const filtrosCursos = (
     <div className="flex items-center gap-2 flex-wrap">
@@ -558,23 +480,109 @@ export default function HeroFeatures() {
     );
   }, [tab, totalCursos, totalExams]);
 
+  // ===== UI =====
   return (
-    // ✅ Contenedor fluido y cómodo en móvil
-    <div className="h-full flex flex-col max-w-screen-xl mx-auto w-full px-3 sm:px-4">
-      {/* Modal de información */}
+    <div className="h-full flex flex-col max-w-screen-xl mx-auto w-full px-3 sm:px-4 pb-16 md:pb-0">
       <InfoDialog open={openInfo} onOpenChange={setOpenInfo} />
 
-      {/* Toolbar */}
-      <div className="rounded-2xl border bg-white p-3 sm:p-4 shadow-sm">
-        {/* ✅ Primera fila: botones principales (stack en móvil) */}
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 justify-between">
-          {leftControls}
+      {/* TOOLBAR STICKY */}
+      <div className="sticky top-0 z-10 rounded-2xl border bg-white/90 backdrop-blur p-3 sm:p-4 shadow-sm">
+        {/* Row 1: tabs + info */}
+        <div className="flex items-center justify-between gap-2">
+          {/* Pills tabs */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={tab === "cursos" ? "default" : "outline"}
+              className="h-9 rounded-full px-4"
+              onClick={() => setTab("cursos")}
+            >
+              <ClipboardList className="h-4 w-4 mr-2" />
+              Cursos
+            </Button>
+            <Button
+              variant={tab === "examenes" ? "default" : "outline"}
+              className="h-9 rounded-full px-4"
+              onClick={() => setTab("examenes")}
+            >
+              <FileCheck2 className="h-4 w-4 mr-2" />
+              Examen
+            </Button>
+          </div>
+
+          {/* Info */}
+          <Button
+            variant="outline"
+            className="h-9 w-9 rounded-xl p-0 sm:w-auto sm:px-3"
+            onClick={() => setOpenInfo(true)}
+            aria-label="Información"
+            title="Información"
+          >
+            <Info className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Información</span>
+          </Button>
         </div>
 
-        {/* ✅ Segunda fila: filtros y limpiar (stack en móvil) */}
-        <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="min-w-0">{tab === "cursos" ? filtrosCursos : filtrosExamenes}</div>
-          <div className="flex-none">{limpiarBtn}</div>
+        {/* Row 2: iconos de filtros + icono limpiar + resumen con chips removibles */}
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            {/* Controles de filtros */}
+            {tab === "cursos" ? filtrosCursos : filtrosExamenes}
+
+            {/* Icono único para limpiar todo */}
+            <TooltipProvider>
+              <Tooltip delayDuration={200}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={activeFilters ? "default" : "outline"}
+                    size="icon"
+                    className="h-9 w-9 rounded-xl"
+                    onClick={clearAll}
+                    aria-label="Limpiar filtros"
+                  >
+                    <XCircle className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={8}>
+                  {activeFilters ? "Limpiar todos los filtros" : "No hay filtros activos"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+
+          {/* Chips de filtros seleccionados con tachecito */}
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] sm:text-xs text-neutral-600 leading-tight">
+            <span className="inline-flex items-center gap-1 mr-1">
+              <FilterX className="h-3.5 w-3.5" />
+              <span className="sr-only">Filtros activos</span>
+            </span>
+
+            {selectedTokens.length === 0 ? (
+              <span className="text-neutral-500">Sin filtros</span>
+            ) : (
+              selectedTokens.map((t) => (
+                <span
+                  key={t.key}
+                  className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5"
+                >
+                  <span>{t.label}</span>
+                  <button
+                    type="button"
+                    aria-label={`Quitar ${t.label}`}
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-neutral-200/70"
+                    onClick={() => clearOne(t.key)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))
+            )}
+
+            {SHOW_FILTER_COUNT && (
+              <span className="ml-1 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full bg-neutral-900/90 text-white text-[10px] px-1">
+                {selectedTokens.length}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -584,7 +592,6 @@ export default function HeroFeatures() {
         </CardHeader>
         <CardContent className="flex-1 min-h-0">
           {loading ? (
-            // ✅ Skeleton responsivo
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="h-28 rounded-2xl border bg-neutral-50 animate-pulse" />
@@ -597,20 +604,26 @@ export default function HeroFeatures() {
               </div>
             ) : (
               <>
-                {/* ✅ Tarjetas responsivas, 1 col en mobile y 2 col en sm+ */}
                 <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                   {cursos.map((c) => {
                     const { disp, total } = deriveDisponibles(c);
                     const tone = capTone(disp);
                     const pct = capPercent(disp, total);
+
+                    const isIngles = String(c.idioma ?? "").toLowerCase() === "ingles";
+                    const isIntensivo = String(c.modalidad ?? "").toLowerCase() === "intensivo";
+                    const accent = "bg-[#7c0040] text-white border-[#7c0040]";
+
                     return (
                       <div
                         key={c.id}
                         className="rounded-2xl border bg-white p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow"
                       >
                         <div className="mb-2 min-w-0">
-                          {/* ✅ Evitar desbordes de código largo */}
-                          <h3 className="font-semibold text-base break-words">{c.codigo}</h3>
+                          {/* Título: muestra SOLO el nombre/código del ciclo una vez */}
+                          <h3 className="font-semibold text-base break-words">{c.codigo || c.nombre || "Curso"}</h3>
+
+                          {/* Badge de capacidad */}
                           <div className="mt-1">
                             <Badge
                               className={`rounded-full border px-2 py-0.5 text-xs md:text-sm font-medium ${tone.badgeClass}`}
@@ -619,71 +632,64 @@ export default function HeroFeatures() {
                             </Badge>
                           </div>
                         </div>
+                        
+                        {/* ====== BADGES: R1 idioma+nivel (guinda) / R2 turno+modalidad+aula (gris fijo) ====== */}
+                        <div className="mt-2">
+                          {/* Renglón 1: idioma + nivel en guinda */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {c.idioma ? (
+                              <Badge
+                                className="rounded-full px-3 py-1 text-[14px] sm:text-[15px] font-medium capitalize bg-[#7c0040] text-white border-[#7c0040]"
+                                title={c.idioma}
+                              >
+                                {c.idioma}
+                              </Badge>
+                            ) : null}
 
-                        {/* === Badges (Inglés / Intensivo) === */}
-                        {(() => {
-                          const isIngles = String(c.idioma ?? "").toLowerCase() === "ingles";
-                          const isIntensivo = String(c.modalidad ?? "").toLowerCase() === "intensivo";
+                            {c.nivel ? (
+                              <Badge
+                                className="rounded-full px-3 py-1 text-[14px] sm:text-[15px] font-medium capitalize bg-[#7c0040] text-white border-[#7c0040]"
+                                title={c.nivel}
+                              >
+                                {c.nivel}
+                              </Badge>
+                            ) : null}
+                          </div>
 
-                          const purpleBadge = "bg-[#7c0040] text-white border-[#7c0040]";
+                          {/* Renglón 2: turno + modalidad + aula en gris */}
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] leading-tight">
+                            {c.turno ? (
+                              <Badge
+                                className="rounded-full px-2.5 py-0.5 capitalize border border-neutral-300 bg-neutral-100 text-neutral-600"
+                                title={c.turno}
+                              >
+                                {c.turno}
+                              </Badge>
+                            ) : null}
 
-                          return (
-                            <div className="mt-2 text-[13px] leading-tight">
-                              {/* 👉 Scroll horizontal en móvil si falta espacio */}
-                              <div className="w-full flex flex-nowrap items-center gap-2 overflow-x-auto no-scrollbar">
-                                <Badge
-                                  variant="secondary"
-                                  className={`px-2.5 py-0.5 text-[13px] font-normal capitalize ${
-                                    isIngles ? purpleBadge : ""
-                                  }`}
-                                  title={c.idioma}
-                                >
-                                  {c.idioma}
-                                </Badge>
+                            {c.modalidad ? (
+                              <Badge
+                                className="rounded-full px-2.5 py-0.5 capitalize border border-neutral-300 bg-neutral-100 text-neutral-600"
+                                title={c.modalidad}
+                              >
+                                {c.modalidad}
+                              </Badge>
+                            ) : null}
 
-                                <Badge
-                                  variant="secondary"
-                                  className={`px-2.5 py-0.5 text-[13px] font-normal capitalize ${
-                                    isIntensivo ? purpleBadge : ""
-                                  }`}
-                                  title={c.modalidad}
-                                >
-                                  {c.modalidad}
-                                </Badge>
+                            {c.aula ? (
+                              <Badge
+                                className="rounded-full px-2.5 py-0.5 capitalize border border-neutral-300 bg-neutral-100 text-neutral-600"
+                                title={`Aula: ${c.aula}`}
+                              >
+                                {c.aula}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </div>
 
-                                <Badge
-                                  variant="outline"
-                                  className="px-2.5 py-0.5 text-[13px] font-normal capitalize"
-                                  title={c.turno}
-                                >
-                                  {c.turno}
-                                </Badge>
 
-                                <Badge
-                                  variant="outline"
-                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[13px] font-normal capitalize"
-                                  title={c.nivel}
-                                >
-                                  {c.nivel}
-                                </Badge>
-                              </div>
+                        {/* ====== /BADGES EN DOS RENGLONES ====== */}
 
-                              {c.aula ? (
-                                <div className="mt-2">
-                                  <Badge
-                                    variant="outline"
-                                    className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[13px] font-normal capitalize"
-                                    title={`Aula: ${c.aula}`}
-                                  >
-                                    {c.aula}
-                                  </Badge>
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })()}
-
-                        {/* ✅ Info con columnas que caen a una sola en móvil */}
                         <div className="mt-4 space-y-3 text-sm text-neutral-700 border-t pt-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
@@ -709,7 +715,7 @@ export default function HeroFeatures() {
                           </div>
                         </div>
 
-                        <div className="mt-3 h-2 w-full rounded-full bg-neutral-100 overflow-hidden">
+                        <div className="mt-3 h-2 w-full rounded-full bg-neutral-100 overflow-hidden" aria-hidden>
                           <div className={`h-2 ${tone.barClass}`} style={{ width: `${pct}%` }} aria-label={`Capacidad ${pct}%`} />
                         </div>
                       </div>
@@ -717,15 +723,14 @@ export default function HeroFeatures() {
                   })}
                 </div>
 
-                {/* ✅ Paginación stack/inline */}
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-xs text-neutral-500">Página {pageCursos} de {pagesCursos}</span>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" disabled={pageCursos <= 1} onClick={() => setPageCursos((p) => Math.max(1, p - 1))}>
-                      <ChevronLeft className="h-4 w-4" />
+                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" disabled={pageCursos <= 1} onClick={() => setPageCursos((p) => Math.max(1, p - 1))}>
+                      <ChevronLeft className="h-5 w-5" />
                     </Button>
-                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" disabled={pageCursos >= pagesCursos} onClick={() => setPageCursos((p) => Math.min(pagesCursos, p + 1))}>
-                      <ChevronRight className="h-4 w-4" />
+                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" disabled={pageCursos >= pagesCursos} onClick={() => setPageCursos((p) => Math.min(pagesCursos, p + 1))}>
+                      <ChevronRight className="h-5 w-5" />
                     </Button>
                   </div>
                 </div>
@@ -738,16 +743,12 @@ export default function HeroFeatures() {
               </div>
             ) : (
               <>
-                {/* ✅ Tarjetas responsivas, 1 col en mobile y 2 col en sm+ */}
                 <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                   {examsPage.map((e: PlacementExamLite) => {
                     const keyId = String((e as any).id ?? (e as any).codigo ?? Math.random());
-                    const { from, to } = pickInscripcionWindowExam(e);
-
                     const { disp, total } = deriveDisponibles(e as any);
                     const tone = capTone(disp);
                     const pct = capPercent(disp, total);
-
                     const aula = (e as any).salon ?? (e as any).aula ?? (e as any).sala ?? undefined;
 
                     return (
@@ -759,17 +760,14 @@ export default function HeroFeatures() {
                             </h3>
                           </div>
                           <div className="mt-2">
-                            <Badge
-                              className={`rounded-full border px-2 py-0.5 text-xs md:text-sm font-medium ${tone.badgeClass}`}
-                            >
+                            <Badge className={`rounded-full border px-2 py-0.5 text-xs md:text-sm font-medium ${tone.badgeClass}`}>
                               <Users className="mr-1 h-3 w-3 md:h-3.5 md:w-3.5" /> {disp}/{total} · {tone.label}
                             </Badge>
                           </div>
                         </div>
 
-                        {/* ✅ Chips con wrap */}
                         <div className="mt-2 flex flex-wrap gap-2 text-sm">
-                          <Badge variant="secondary" className="capitalize text-sm px-3 py-1">{(e as any).idioma || idioma || "idioma"}</Badge>
+                          <Badge variant="secondary" className="capitalize text-sm px-3 py-1">{(e as any).idioma || "idioma"}</Badge>
                           {(e as any).sede ? (
                             <Badge variant="outline" className="capitalize">{(e as any).sede}</Badge>
                           ) : null}
@@ -812,7 +810,8 @@ export default function HeroFeatures() {
 
                           <div>
                             <div className="mb-1 font-semibold">Inscripción</div>
-                            <div className="ml-6">{d(from)} – {d(to)}</div>
+                            {/* Cuando tengas inscripcion.from/to en exámenes, puedes mostrarlo aquí */}
+                            <div className="ml-6">—</div>
                           </div>
                         </div>
 
@@ -824,15 +823,14 @@ export default function HeroFeatures() {
                   })}
                 </div>
 
-                {/* ✅ Paginación stack/inline */}
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-xs text-neutral-500">Página {pageExams} de {pagesExams}</span>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" disabled={pageExams <= 1} onClick={() => setPageExams((p) => Math.max(1, p - 1))}>
-                      <ChevronLeft className="h-4 w-4" />
+                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" disabled={pageExams <= 1} onClick={() => setPageExams((p) => Math.max(1, p - 1))}>
+                      <ChevronLeft className="h-5 w-5" />
                     </Button>
-                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" disabled={pageExams >= pagesExams} onClick={() => setPageExams((p) => Math.min(pagesExams, p + 1))}>
-                      <ChevronRight className="h-4 w-4" />
+                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl" disabled={pageExams >= pagesExams} onClick={() => setPageExams((p) => Math.min(pagesExams, p + 1))}>
+                      <ChevronRight className="h-5 w-5" />
                     </Button>
                   </div>
                 </div>

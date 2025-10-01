@@ -1,9 +1,8 @@
-// src/components/auth/LoginSheet.tsx
 "use client";
 
 import { useState, useRef } from "react";
 import { toast } from "sonner";
-import { Mail, Lock, Eye, EyeOff, LogIn } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, LogIn, BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,12 +30,10 @@ export default function LoginSheet({
   open,
   setOpen,
   onSuccess,
-  showTrigger = true,          // 👈 nueva prop
 }: {
   open: boolean;
   setOpen: (v: boolean) => void;
   onSuccess: (data: LoginData) => void;
-  showTrigger?: boolean;       // 👈 nueva prop
 }) {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPwd, setLoginPwd] = useState("");
@@ -49,6 +46,7 @@ export default function LoginSheet({
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
     const next: typeof loginErrors = {};
     if (!emailRegex.test(loginEmail)) next.email = "Ingresa un correo válido";
     if (loginPwd.length < 6) next.pwd = "Mínimo 6 caracteres";
@@ -82,10 +80,12 @@ export default function LoginSheet({
 
       const data: LoginData = await res.json();
       if (!data?.access_token) {
+        console.error("[LOGIN] Respuesta sin access_token:", data);
         toast.error("Token no recibido");
         return;
       }
 
+      // Persistencia exactamente como la tenías
       localStorage.setItem("celex_token", data.access_token);
       localStorage.setItem("celex_role", data.role ?? "");
       localStorage.setItem("celex_email", data.email ?? "");
@@ -99,6 +99,7 @@ export default function LoginSheet({
       setShowLoginPwd(false);
       toast.success("Inicio de sesión correcto");
       setOpen(false);
+
       onSuccess(data);
     } catch (err: any) {
       console.error("[LOGIN] network/unexpected error:", err);
@@ -110,18 +111,23 @@ export default function LoginSheet({
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      {/* 👇 el trigger SOLO se muestra si showTrigger === true */}
-      {showTrigger && (
-        <SheetTrigger asChild>
-          <Button variant="default" size="lg" className="gap-2 rounded-full px-5 shadow-md hover:shadow-lg">
-            <LogIn className="h-4 w-4" />
-            Iniciar sesión
-          </Button>
-        </SheetTrigger>
-      )}
+      <SheetTrigger asChild>
+        <Button
+          variant="default"
+          size="lg"
+          className="gap-2 rounded-full px-5 shadow-md hover:shadow-lg"
+        >
+          <LogIn className="h-4 w-4 animate-pulse duration-[6s] delay-[3s]" />
+          Iniciar sesión
+        </Button>
+
+
+
+
+      </SheetTrigger>
 
       <SheetContent side="right" className="w-full sm:max-w-md p-0">
-        <div className="flex h-full flex-col items-center pt-8">
+        <div className="flex h-full flex-col items-center pt-10">
           <div className="w-full max-w-sm px-6">
             <SheetHeader className="text-center">
               <SheetTitle className="font-title text-xl">
@@ -132,7 +138,7 @@ export default function LoginSheet({
               </SheetDescription>
             </SheetHeader>
 
-            <form onSubmit={handleLogin} className="mt-6 space-y-6 w-full" autoComplete="on">
+            <form onSubmit={handleLogin} className="mt-6 space-y-6 w-full">
               <div className="space-y-2 w-full">
                 <Label htmlFor="login-email">Correo</Label>
                 <div className="relative">
@@ -140,7 +146,6 @@ export default function LoginSheet({
                   <Input
                     id="login-email"
                     type="email"
-                    inputMode="email"
                     placeholder="tunombre@correo.com"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
@@ -149,7 +154,9 @@ export default function LoginSheet({
                     required
                   />
                 </div>
-                {loginErrors.email && <p className="text-xs text-red-600">{loginErrors.email}</p>}
+                {loginErrors.email && (
+                  <p className="text-xs text-red-600">{loginErrors.email}</p>
+                )}
               </div>
 
               <div className="space-y-2 w-full">
@@ -178,10 +185,12 @@ export default function LoginSheet({
                   </button>
                 </div>
 
-                {loginErrors.pwd && <p className="text-xs text-red-600">{loginErrors.pwd}</p>}
+                {loginErrors.pwd && (
+                  <p className="text-xs text-red-600">{loginErrors.pwd}</p>
+                )}
               </div>
 
-              <Button type="submit" className="w-full h-11 text-base" disabled={loginLoading}>
+              <Button type="submit" className="w-full" disabled={loginLoading}>
                 {loginLoading ? "Entrando..." : "Entrar"}
               </Button>
               <p className="text-center text-xs text-neutral-500">

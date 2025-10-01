@@ -1,43 +1,40 @@
 "use client";
 
-import { useState } from "react";
 import Image from "next/image";
-import LoginSheet from "@/components/auth/LoginSheet";
 
-export default function AppHeader({
-  onLoginSuccess,
-}: {
-  onLoginSuccess: (data: { role?: string }) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
+export default function AppHeader() {
   return (
-    <header className="sticky top-0 z-30 w-full border-b bg-white/70 backdrop-blur">
-      {/* Usamos el mismo ancho y padding que en Page */}
-      <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-6 md:px-8 py-3">
-        <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-30 w-full border-b bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+      <div className="mx-auto max-w-screen-2xl px-3 sm:px-6 md:px-8 py-2.5 sm:py-3">
+        <div
+          className="grid items-center gap-2 sm:gap-3"
+          style={{ gridTemplateColumns: "auto 1fr", gridTemplateRows: "auto" }}
+        >
           {/* Logo */}
-          <Image
-            src="/logo.png" // tu archivo en /public
-            alt="Logo CELEX"
-            width={80}
-            height={80}
-            className="rounded-md"
-          />
-          <div className="flex flex-col leading-tight">
-            <span className="text-md font-semibold text-neutral-700">
+          <div className="mr-2">
+            <Image
+              src="/logo.png"
+              alt="Logo CELEX"
+              width={56}
+              height={56}
+              className="rounded-md w-12 h-12 sm:w-[72px] sm:h-[72px]"
+              priority
+            />
+          </div>
+
+          {/* Texto — sin truncado */}
+          <div className="min-w-0 whitespace-normal break-words hyphens-auto leading-snug">
+            <h1 className="text-[13px] sm:text-base font-semibold text-neutral-800 tracking-tight">
               Instituto Politécnico Nacional
-            </span>
-            <span className="text-sm font-medium text-neutral-600">
-              Centro de Estudios Científicos y Tecnológicos No. 15 "Diódoro Antúnez Echegaray"
-            </span>
-            <span className="text-sm font-medium text-neutral-600">
+            </h1>
+            <p className="text-[12px] sm:text-sm text-neutral-700">
+              CECyT 15 “Diódoro Antúnez Echegaray”
+            </p>
+            <p className="text-[11.5px] sm:text-sm text-neutral-600">
               Cursos Extracurriculares de Lenguas Extranjeras (CELEX)
-            </span>
+            </p>
           </div>
         </div>
-
-        <LoginSheet open={open} setOpen={setOpen} onSuccess={onLoginSuccess} />
       </div>
     </header>
   );

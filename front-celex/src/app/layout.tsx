@@ -17,8 +17,8 @@ const montserrat = Montserrat({
 });
 
 export const metadata = {
-  title: "Sistema de Gestión Escolar del CELEX",
-  description: "CECyT No. 7 Cuauhtémoc",
+  title: "Cursos Extracurriculares de Lenguas Extranjeras (CELEX)",
+  description: "CECyT No. 15 Diódoro Antúnez",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
