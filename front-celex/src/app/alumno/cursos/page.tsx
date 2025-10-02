@@ -284,6 +284,7 @@ function toneClasses(tone: ReturnType<typeof statusMeta>["tone"]) {
 }
 
 /* ================= Tarjeta de inscripción (con botón de encuesta) ================= */
+/* ================= Tarjeta de inscripción (mobile-first, más visual) ================= */
 function InscripcionCard({
   x,
   onCancel,
@@ -322,107 +323,125 @@ function InscripcionCard({
   const rejectReason = x.status === "rechazada" ? getRejectReason(x) : null;
 
   return (
-    <article className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm ring-1 ring-black/5 hover:shadow-md transition-shadow">
+    <article
+      className="
+        relative overflow-hidden rounded-2xl border bg-white p-0 shadow-sm ring-1 ring-black/5
+        hover:shadow-md transition-shadow
+      "
+    >
+      {/* Cinta de color */}
       <div className={`absolute inset-y-0 left-0 w-1.5 ${tone.stripe}`} />
 
-      {/* Encabezado */}
-      <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold tracking-tight truncate">
-              {x.ciclo?.codigo ?? `Ciclo #${x.ciclo_id}`}
-            </h3>
-            <Badge className={`rounded-full border px-3 ${tone.badge}`}>{meta.label}</Badge>
-            <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px]">
-              Trámite: {isExencion ? "Exención" : "Pago"}
-            </Badge>
+      {/* HERO (mobile: llama más la atención) */}
+      <div className="bg-gradient-to-br from-neutral-50 to-white">
+        <div className="px-5 pt-4 pb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold leading-tight tracking-tight">
+                {x.ciclo?.codigo ?? `Ciclo #${x.ciclo_id}`}
+              </h3>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <span
+                  className={`
+                    inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium
+                    ${tone.badge}
+                  `}
+                >
+                  {meta.label}
+                </span>
+                <span className="inline-flex items-center rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-700">
+                  Trámite: {isExencion ? "Exención" : "Pago"}
+                </span>
+              </div>
+            </div>
+
+            {/* “Calificación” placeholder compacto (no funcional, se mantiene) */}
+            <div className="hidden sm:block">
+              <div className="text-[11px] text-neutral-500 mb-1 text-right">Calificación</div>
+              <div className="h-9 w-16 rounded-xl border border-dashed text-sm font-semibold grid place-items-center text-neutral-700">
+                —
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Chips informativos (mobile first) */}
+        <div className="px-5 pb-3">
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-2.5 py-1 text-[12px] text-neutral-800">
+              <Globe className="h-3.5 w-3.5" />
+              {x.ciclo ? enumVal(x.ciclo.idioma) : "—"}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-2.5 py-1 text-[12px] text-neutral-800">
+              <GraduationCap className="h-3.5 w-3.5" />
+              {x.ciclo?.nivel ?? "—"}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-2.5 py-1 text-[12px] text-neutral-800">
+              <BookOpen className="h-3.5 w-3.5" />
+              {x.ciclo ? enumVal(x.ciclo.modalidad) : "—"}
+            </span>
           </div>
 
-          {/* Grupo */}
-          <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-neutral-700">
-            <div className="flex items-center gap-2">
-              <Globe className="h-4 w-4 opacity-70" />
-              <span>{x.ciclo ? enumVal(x.ciclo.idioma) : "—"}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <GraduationCap className="h-4 w-4 opacity-70" />
-              <span>{x.ciclo?.nivel ?? "—"}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <BookOpen className="h-4 w-4 opacity-70" />
-              <span>{x.ciclo ? enumVal(x.ciclo.modalidad) : "—"}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock3 className="h-4 w-4 opacity-70" />
-              <span>{x.ciclo ? `${horaInicio}–${horaFin}` : "—"}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 opacity-70" />
-              <span>{x.ciclo?.aula ?? "—"}</span>
-            </div>
-
-            <div className="col-span-2 text-xs text-neutral-600">{dias !== "—" ? `Días: ${dias}` : ""}</div>
-
-            <div className="flex items-center gap-2 col-span-2">
+          {/* Docente pill (resalta en mobile) */}
+          <div className="mt-2">
+            <span className="inline-flex items-center gap-2 rounded-full bg-neutral-50 px-3 py-1.5 text-[12px] font-medium text-neutral-900 border border-neutral-200">
               <User className="h-4 w-4 opacity-70" />
-              <Badge variant="secondary" className="text-sm font-medium px-3 py-1 rounded-full">
-                {docente ?? "—"}
-              </Badge>
-            </div>
+              {docente ?? "—"}
+            </span>
           </div>
         </div>
+      </div>
 
-        <div className="md:w-32">
-          <div className="text:[11px] text-neutral-500 mb-1 text-right">Calificación</div>
-          <div className="flex items-center justify-end">
-            <div className="h-9 w-16 rounded-xl border border-dashed text-sm font-semibold grid place-items-center text-neutral-700">
-              —
-            </div>
+      {/* SECCIONES (tarjetas compactas) */}
+      <div className="px-5">
+        {/* Horarios & Aula */}
+        <div className="grid grid-cols-2 gap-2 text-sm text-neutral-700">
+          <div className="flex items-center gap-2">
+            <Clock3 className="h-4 w-4 opacity-70" />
+            <span>{x.ciclo ? `${horaInicio}–${horaFin}` : "—"}</span>
           </div>
-          <div className="text-[10px] text-neutral-400 mt-1 text-right">(se asigna al finalizar)</div>
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 opacity-70" />
+            <span>{x.ciclo?.aula ?? "—"}</span>
+          </div>
+          <div className="col-span-2 text-xs text-neutral-600">{dias !== "—" ? `Días: ${dias}` : ""}</div>
         </div>
-      </header>
 
-      <Separator className="my-4" />
-
-      {/* Cards: Calendario y Trámite */}
-      <section className="grid gap-3 md:grid-cols-2">
-        {/* Calendario */}
-        <div className="rounded-2xl border bg-white shadow-sm p-4">
-          <div className="flex items-center gap-2 mb-3">
+        {/* Tarjeta: Calendario */}
+        <div className="mt-3 rounded-xl border bg-white shadow-xs p-4">
+          <div className="flex items-center gap-2 mb-2">
             <CalendarDays className="h-4 w-4 text-sky-600" />
-            <h3 className="text-sm font-semibold text-neutral-900">Calendario</h3>
+            <h4 className="text-sm font-semibold text-neutral-900">Calendario</h4>
           </div>
-
-          <div className="space-y-3 text-sm">
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
             <div>
-              <p className="text-neutral-500 text-xs">Inscripción</p>
-              <p className="font-medium text-neutral-900">{insc}</p>
+              <dt className="text-neutral-500 text-xs">Inscripción</dt>
+              <dd className="font-medium text-neutral-900">{insc}</dd>
             </div>
             <div>
-              <p className="text-neutral-500 text-xs">Curso</p>
-              <p className="font-medium text-neutral-900">{curso}</p>
+              <dt className="text-neutral-500 text-xs">Curso</dt>
+              <dd className="font-medium text-neutral-900">{curso}</dd>
             </div>
             <div>
-              <p className="text-neutral-500 text-xs">Examen MT</p>
-              <p className="font-medium text-neutral-900">{dShort(x.ciclo?.examenMT ?? null)}</p>
+              <dt className="text-neutral-500 text-xs">Examen MT</dt>
+              <dd className="font-medium text-neutral-900">{dShort(x.ciclo?.examenMT ?? null)}</dd>
             </div>
             <div>
-              <p className="text-neutral-500 text-xs">Examen final</p>
-              <p className="font-medium text-neutral-900">{dShort(x.ciclo?.examenFinal ?? null)}</p>
+              <dt className="text-neutral-500 text-xs">Examen final</dt>
+              <dd className="font-medium text-neutral-900">{dShort(x.ciclo?.examenFinal ?? null)}</dd>
             </div>
-          </div>
+          </dl>
         </div>
 
-        {/* Trámite */}
-        <div className="rounded-2xl border bg-white shadow-sm p-4">
-          <div className="flex items-center gap-2 mb-3">
+        {/* Tarjeta: Trámite */}
+        <div className="mt-3 rounded-xl border bg-white shadow-xs p-4">
+          <div className="flex items-center gap-2 mb-2">
             {isExencion ? (
               <ShieldCheck className="h-4 w-4 text-amber-600" />
             ) : (
               <Receipt className="h-4 w-4 text-emerald-600" />
             )}
-            <h3 className="text-sm font-semibold text-neutral-900">Trámite</h3>
+            <h4 className="text-sm font-semibold text-neutral-900">Trámite</h4>
           </div>
 
           {isExencion ? (
@@ -487,83 +506,83 @@ function InscripcionCard({
             </div>
           )}
         </div>
-      </section>
 
-      <Separator className="my-4" />
-
-      {/* Footer: dos filas (texto y botones) */}
-      <footer className="mt-4">
-        <div className="grid gap-2">
-          <div className="text-[11px] text-neutral-700">
-            Inscrito el: <b>{fmtDateTime(x.created_at)}</b>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            {surveySubmitted ? (
-              <span className="inline-flex items-center gap-1.5 text-emerald-700 text-sm font-medium">
-                <CheckCircle2 className="h-4 w-4" />
-                Encuesta enviada
-              </span>
-            ) : surveyAvailable ? (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => onOpenSurvey(x)}
-                disabled={openingFor === x.id}
-                className="gap-2"
-              >
-                <ClipboardList className="h-4 w-4" />
-                {openingFor === x.id ? "Abriendo…" : "Evaluar docente"}
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" disabled title="Disponible al terminar el curso">
-                Evaluar docente
-              </Button>
-            )}
-
-            <Button variant="outline" size="sm" disabled>
-              Ver detalle
-            </Button>
-
-            {(() => {
-              const puedeCancelar = x.status === "registrada" || (x.status as any) === "preinscrita";
-              return puedeCancelar ? (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-red-600 border-red-200"
-                      disabled={canceling}
-                    >
-                      {canceling ? "Cancelando…" : "Cancelar"}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Cancelar inscripción</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        ¿Seguro que deseas cancelar tu inscripción en{" "}
-                        <b>{x.ciclo?.codigo ?? `ciclo #${x.ciclo_id}`}</b>? Esta acción no se puede deshacer.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Volver</AlertDialogCancel>
-                      <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => onCancel(x.id)}>
-                        Sí, cancelar
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              ) : (
-                <Button variant="outline" size="sm" disabled>
-                  No cancelable
-                </Button>
-              );
-            })()}
-          </div>
+        {/* Meta inferior */}
+        <div className="mt-4 text-[11px] text-neutral-700">
+          Inscrito el: <b>{fmtDateTime(x.created_at)}</b>
         </div>
-      </footer>
+      </div>
+
+      {/* ACCIONES — Mobile full width; en desktop se alinean a la derecha */}
+      <div className="px-5 pb-4 pt-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+          {surveySubmitted ? (
+            <span className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 border border-emerald-200">
+              <CheckCircle2 className="h-4 w-4" />
+              Encuesta enviada
+            </span>
+          ) : surveyAvailable ? (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => onOpenSurvey(x)}
+              disabled={openingFor === x.id}
+              className="w-full sm:w-auto gap-2"
+            >
+              <ClipboardList className="h-4 w-4" />
+              {openingFor === x.id ? "Abriendo…" : "Evaluar docente"}
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" disabled className="w-full sm:w-auto">
+              Evaluar docente
+            </Button>
+          )}
+
+          <Button variant="outline" size="sm" disabled className="w-full sm:w-auto">
+            Ver detalle
+          </Button>
+
+          {(() => {
+            const puedeCancelar = x.status === "registrada" || (x.status as any) === "preinscrita";
+            return puedeCancelar ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full sm:w-auto text-red-600 border-red-200"
+                    disabled={canceling}
+                  >
+                    {canceling ? "Cancelando…" : "Cancelar"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Cancelar inscripción</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      ¿Seguro que deseas cancelar tu inscripción en{" "}
+                      <b>{x.ciclo?.codigo ?? `ciclo #${x.ciclo_id}`}</b>? Esta acción no se puede deshacer.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Volver</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-red-600 hover:bg-red-700"
+                      onClick={() => onCancel(x.id)}
+                    >
+                      Sí, cancelar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : (
+              <Button variant="outline" size="sm" disabled className="w-full sm:w-auto">
+                No cancelable
+              </Button>
+            );
+          })()}
+        </div>
+      </div>
     </article>
   );
 }
@@ -888,7 +907,7 @@ export default function Page() {
               <p className="text-xs text-neutral-500 mt-1">Cuando te inscribas a un grupo, lo verás aquí.</p>
             </div>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
               {ordered.map((x) => (
                 <InscripcionCard
                   key={x.id}

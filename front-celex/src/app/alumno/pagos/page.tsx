@@ -49,7 +49,7 @@ type InscripcionLite = {
   tipo?: "pago" | "exencion";
   referencia?: string | null;
   importe_centavos?: number | null;
-  fecha_pago?: string | null; // YYYY-MM-DD
+  fecha_pago?: string | null; // YYYY-MM-DD o ISO completo
   ciclo?: {
     codigo?: string;
     idioma?: string;
@@ -62,7 +62,102 @@ type InscripcionLite = {
   has_estudios?: boolean;
 };
 
-/* ===== Helpers ===== */
+/* ===== Nivel → etiqueta completa ===== */
+const NIVEL_LABELS: Record<string, string> = {
+  INTRO: "Introductorio",
+  B1: "Básico 1",
+  B2: "Básico 2",
+  B3: "Básico 3",
+  B4: "Básico 4",
+  B5: "Básico 5",
+  I1: "Intermedio 1",
+  I2: "Intermedio 2",
+  I3: "Intermedio 3",
+  I4: "Intermedio 4",
+  I5: "Intermedio 5",
+  A1: "Avanzado 1",
+  A2: "Avanzado 2",
+  A3: "Avanzado 3",
+  A4: "Avanzado 4",
+  A5: "Avanzado 5",
+  A6: "Avanzado 6",
+};
+
+function normalizeNivelKey(n: string | null | undefined): string | null {
+  if (!n) return null;
+  const t = String(n).trim();
+  const u = t.toUpperCase();
+  if (u.startsWith("INTRO")) return "INTRO";
+  if (NIVEL_LABELS[u]) return u;
+  const found = Object.entries(NIVEL_LABELS).find(([, v]) => v.toLowerCase() === t.toLowerCase());
+  return found ? found[0] : null;
+}
+
+function nivelFullLabel(n: string | null | undefined) {
+  const key = normalizeNivelKey(n);
+  return key ? NIVEL_LABELS[key] : (n || "—");
+}
+
+/* ===== Limpieza de valores que vienen con prefijo "Etiqueta." ===== */
+function cleanPrefixed(val?: string | null, expectLabel?: "Idioma" | "Nivel" | "Turno" | "Modalidad") {
+  if (!val) return "—";
+  const s = String(val).trim();
+  if (!expectLabel) return s || "—";
+  const rx = new RegExp(`^${expectLabel}\\.?\\s*`, "i");
+  return (s.replace(rx, "") || "—");
+}
+
+/* Capitaliza simple (primera letra en mayúscula) conservando acentos */
+function capFirst(s?: string | null) {
+  const t = (s ?? "").toString().trim();
+  if (!t) return "—";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+/* ===== Formato de fechas amigable (MX, 24h) ===== */
+const MX_TZ = "America/Mexico_City";
+
+/** Solo fecha: "06 sep 2025" */
+function formatDateFriendly(value?: string | null) {
+  if (!value) return "—";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  return new Intl.DateTimeFormat("es-MX", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: MX_TZ,
+  })
+    .format(dt)
+    .replace(".", "");
+}
+
+/** Fecha + hora (24h): "06 sep 2025 · 14:41" */
+function formatDateTimeFriendly(value?: string | null) {
+  if (!value) return "—";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+
+  const date = new Intl.DateTimeFormat("es-MX", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: MX_TZ,
+  })
+    .format(dt)
+    .replace(".", "");
+
+  const time = new Intl.DateTimeFormat("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,     // << 24 horas
+    timeZone: MX_TZ,
+  }).format(dt);
+
+  return `${date} · ${time}`;
+}
+
+/* ===== Helpers dinero ===== */
 function moneyMXN(centavos?: number | null) {
   if (centavos == null) return "—";
   const value = Math.round(centavos) / 100;
@@ -77,13 +172,17 @@ function moneyMXN(centavos?: number | null) {
   }
 }
 
-function d(s?: string | null) {
-  if (!s) return "—";
-  const dt = new Date(`${s}T00:00:00`);
-  if (Number.isNaN(dt.getTime())) return s;
-  return dt.toLocaleDateString("es-MX");
+/* ===== Badges (móvil) ===== */
+function Pill({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-4 bg-muted">
+      <span className="text-[10px] text-muted-foreground">{label}:</span>
+      <b className="ml-1">{value}</b>
+    </span>
+  );
 }
 
+/* ===== Status → tono badge ===== */
 function statusBadgeTone(status: string) {
   const s = (status || "").toLowerCase();
   if (["confirmada", "validada", "aceptada"].includes(s)) {
@@ -158,23 +257,47 @@ export default function AlumnoPagosPage() {
     }
   }
 
+  // ——— Formateo seguro de los 4 campos (limpieza + capitalización + nombre completo de nivel)
+  function fmtIdioma(raw?: string | null) {
+    return capFirst(cleanPrefixed(raw, "Idioma"));
+  }
+  function fmtNivel(raw?: string | null) {
+    const cleaned = cleanPrefixed(raw, "Nivel");
+    return nivelFullLabel(cleaned);
+  }
+  function fmtTurno(raw?: string | null) {
+    return capFirst(cleanPrefixed(raw, "Turno"));
+  }
+  function fmtModalidad(raw?: string | null) {
+    return capFirst(cleanPrefixed(raw, "Modalidad"));
+  }
+
+  // Decide si mostrar fecha sola o fecha+hora, y siempre en 24h si trae hora
+  function renderFechaPago(v?: string | null) {
+    if (!v) return "—";
+    return String(v).includes("T")
+      ? formatDateTimeFriendly(v)
+      : formatDateFriendly(v);
+  }
+
   return (
     <RequireAuth roles={["student"]}>
       <AlumnoShell title="Pagos y Exenciones">
-        <div className="space-y-4">
+        <div className="space-y-4 p-3 sm:p-0">
           <Card className="shadow-sm">
-            <CardHeader className="flex-row items-center justify-between gap-4">
-              <CardTitle>Mis pagos / exenciones</CardTitle>
+            <CardHeader className="flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
+              <CardTitle className="text-base sm:text-lg">Mis pagos / exenciones</CardTitle>
               <div className="w-full sm:w-72">
                 <Input
                   placeholder="Buscar por código, estatus o referencia…"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
+                  className="h-10"
                 />
               </div>
             </CardHeader>
 
-            <CardContent>
+            <CardContent className="p-3 sm:p-6">
               {loading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -184,79 +307,94 @@ export default function AlumnoPagosPage() {
                 <div className="text-sm text-muted-foreground">No hay registros que coincidan.</div>
               ) : (
                 <>
-                  {/* ===== Vista móvil: tarjetas ===== */}
+                  {/* ===== VISTA MÓVIL (tarjetas con badges: Idioma → Nivel → Turno → Modalidad) ===== */}
                   <div className="grid gap-3 md:hidden">
                     {filtered.map((it) => {
                       const tone = statusBadgeTone(it.status || "");
+                      const esExencion = it.tipo === "exencion";
+
+                      const idioma = fmtIdioma(it.ciclo?.idioma);
+                      const nivel = fmtNivel(it.ciclo?.nivel);
+                      const turno = fmtTurno(it.ciclo?.turno);
+                      const modalidad = fmtModalidad(it.ciclo?.modalidad);
+
                       return (
                         <Card key={it.id} className="border">
-                          <CardContent className="py-4 space-y-3">
+                          <CardContent className="py-4 px-3 space-y-4">
+                            {/* Encabezado */}
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <div className="font-medium truncate" title={it.ciclo?.codigo}>
+                                <div className="font-medium break-words">
                                   {it.ciclo?.codigo || "—"}
                                 </div>
-                                <div
-                                  className="text-xs text-muted-foreground truncate"
-                                  title={`${it.ciclo?.idioma ?? ""} ${it.ciclo?.nivel ?? ""} • ${it.ciclo?.modalidad ?? ""}/${it.ciclo?.turno ?? ""}`}
-                                >
-                                  {(it.ciclo?.idioma ?? "")} {(it.ciclo?.nivel ?? "")} • {(it.ciclo?.modalidad ?? "")}/{(it.ciclo?.turno ?? "")}
+                                {/* BADGES orden: Idioma → Nivel → Turno → Modalidad */}
+                                <div className="mt-1 flex flex-wrap gap-1.5">
+                                  <Pill label="Idioma" value={idioma} />
+                                  <Pill label="Nivel" value={nivel} />
+                                  <Pill label="Turno" value={turno} />
+                                  <Pill label="Modalidad" value={modalidad} />
                                 </div>
                               </div>
-                              <Badge variant={tone.variant} className={tone.className + " whitespace-nowrap"}>
+                              <Badge
+                                variant={tone.variant}
+                                className={tone.className + " shrink-0"}
+                              >
                                 {it.status}
                               </Badge>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div className="space-y-1">
-                                <div className="text-xs text-muted-foreground">Tipo</div>
-                                <div className="inline-flex items-center gap-1">
-                                  {it.tipo === "exencion" ? (
-                                    <>
-                                      <ShieldCheck className="h-4 w-4" /> Exención
-                                    </>
-                                  ) : (
-                                    <>
-                                      <ReceiptText className="h-4 w-4" /> Pago
-                                    </>
-                                  )}
-                                </div>
+                            {/* Cuerpo: filas etiqueta → valor */}
+                            <div className="space-y-2 text-[13px]">
+                              <div className="flex items-start gap-2">
+                                <span className="text-muted-foreground shrink-0 inline-flex items-center gap-1">
+                                  {esExencion ? <ShieldCheck className="h-4 w-4" /> : <ReceiptText className="h-4 w-4" />}
+                                  Tipo:
+                                </span>
+                                <span className="font-medium break-words">
+                                  {esExencion ? "Exención" : "Pago"}
+                                </span>
                               </div>
-                              <div className="space-y-1">
-                                <div className="text-xs text-muted-foreground">Referencia</div>
-                                <div className="font-mono text-xs truncate" title={it.referencia || ""}>
-                                  {it.referencia || "—"}
-                                </div>
+
+                              <div className="flex items-start gap-2">
+                                <span className="text-muted-foreground shrink-0">Referencia:</span>
+                                <span className="font-mono break-words">
+                                  {esExencion ? "—" : (it.referencia || "—")}
+                                </span>
                               </div>
-                              <div className="space-y-1">
-                                <div className="text-xs text-muted-foreground">Importe</div>
-                                <div className="inline-flex items-center gap-1">
-                                  <BadgeDollarSign className="h-4 w-4" />
-                                  {it.tipo === "exencion" ? "—" : moneyMXN(it.importe_centavos)}
-                                </div>
+
+                              <div className="flex items-start gap-2">
+                                <span className="text-muted-foreground shrink-0 inline-flex items-center gap-1">
+                                  <BadgeDollarSign className="h-4 w-4" /> Importe:
+                                </span>
+                                <span className="break-words">
+                                  {esExencion ? "—" : moneyMXN(it.importe_centavos)}
+                                </span>
                               </div>
-                              <div className="space-y-1">
-                                <div className="text-xs text-muted-foreground">Fecha de pago</div>
-                                <div className="inline-flex items-center gap-1">
-                                  <CalendarDays className="h-4 w-4" />
-                                  {it.tipo === "exencion" ? "—" : d(it.fecha_pago)}
-                                </div>
+
+                              <div className="flex items-start gap-2">
+                                <span className="text-muted-foreground shrink-0 inline-flex items-center gap-1">
+                                  <CalendarDays className="h-4 w-4" /> Fecha de pago:
+                                </span>
+                                <span className="break-words">
+                                  {esExencion ? "—" : renderFechaPago(it.fecha_pago)}
+                                </span>
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-end gap-2">
+                            {/* Acciones */}
+                            <div className="flex items-center justify-end gap-2 flex-wrap">
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
-                                      size="icon"
+                                      size="sm"
                                       variant="outline"
-                                      className="h-9 w-9"
-                                      disabled={it.tipo === "exencion"}
+                                      className="h-10 px-3"
+                                      disabled={esExencion}
                                       onClick={() => onDownload(it.id, "comprobante")}
                                     >
-                                      <FileDown className="h-4 w-4" />
+                                      <FileDown className="h-4 w-4 mr-2" />
+                                      Comprobante
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>Comprobante de pago</TooltipContent>
@@ -265,13 +403,14 @@ export default function AlumnoPagosPage() {
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
-                                      size="icon"
+                                      size="sm"
                                       variant="outline"
-                                      className="h-9 w-9"
-                                      disabled={it.tipo !== "exencion"}
+                                      className="h-10 px-3"
+                                      disabled={!esExencion}
                                       onClick={() => onDownload(it.id, "exencion")}
                                     >
-                                      <FileDown className="h-4 w-4" />
+                                      <FileDown className="h-4 w-4 mr-2" />
+                                      Exención
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>Comprobante de exención</TooltipContent>
@@ -280,12 +419,13 @@ export default function AlumnoPagosPage() {
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
-                                      size="icon"
+                                      size="sm"
                                       variant="outline"
-                                      className="h-9 w-9"
+                                      className="h-10 px-3"
                                       onClick={() => onDownload(it.id, "estudios")}
                                     >
-                                      <FileDown className="h-4 w-4" />
+                                      <FileDown className="h-4 w-4 mr-2" />
+                                      Estudios
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>Constancia de estudios</TooltipContent>
@@ -298,150 +438,152 @@ export default function AlumnoPagosPage() {
                     })}
                   </div>
 
-                  {/* ===== Vista desktop: 5 columnas (Referencia solo para pagos, combinada con Importe) ===== */}
+                  {/* ===== VISTA DESKTOP (tabla sin scroll interno) ===== */}
                   <div className="hidden md:block">
-                    <div className="max-h-[70vh] overflow-auto rounded-md border">
-                      <Table className="table-fixed">
-                        <TableHeader className="sticky top-0 bg-background z-10 shadow-[0_1px_0_0_rgba(0,0,0,0.06)]">
-                          <TableRow>
-                            <TableHead className="text-left w-[30rem]">Curso</TableHead>
-                            <TableHead className="text-center w-[14rem]">Pago</TableHead>
-                            <TableHead className="text-center w-[10rem]">Fecha de pago</TableHead>
-                            <TableHead className="text-center w-[14rem]">Archivos</TableHead>
-                            <TableHead className="text-center w-[10rem]">Estado</TableHead>
-                          </TableRow>
-                        </TableHeader>
+                    <Table className="w-full">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-left">Curso</TableHead>
+                          <TableHead className="text-left">Detalles</TableHead>
+                          <TableHead className="text-left">Pago</TableHead>
+                          <TableHead className="text-left">Fecha de pago</TableHead>
+                          <TableHead className="text-center">Archivos</TableHead>
+                          <TableHead className="text-center">Estado</TableHead>
+                        </TableRow>
+                      </TableHeader>
 
-                        <TableBody>
-                          {filtered.map((it) => {
-                            const cursoTxt = `${it.ciclo?.codigo ?? "—"}`;
-                            const detalleTxt = `${it.ciclo?.idioma ?? ""} ${it.ciclo?.nivel ?? ""} • ${it.ciclo?.modalidad ?? ""}/${it.ciclo?.turno ?? ""}`.trim();
-                            const tone = statusBadgeTone(it.status || "");
-                            const esExencion = it.tipo === "exencion";
+                      <TableBody>
+                        {filtered.map((it) => {
+                          const esExencion = it.tipo === "exencion";
+                          const tone = statusBadgeTone(it.status || "");
 
-                            return (
-                              <TableRow key={it.id} className="align-top odd:bg-muted/30">
-                                {/* Curso + tipo como chip pequeño */}
-                                <TableCell className="py-4 w-[30rem]">
-                                  <div className="flex items-start gap-2">
-                                    <div className="flex-1 min-w-0">
-                                      <div className="font-medium leading-tight truncate" title={cursoTxt}>
-                                        {cursoTxt}
-                                      </div>
-                                      <div className="text-xs text-muted-foreground truncate" title={detalleTxt}>
-                                        {detalleTxt || "—"}
-                                      </div>
-                                    </div>
-                                    <div className="shrink-0 mt-0.5">
-                                      <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border bg-muted">
-                                        {esExencion ? (
-                                          <>
-                                            <ShieldCheck className="h-3.5 w-3.5" /> Exención
-                                          </>
-                                        ) : (
-                                          <>
-                                            <ReceiptText className="h-3.5 w-3.5" /> Pago
-                                          </>
-                                        )}
-                                      </span>
-                                    </div>
+                          const idioma = fmtIdioma(it.ciclo?.idioma);
+                          const nivel = fmtNivel(it.ciclo?.nivel);
+                          const turno = fmtTurno(it.ciclo?.turno);
+                          const modalidad = fmtModalidad(it.ciclo?.modalidad);
+
+                          return (
+                            <TableRow key={it.id} className="align-top">
+                              {/* Curso */}
+                              <TableCell className="py-4">
+                                <div className="font-medium break-words">{it.ciclo?.codigo ?? "—"}</div>
+                                <div className="text-xs text-muted-foreground break-words">
+                                  ID #{it.ciclo_id ?? it.id}
+                                </div>
+                              </TableCell>
+
+                              {/* Detalles */}
+                              <TableCell className="py-4">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Idioma</div>
+                                    <div className="font-medium break-words">{idioma}</div>
                                   </div>
-                                </TableCell>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Nivel</div>
+                                    <div className="font-medium break-words">{nivel}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Turno</div>
+                                    <div className="font-medium break-words capitalize">{turno}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Modalidad</div>
+                                    <div className="font-medium break-words capitalize">{modalidad}</div>
+                                  </div>
+                                </div>
+                              </TableCell>
 
-                                {/* Pago: referencia (solo si es pago) + importe */}
-                                <TableCell className="py-4 text-center w-[14rem]">
-                                  {esExencion ? (
-                                    "—"
-                                  ) : (
-                                    <div className="space-y-1">
-                                      {it.referencia ? (
-                                        <div
-                                          className="font-mono text-[11px] truncate"
-                                          title={`Ref: ${it.referencia}`}
+                              {/* Pago */}
+                              <TableCell className="py-4">
+                                {esExencion ? (
+                                  <span className="text-sm">—</span>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {it.referencia ? (
+                                      <div className="font-mono text-[12px] break-words">
+                                        Ref: {it.referencia}
+                                      </div>
+                                    ) : null}
+                                    <div className="text-sm">{moneyMXN(it.importe_centavos)}</div>
+                                  </div>
+                                )}
+                              </TableCell>
+
+                              {/* Fecha */}
+                              <TableCell className="py-4">
+                                {esExencion ? (
+                                  <span className="text-sm">—</span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                    <CalendarDays className="h-4 w-4" />
+                                    {renderFechaPago(it.fecha_pago)}
+                                  </span>
+                                )}
+                              </TableCell>
+
+                              {/* Archivos */}
+                              <TableCell className="py-3">
+                                <div className="flex items-center justify-center gap-2">
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          size="icon"
+                                          variant="outline"
+                                          className="h-9 w-9"
+                                          disabled={esExencion}
+                                          onClick={() => onDownload(it.id, "comprobante")}
                                         >
-                                          Ref: {it.referencia}
-                                        </div>
-                                      ) : null}
-                                      <div className="text-sm">{moneyMXN(it.importe_centavos)}</div>
-                                    </div>
-                                  )}
-                                </TableCell>
+                                          <FileDown className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Comprobante de pago</TooltipContent>
+                                    </Tooltip>
 
-                                {/* Fecha */}
-                                <TableCell className="py-4 text-center w-[10rem]">
-                                  {esExencion ? (
-                                    "—"
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                                      <CalendarDays className="h-4 w-4" />
-                                      {d(it.fecha_pago)}
-                                    </span>
-                                  )}
-                                </TableCell>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          size="icon"
+                                          variant="outline"
+                                          className="h-9 w-9"
+                                          disabled={!esExencion}
+                                          onClick={() => onDownload(it.id, "exencion")}
+                                        >
+                                          <FileDown className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Comprobante de exención</TooltipContent>
+                                    </Tooltip>
 
-                                {/* Archivos */}
-                                <TableCell className="py-3 w-[14rem]">
-                                  <div className="flex items-center justify-center gap-2">
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            size="icon"
-                                            variant="outline"
-                                            className="h-9 w-9"
-                                            disabled={esExencion}
-                                            onClick={() => onDownload(it.id, "comprobante")}
-                                          >
-                                            <FileDown className="h-4 w-4" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>Comprobante de pago</TooltipContent>
-                                      </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          size="icon"
+                                          variant="outline"
+                                          className="h-9 w-9"
+                                          onClick={() => onDownload(it.id, "estudios")}
+                                        >
+                                          <FileDown className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Constancia de estudios</TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                </div>
+                              </TableCell>
 
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            size="icon"
-                                            variant="outline"
-                                            className="h-9 w-9"
-                                            disabled={!esExencion}
-                                            onClick={() => onDownload(it.id, "exencion")}
-                                          >
-                                            <FileDown className="h-4 w-4" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>Comprobante de exención</TooltipContent>
-                                      </Tooltip>
-
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            size="icon"
-                                            variant="outline"
-                                            className="h-9 w-9"
-                                            onClick={() => onDownload(it.id, "estudios")}
-                                          >
-                                            <FileDown className="h-4 w-4" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>Constancia de estudios</TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  </div>
-                                </TableCell>
-
-                                {/* Estado */}
-                                <TableCell className="py-4 text-center w-[10rem]">
-                                  <Badge variant={tone.variant} className={tone.className + " whitespace-nowrap"}>
-                                    {it.status}
-                                  </Badge>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
+                              {/* Estado */}
+                              <TableCell className="py-4 text-center">
+                                <Badge variant={tone.variant} className={tone.className + " whitespace-nowrap"}>
+                                  {it.status}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
 
                     {/* Nota informativa */}
                     <div className="mt-3 text-[12px] text-neutral-600 flex items-start gap-2">

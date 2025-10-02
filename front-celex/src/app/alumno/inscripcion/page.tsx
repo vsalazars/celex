@@ -42,6 +42,7 @@ import {
   Info,
 } from "lucide-react";
 
+
 // NEW: para leer el token y detectar IPN
 import { getToken } from "@/lib/sessions";
 
@@ -1153,48 +1154,6 @@ export default function AlumnoInscripcionPage() {
                   </Select>
                 </div>
 
-                {/* Modalidad */}
-                <div className="space-y-1">
-                  <Label className="text-xs">Modalidad</Label>
-                  <Select
-                    value={draft.modalidad || ""}
-                    onValueChange={(v) =>
-                      setDraft((d) => ({ ...d, modalidad: v === CLEAR ? "" : v }))
-                    }
-                  >
-                    <SelectTrigger className="h-10 rounded-xl">
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={CLEAR}>Todas</SelectItem>
-                      <SelectItem value="intensivo">Intensivo</SelectItem>
-                      <SelectItem value="sabatino">Sabatino</SelectItem>
-                      <SelectItem value="semestral">Semestral</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Turno */}
-                <div className="space-y-1">
-                  <Label className="text-xs">Turno</Label>
-                  <Select
-                    value={draft.turno || ""}
-                    onValueChange={(v) =>
-                      setDraft((d) => ({ ...d, turno: v === CLEAR ? "" : v }))
-                    }
-                  >
-                    <SelectTrigger className="h-10 rounded-xl">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={CLEAR}>Todos</SelectItem>
-                      <SelectItem value="matutino">Matutino</SelectItem>
-                      <SelectItem value="vespertino">Vespertino</SelectItem>
-                      <SelectItem value="mixto">Mixto</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 {/* Nivel */}
                 <div className="space-y-1">
                   <Label className="text-xs">Nivel</Label>
@@ -1230,6 +1189,50 @@ export default function AlumnoInscripcionPage() {
                   </Select>
                 </div>
 
+                 {/* Turno */}
+                <div className="space-y-1">
+                  <Label className="text-xs">Turno</Label>
+                  <Select
+                    value={draft.turno || ""}
+                    onValueChange={(v) =>
+                      setDraft((d) => ({ ...d, turno: v === CLEAR ? "" : v }))
+                    }
+                  >
+                    <SelectTrigger className="h-10 rounded-xl">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={CLEAR}>Todos</SelectItem>
+                      <SelectItem value="matutino">Matutino</SelectItem>
+                      <SelectItem value="vespertino">Vespertino</SelectItem>
+                      <SelectItem value="mixto">Mixto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Modalidad */}
+                <div className="space-y-1">
+                  <Label className="text-xs">Modalidad</Label>
+                  <Select
+                    value={draft.modalidad || ""}
+                    onValueChange={(v) =>
+                      setDraft((d) => ({ ...d, modalidad: v === CLEAR ? "" : v }))
+                    }
+                  >
+                    <SelectTrigger className="h-10 rounded-xl">
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={CLEAR}>Todas</SelectItem>
+                      <SelectItem value="intensivo">Intensivo</SelectItem>
+                      <SelectItem value="sabatino">Sabatino</SelectItem>
+                      <SelectItem value="semestral">Semestral</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+               
+                
                 {/* Acciones */}
                 <div className="pt-2 flex gap-2">
                   <Button

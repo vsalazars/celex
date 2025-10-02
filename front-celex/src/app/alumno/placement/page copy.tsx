@@ -57,6 +57,100 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 
+/* ================= Niveles (helpers a nivel de módulo) ================= */
+const NIVEL_LABELS: Record<string, string> = {
+  INTRO: "Introductorio",
+  B1: "Básico 1",
+  B2: "Básico 2",
+  B3: "Básico 3",
+  B4: "Básico 4",
+  B5: "Básico 5",
+  I1: "Intermedio 1",
+  I2: "Intermedio 2",
+  I3: "Intermedio 3",
+  I4: "Intermedio 4",
+  I5: "Intermedio 5",
+  A1: "Avanzado 1",
+  A2: "Avanzado 2",
+  A3: "Avanzado 3",
+  A4: "Avanzado 4",
+  A5: "Avanzado 5",
+  A6: "Avanzado 6",
+};
+
+/** Normaliza lo que venga del back a la clave del enum (INTRO, B1..B5, I1..I5, A1..A6) */
+function normalizeNivelKey(n: string | null | undefined): string | null {
+  if (!n) return null;
+  const k = String(n).trim().toUpperCase();
+  if (k.startsWith("INTRO")) return "INTRO"; // "INTRODUCTORIO", "INTRO"
+  if (k in NIVEL_LABELS) return k;
+  return null;
+}
+
+/** Devuelve etiqueta legible del nivel */
+function nivelLabel(nKey: string | null | "—"): string {
+  if (!nKey || nKey === "—") return "—";
+  return NIVEL_LABELS[nKey] ?? nKey;
+}
+
+/** (legacy) Tono antiguo por familia — la dejamos por compat pero ya no se usa en el badge de nivel */
+function nivelClass(nKey: string | null | "—") {
+  const base =
+    "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1";
+
+  switch (nKey) {
+    case "INTRO": // azul muy claro
+      return `${base} bg-blue-50 text-blue-700 ring-blue-200`;
+    case "B1":
+    case "B2":
+    case "B3":
+    case "B4":
+    case "B5": // básico → azul claro
+      return `${base} bg-blue-100 text-blue-800 ring-blue-300`;
+    case "I1":
+    case "I2":
+    case "I3":
+    case "I4":
+    case "I5": // intermedio → azul medio
+      return `${base} bg-blue-200 text-blue-900 ring-blue-400`;
+    case "A1":
+    case "A2":
+    case "A3":
+    case "A4":
+    case "A5":
+    case "A6": // avanzado → azul más intenso
+      return `${base} bg-blue-600 text-white ring-blue-500`;
+    default: // sin nivel
+      return `${base} bg-zinc-50 text-zinc-700 ring-zinc-200`;
+  }
+}
+
+/** NUEVO: clases Tailwind en escala de azules (claro → oscuro) */
+function nivelBadgeClass(nKey: string | null | "—") {
+  const base =
+    "ring-1 inline-flex items-center rounded-full px-2 py-0.5";
+  if (!nKey || nKey === "—") {
+    return `${base} bg-zinc-50 text-zinc-700 ring-zinc-200`;
+  }
+  if (nKey === "INTRO") {
+    // Muy claro
+    return `${base} bg-blue-50 text-blue-700 ring-blue-200`;
+  }
+  if (nKey.startsWith("B")) {
+    // Claro
+    return `${base} bg-blue-100 text-blue-700 ring-blue-300`;
+  }
+  if (nKey.startsWith("I")) {
+    // Medio
+    return `${base} bg-blue-200 text-blue-800 ring-blue-400`;
+  }
+  if (nKey.startsWith("A")) {
+    // Más intenso
+    return `${base} bg-blue-300 text-blue-900 ring-blue-500`;
+  }
+  return `${base} bg-blue-50 text-blue-700 ring-blue-200`;
+}
+
 /* ================= Base API desde env ================= */
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
 
@@ -318,14 +412,6 @@ function PlacementContent() {
     }
   };
 
-  function nivelTone(n: string) {
-    const k = n.toUpperCase();
-    if (k === "A1" || k === "A2") return "secondary";
-    if (k === "B1" || k === "B2") return "default";
-    if (k === "C1" || k === "C2") return "destructive";
-    return "outline";
-  }
-
   // Muestra “disp/total” + tooltip con ocupados si existe
   function CupoCell({ ex }: { ex: PlacementExam }) {
     const disp = ex.disponibles;
@@ -520,22 +606,21 @@ function PlacementContent() {
                             : "—"}
                         </TableCell>
 
-                        <TableCell>
+                        {/* ===== Celda de nivel asignado (azules por nivel) ===== */}
+                       <TableCell>
                           {(() => {
-                            const nivel = getNivelAsignado(r);
-                            return nivel === "—" ? (
-                              <Badge variant="outline" className="text-xs">—</Badge>
+                            const nivelKey = getNivelAsignado(r); // "INTRO" | "B3" | "A6" | "—"
+                            const label = nivelLabel(nivelKey);
+                            return label === "—" ? (
+                              <span className={nivelClass("—")}>—</span>
                             ) : (
-                              <Badge
-                                variant={nivelTone(nivel)}
-                                className="text-xs tracking-wide"
-                                title="Asignado por el docente"
-                              >
-                                {nivel}
-                              </Badge>
+                              <span className={nivelClass(nivelKey)} title="Asignado por el docente">
+                                {label}
+                              </span>
                             );
                           })()}
                         </TableCell>
+
 
                         <TableCell>
                           <StatusCell registro={r} />
@@ -773,16 +858,16 @@ function getRejectionReason(r: any): string {
   return "";
 }
 
-/* Normaliza el nivel asignado desde varias llaves posibles */
-function getNivelAsignado(r: PlacementRegistro): string {
+/* Normaliza el nivel asignado desde varias llaves posibles → devuelve la CLAVE del enum o "—" */
+function getNivelAsignado(r: PlacementRegistro): string | "—" {
   const raw =
     r.nivel_idioma ??
     r.nivel_asignado ??
     r.nivel ??
     (r as any)?.alumno_nivel ??
     null;
-  if (!raw) return "—";
-  return String(raw).trim().toUpperCase();
+  const key = normalizeNivelKey(raw);
+  return key ?? "—";
 }
 
 /* ===== Celda de status con depuración ===== */

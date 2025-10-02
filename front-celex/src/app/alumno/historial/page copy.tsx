@@ -48,6 +48,120 @@ function badge(n?: number | null, max?: number) {
   return fmt(n);
 }
 
+function isGood(n?: number | null) {
+  return typeof n === "number" && n >= 80;
+}
+function isBad(n?: number | null) {
+  return typeof n === "number" && n < 80;
+}
+
+/** Clases de color (bg+text) para estados bueno/malo/neutral */
+function toneClasses(n?: number | null) {
+  if (n === null || n === undefined) {
+    return "bg-muted text-muted-foreground";
+  }
+  return n < 80
+    ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+    : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+}
+
+/** Chip pill para números destacados */
+function Pill({
+  children,
+  n,
+  className = "",
+}: {
+  children: React.ReactNode;
+  n?: number | null;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`inline-flex items-center justify-center px-3 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap ${toneClasses(
+        n
+      )} ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Progress circular accesible, 0–100. */
+function ProgressCircle({
+  value,
+  size = 44,
+  stroke = 4,
+  n,
+  label, // texto al centro
+}: {
+  value?: number | null;
+  size?: number;
+  stroke?: number;
+  n?: number | null; // para colorear por umbral
+  label?: string;
+}) {
+  // Si no hay valor, muestra un guión en marcador neutro
+  if (value === null || value === undefined) {
+    return (
+      <div
+        className="relative inline-flex items-center justify-center rounded-full"
+        style={{ width: size, height: size }}
+        aria-label="Sin valor"
+      >
+        <div className="absolute inset-0 rounded-full bg-muted" />
+        <span className="text-[11px] font-semibold text-muted-foreground">—</span>
+      </div>
+    );
+  }
+
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(100, value));
+  const dash = (clamped / 100) * circumference;
+  const trackClass = "text-muted";
+  const barClass = isBad(n)
+    ? "text-red-500"
+    : isGood(n)
+    ? "text-green-500"
+    : "text-muted-foreground";
+
+  return (
+    <div
+      className="relative inline-flex items-center justify-center"
+      style={{ width: size, height: size }}
+      role="img"
+      aria-label={`Progreso ${clamped}%`}
+    >
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          strokeWidth={stroke}
+          fill="none"
+          className={trackClass}
+          stroke="currentColor"
+          opacity={0.25}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          strokeWidth={stroke}
+          fill="none"
+          className={barClass}
+          stroke="currentColor"
+          strokeDasharray={`${dash} ${circumference - dash}`}
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className="absolute text-[11px] font-bold leading-none select-none">
+        {label ?? `${fmt(value)}%`}
+      </span>
+    </div>
+  );
+}
+
 /* Pequeño componente para encabezado con icono + tooltip */
 function ColHead({
   icon,
@@ -72,9 +186,7 @@ function ColHead({
               </span>
             </div>
           </TooltipTrigger>
-          <TooltipContent className="max-w-xs text-xs">
-            {hint}
-          </TooltipContent>
+          <TooltipContent className="max-w-xs text-xs">{hint}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
     </TableHead>
@@ -204,9 +316,25 @@ export default function AlumnoHistorialPage() {
                               </div>
                             </TableCell>
 
-                            {/* Asistencia % */}
-                            <TableCell className="text-center font-medium">
-                              {fmt(it.asistencia_pct)}%
+                            {/* Asistencia %: progress circular + número */}
+                            <TableCell className="text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <ProgressCircle
+                                  value={it.asistencia_pct}
+                                  n={it.asistencia_pct}
+                                  size={44}
+                                  stroke={4}
+                                  label={
+                                    it.asistencia_pct == null
+                                      ? "—"
+                                      : `${fmt(it.asistencia_pct)}%`
+                                  }
+                                />
+                                {/* Chip pequeño a la derecha (opcional, refuerza el color)
+                                <Pill n={it.asistencia_pct} className="ml-1">
+                                  {it.asistencia_pct == null ? "—" : `${fmt(it.asistencia_pct)}%`}
+                                </Pill> */}
+                              </div>
                             </TableCell>
 
                             {/* Medio */}
@@ -234,9 +362,11 @@ export default function AlumnoHistorialPage() {
                               {badge(it.final_subtotal, 100)}
                             </TableCell>
 
-                            {/* Promedio */}
-                            <TableCell className="text-center text-base font-semibold">
-                              {fmt(it.promedio)}
+                            {/* Promedio: chip pill grande */}
+                            <TableCell className="text-center">
+                              <Pill n={it.promedio} className="text-base px-4 py-2">
+                                {it.promedio == null ? "—" : fmt(it.promedio)}
+                              </Pill>
                             </TableCell>
                           </TableRow>
                         );

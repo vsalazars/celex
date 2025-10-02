@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, LogOut } from "lucide-react";
+import { Menu, LogOut, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,13 +10,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import {
-  Avatar,
-  AvatarFallback,
-} from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { clearSession, getSession } from "@/lib/sessions";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
+import { cn } from "@/lib/utils";
 
 export default function Topbar({
   onOpenSidebar,
@@ -47,35 +45,85 @@ export default function Topbar({
   };
 
   return (
-    <header className="sticky top-0 z-20 bg-white/80 backdrop-blur border-b">
+    <header
+      className={cn(
+        "sticky top-0 z-40 border-b backdrop-blur supports-[backdrop-filter]:bg-white/70",
+        "bg-white/80"
+      )}
+    >
+      {/* Franja superior con color guinda */}
+      <div
+        className="h-1 w-full"
+        style={{
+          background:
+            "linear-gradient(90deg, #7c0040 0%, #a00057 40%, #7c0040 100%)",
+        }}
+      />
+
       <div className="flex h-14 items-center gap-3 px-3">
-        {/* Mobile: botón para abrir drawer */}
+        {/* Botón menú móvil */}
         <Button
           variant="ghost"
           size="icon"
-          className="md:hidden"
+          className="md:hidden rounded-xl"
           onClick={onOpenSidebar}
           aria-label="Abrir menú"
         >
           <Menu className="h-5 w-5" />
         </Button>
 
-        <h1 className="text-base font-semibold">{title}</h1>
+        {/* Título visible completo */}
+        <div className="min-w-0">
+          <h1 className="text-base font-semibold leading-tight break-words">
+            {title}
+          </h1>
+          <p className="hidden xs:block text-[11px] leading-none text-neutral-500">
+            CELEX Diódoro Antúnez Echegaray
+          </p>
+        </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          {/* Botón notificaciones (opcional) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-xl"
+            aria-label="Notificaciones"
+          >
+            <Bell className="h-5 w-5" />
+          </Button>
+
+          {/* Menú de usuario */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-10 gap-2">
-                <Avatar className="h-7 w-7">
-                  <AvatarFallback className="text-[11px]">{initials}</AvatarFallback>
+              <Button
+                variant="ghost"
+                className="h-10 gap-2 rounded-xl hover:bg-neutral-100"
+                aria-label="Abrir menú de cuenta"
+              >
+                <Avatar
+                  className="h-8 w-8 ring-2 ring-offset-2"
+                  style={{ ringColor: "#7c0040" as any }}
+                >
+                  <AvatarFallback className="text-[11px]">
+                    {initials}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="hidden sm:block text-left">
-                  <div className="text-sm font-medium leading-none">{nombre}</div>
-                  <div className="text-xs text-neutral-500">{email}</div>
+                  <div className="text-sm font-medium leading-none max-w-[160px]">
+                    {nombre}
+                  </div>
+                  <div className="text-xs text-neutral-500 max-w-[180px]">
+                    {email}
+                  </div>
                 </div>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
+
+            <DropdownMenuContent
+              align="end"
+              className="w-56 rounded-xl shadow-lg"
+            >
               <DropdownMenuLabel>Cuenta</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push("/alumno/perfil")}>

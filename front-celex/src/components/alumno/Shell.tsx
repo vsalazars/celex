@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import Topbar from "./Topbar";
 import AlumnoSidebar from "./Sidebar";
 
@@ -41,11 +42,18 @@ export default function AlumnoShell({
       {/* Drawer móvil */}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="left" className="p-0 w-[86%] sm:w-[360px]">
+          <SheetHeader>
+            <VisuallyHidden>
+              <SheetTitle>Navegación del alumno</SheetTitle>
+            </VisuallyHidden>
+          </SheetHeader>
+
           <div className="h-full">
             <AlumnoSidebar onNavigate={closeSidebar} />
           </div>
         </SheetContent>
       </Sheet>
+
     </div>
   );
 }
