@@ -721,296 +721,273 @@ export default function AlumnoInscripcionPage() {
 
           {/* Sheet — SOLO Detalle o SOLO Trámite */}
           <Sheet open={openSheet} onOpenChange={setOpenSheet}>
-            <SheetContent className="w-full sm:max-w-lg md:max-w-2xl lg:max-w-4xl mx-auto px-3 sm:px-5">
-              <SheetHeader className="pb-2">
-                <SheetTitle>
-                  {sheetMode === "detalle" ? "Detalle del ciclo" : "Trámite de inscripción"}
-                </SheetTitle>
-                <SheetDescription>
-                  {sheetMode === "detalle"
-                    ? "Información del grupo seleccionado."
-                    : "Elige el tipo de trámite y carga el documento correspondiente."}
-                </SheetDescription>
-              </SheetHeader>
+            <SheetContent
+              className="w-full sm:max-w-lg md:max-w-2xl lg:max-w-4xl mx-auto p-0 flex flex-col max-h-[100dvh] overscroll-contain"
+            >
+              {/* HEADER sticky */}
+              <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b px-3 sm:px-5 py-3">
+                <SheetHeader className="pb-0">
+                  <SheetTitle>
+                    {sheetMode === "detalle" ? "Detalle del ciclo" : "Trámite de inscripción"}
+                  </SheetTitle>
+                  <SheetDescription>
+                    {sheetMode === "detalle"
+                      ? "Información del grupo seleccionado."
+                      : "Elige el tipo de trámite y carga el documento correspondiente."}
+                  </SheetDescription>
+                </SheetHeader>
+              </div>
 
-              {selected && (
-                <div className="mt-2 space-y-3">
-                  {/* === SOLO DETALLE === */}
-                  {sheetMode === "detalle" && (
-                    <div className="rounded-2xl border bg-white p-3 sm:p-4">
-                      {/* Encabezado + KPI */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{selected.codigo}</div>
-                          <div className="mt-0.5 text-[12px] text-neutral-600">
-                            Grupo abierto · capacidad
-                          </div>
-                        </div>
-                        <Badge className={`rounded-full border shrink-0 ${selTone.badgeClass}`}>
-                          <Users className="mr-1 h-3.5 w-3.5" />
-                          {selDisp}/{selTotal}
-                        </Badge>
-                      </div>
-
-                      {/* KPI barra compacta */}
-                      <div className="mt-2">
-                        <div className="flex items-baseline gap-1.5">
-                          <span className={`text-2xl font-bold leading-none ${selTone.textClass}`}>
-                            {selDisp}
-                          </span>
-                          <span className="text-xs text-neutral-500">
-                            de {selTotal} lugares
-                          </span>
-                        </div>
-                        <div className="mt-1 h-1.5 w-full rounded-full bg-neutral-100 overflow-hidden">
-                          <div
-                            className={`h-1.5 ${selTone.barClass}`}
-                            style={{
-                              width: `${
-                                selTotal
-                                  ? Math.round(
-                                      Math.max(0, Math.min(1, selDisp / selTotal)) * 100
-                                    )
-                                  : 0
-                              }%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Chips */}
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        {selected.idioma ? (
-                          <Badge className="rounded-full px-3 py-1 bg-[#7c0040] text-white border-[#7c0040] capitalize">
-                            {selected.idioma}
-                          </Badge>
-                        ) : null}
-                        {selected.nivel ? (
-                          <Badge className="rounded-full px-3 py-1 bg-[#7c0040] text-white border-[#7c0040] capitalize">
-                            {selected.nivel}
-                          </Badge>
-                        ) : null}
-                        {selected.modalidad ? (
-                          <Badge className="rounded-full px-3 py-1 bg-[#7c0040] text-white border-[#7c0040] capitalize">
-                            {selected.modalidad}
-                          </Badge>
-                        ) : null}
-                        {selected.turno ? (
-                          <Badge className="rounded-full px-3 py-1 bg-[#7c0040] text-white border-[#7c0040] capitalize">
-                            {selected.turno}
-                          </Badge>
-                        ) : null}
-                        {selected.modalidad_asistencia ? (
-                          <Badge variant="secondary" className="rounded-full capitalize">
-                            {selected.modalidad_asistencia}
-                          </Badge>
-                        ) : null}
-                        {selected.aula ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-neutral-700">
-                            {selected.aula}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {/* Fechas y horarios */}
-                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[12px] text-neutral-700">
-                        <div>
-                          <b>Días:</b>{" "}
-                          {(selected.dias ?? []).map(abreviarDia).join(" • ")}
-                        </div>
-                        <div>
-                          <b>Horario:</b>{" "}
-                          {selected.hora_inicio?.slice(0, 5)}–
-                          {selected.hora_fin?.slice(0, 5)}
-                        </div>
-                        <div>
-                          <b>Inscripción:</b> {d(selected.inscripcion?.from)} –{" "}
-                          {d(selected.inscripcion?.to)}
-                        </div>
-                        <div>
-                          <b>Curso:</b> {d(selected.curso?.from)} –{" "}
-                          {d(selected.curso?.to)}
-                        </div>
-                        <div>
-                          <b>Examen MT:</b> {d(selected.examenMT)}
-                        </div>
-                        <div>
-                          <b>Examen final:</b> {d(selected.examenFinal)}
-                        </div>
-                      </div>
-
-                      {selected.notas ? (
-                        <p className="mt-2 text-[12px] text-neutral-700">
-                          <Info className="inline-block mr-1 h-3.5 w-3.5" />
-                          {selected.notas}
-                        </p>
-                      ) : null}
-                    </div>
-                  )}
-
-                  {/* === SOLO TRÁMITE === */}
-                  {sheetMode === "tramite" && (
-                    <div className="rounded-2xl border bg-white p-3 sm:p-4">
-                      {/* Header mini del ciclo (contexto) */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{selected.codigo}</div>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            {selected.idioma ? (
-                              <Badge className="rounded-full px-2.5 py-0.5 bg-[#7c0040] text-white border-[#7c0040] capitalize">
-                                {selected.idioma}
-                              </Badge>
-                            ) : null}
-                            {selected.nivel ? (
-                              <Badge className="rounded-full px-2.5 py-0.5 bg-[#7c0040] text-white border-[#7c0040] capitalize">
-                                {selected.nivel}
-                              </Badge>
-                            ) : null}
-                          </div>
-                        </div>
-                        <Badge className={`rounded-full border shrink-0 ${selTone.badgeClass}`}>
-                          <Users className="mr-1 h-3.5 w-3.5" />
-                          {selDisp}/{selTotal}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-between">
-                        <h4 className="text-sm font-semibold">Trámite</h4>
-                        <span className="text-[11px] text-neutral-500">
-                          PDF/JPG/PNG/WEBP · máx. {MAX_MB} MB
-                        </span>
-                      </div>
-
-                      {/* Tipo de trámite */}
-                      <div className="mt-2">
-                        <RadioGroup
-                          value={paymentMode}
-                          onValueChange={(v) => {
-                            const mode = v as "pago" | "exencion";
-                            setPaymentMode(mode);
-                            setErrReferencia("");
-                            setErrImporte("");
-                            setErrFile("");
-                            setErrFileExencion("");
-                            setErrFileEstudios("");
-                            if (mode === "exencion") {
-                              setFileEstudios(null);
-                              setFechaPago("");
-                              setErrFechaPago("");
-                            }
-                          }}
-                          className="grid grid-cols-1 sm:grid-cols-2 gap-2"
-                        >
-                          <Label className="border rounded-xl p-2.5 flex items-center gap-2 cursor-pointer">
-                            <RadioGroupItem value="pago" id="mode-pago" />
-                            Pago con comprobante
-                          </Label>
-                          <Label className="border rounded-xl p-2.5 flex items-center gap-2 cursor-pointer">
-                            <RadioGroupItem value="exencion" id="mode-exencion" />
-                            Exención de pago
-                          </Label>
-                        </RadioGroup>
-                      </div>
-
-                      {/* Inputs según modo */}
-                      <div className="mt-3 grid grid-cols-1 gap-2">
-                        {paymentMode === "pago" ? (
-                          <>
-                            {/* Referencia + Importe + Fecha de pago */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <Label className="text-xs">Fecha de pago</Label>
-                                  {errFechaPago ? (
-                                    <span className="text-[11px] text-red-600">
-                                      {errFechaPago}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <Input
-                                  type="date"
-                                  value={fechaPago}
-                                  onChange={(e) => setFechaPago(e.target.value)}
-                                  className="h-9"
-                                  max={new Date().toISOString().slice(0, 10)}
-                                />
-                              </div>
-
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <Label className="text-xs">Referencia</Label>
-                                  {errReferencia ? (
-                                    <span className="text-[11px] text-red-600">
-                                      {errReferencia}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <Input
-                                  placeholder="Ej. 123456/ABC"
-                                  value={referencia}
-                                  onChange={(e) => setReferencia(e.target.value)}
-                                  className="h-9"
-                                />
-                              </div>
-
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <Label className="text-xs">Importe pagado</Label>
-                                  {errImporte ? (
-                                    <span className="text-[11px] text-red-600">
-                                      {errImporte}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <Input
-                                  placeholder="Ej. 1,250.00"
-                                  inputMode="decimal"
-                                  value={importe}
-                                  onChange={(e) => setImporte(e.target.value)}
-                                  className="h-9"
-                                />
-                              </div>
+              {/* BODY scrollable */}
+              <div className="flex-1 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4">
+                {selected && (
+                  <div className="space-y-3">
+                    {/* === SOLO DETALLE === */}
+                    {sheetMode === "detalle" && (
+                      <div className="rounded-2xl border bg-white p-3 sm:p-4">
+                        {/* Encabezado + KPI */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{selected.codigo}</div>
+                            <div className="mt-0.5 text-[12px] text-neutral-600">
+                              Grupo abierto · capacidad
                             </div>
+                          </div>
+                          <Badge className={`rounded-full border shrink-0 ${selTone.badgeClass}`}>
+                            <Users className="mr-1 h-3.5 w-3.5" />
+                            {selDisp}/{selTotal}
+                          </Badge>
+                        </div>
 
-                            {/* Comprobante de pago */}
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-xs">
-                                  Comprobante de pago (PDF o imagen)
-                                </Label>
-                                {errFile ? (
-                                  <span className="text-[11px] text-red-600">
-                                    {errFile}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <Input
-                                type="file"
-                                accept={ACCEPT}
-                                className="h-9"
-                                onChange={(e) => {
-                                  const f = e.target.files?.[0] || null;
-                                  setFile(f);
-                                  setErrFile(validarComprobante(f));
-                                }}
-                              />
-                              {file ? (
-                                <p className="text-[11px] text-neutral-600">
-                                  <b>{file.name}</b> · {(file.size / 1024).toFixed(0)} KB
-                                </p>
+                        {/* KPI barra compacta */}
+                        <div className="mt-2">
+                          <div className="flex items-baseline gap-1.5">
+                            <span className={`text-2xl font-bold leading-none ${selTone.textClass}`}>
+                              {selDisp}
+                            </span>
+                            <span className="text-xs text-neutral-500">
+                              de {selTotal} lugares
+                            </span>
+                          </div>
+                          <div className="mt-1 h-1.5 w-full rounded-full bg-neutral-100 overflow-hidden">
+                            <div
+                              className={`h-1.5 ${selTone.barClass}`}
+                              style={{
+                                width: `${
+                                  selTotal
+                                    ? Math.round(
+                                        Math.max(0, Math.min(1, selDisp / selTotal)) * 100
+                                      )
+                                    : 0
+                                }%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Chips */}
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {selected.idioma ? (
+                            <Badge className="rounded-full px-3 py-1 bg-[#7c0040] text-white border-[#7c0040] capitalize">
+                              {selected.idioma}
+                            </Badge>
+                          ) : null}
+                          {selected.nivel ? (
+                            <Badge className="rounded-full px-3 py-1 bg-[#7c0040] text-white border-[#7c0040] capitalize">
+                              {selected.nivel}
+                            </Badge>
+                          ) : null}
+                          {selected.modalidad ? (
+                            <Badge className="rounded-full px-3 py-1 bg-[#7c0040] text-white border-[#7c0040] capitalize">
+                              {selected.modalidad}
+                            </Badge>
+                          ) : null}
+                          {selected.turno ? (
+                            <Badge className="rounded-full px-3 py-1 bg-[#7c0040] text-white border-[#7c0040] capitalize">
+                              {selected.turno}
+                            </Badge>
+                          ) : null}
+                          {selected.modalidad_asistencia ? (
+                            <Badge variant="secondary" className="rounded-full capitalize">
+                              {selected.modalidad_asistencia}
+                            </Badge>
+                          ) : null}
+                          {selected.aula ? (
+                            <span className="inline-flex items-center gap-1 text-xs text-neutral-700">
+                              {selected.aula}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {/* Fechas y horarios */}
+                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[12px] text-neutral-700">
+                          <div>
+                            <b>Días:</b>{" "}
+                            {(selected.dias ?? []).map(abreviarDia).join(" • ")}
+                          </div>
+                          <div>
+                            <b>Horario:</b>{" "}
+                            {selected.hora_inicio?.slice(0, 5)}–
+                            {selected.hora_fin?.slice(0, 5)}
+                          </div>
+                          <div>
+                            <b>Inscripción:</b> {d(selected.inscripcion?.from)} –{" "}
+                            {d(selected.inscripcion?.to)}
+                          </div>
+                          <div>
+                            <b>Curso:</b> {d(selected.curso?.from)} –{" "}
+                            {d(selected.curso?.to)}
+                          </div>
+                          <div>
+                            <b>Examen MT:</b> {d(selected.examenMT)}
+                          </div>
+                          <div>
+                            <b>Examen final:</b> {d(selected.examenFinal)}
+                          </div>
+                        </div>
+
+                        {selected.notas ? (
+                          <p className="mt-2 text-[12px] text-neutral-700">
+                            <Info className="inline-block mr-1 h-3.5 w-3.5" />
+                            {selected.notas}
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
+
+                    {/* === SOLO TRÁMITE === */}
+                    {sheetMode === "tramite" && (
+                      <div className="rounded-2xl border bg-white p-3 sm:p-4">
+                        {/* Header mini del ciclo (contexto) */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{selected.codigo}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              {selected.idioma ? (
+                                <Badge className="rounded-full px-2.5 py-0.5 bg-[#7c0040] text-white border-[#7c0040] capitalize">
+                                  {selected.idioma}
+                                </Badge>
+                              ) : null}
+                              {selected.nivel ? (
+                                <Badge className="rounded-full px-2.5 py-0.5 bg-[#7c0040] text-white border-[#7c0040] capitalize">
+                                  {selected.nivel}
+                                </Badge>
                               ) : null}
                             </div>
+                          </div>
+                          <Badge className={`rounded-full border shrink-0 ${selTone.badgeClass}`}>
+                            <Users className="mr-1 h-3.5 w-3.5" />
+                            {selDisp}/{selTotal}
+                          </Badge>
+                        </div>
 
-                            {/* Comprobante de estudios (solo en PAGO y si es IPN) */}
-                            {isIPN && (
+                        <div className="mt-3 flex items-center justify-between">
+                          <h4 className="text-sm font-semibold">Trámite</h4>
+                          <span className="text-[11px] text-neutral-500">
+                            PDF/JPG/PNG/WEBP · máx. {MAX_MB} MB
+                          </span>
+                        </div>
+
+                        {/* Tipo de trámite */}
+                        <div className="mt-2">
+                          <RadioGroup
+                            value={paymentMode}
+                            onValueChange={(v) => {
+                              const mode = v as "pago" | "exencion";
+                              setPaymentMode(mode);
+                              setErrReferencia("");
+                              setErrImporte("");
+                              setErrFile("");
+                              setErrFileExencion("");
+                              setErrFileEstudios("");
+                              if (mode === "exencion") {
+                                setFileEstudios(null);
+                                setFechaPago("");
+                                setErrFechaPago("");
+                              }
+                            }}
+                            className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                          >
+                            <Label className="border rounded-xl p-2.5 flex items-center gap-2 cursor-pointer">
+                              <RadioGroupItem value="pago" id="mode-pago" />
+                              Pago con comprobante
+                            </Label>
+                            <Label className="border rounded-xl p-2.5 flex items-center gap-2 cursor-pointer">
+                              <RadioGroupItem value="exencion" id="mode-exencion" />
+                              Exención de pago
+                            </Label>
+                          </RadioGroup>
+                        </div>
+
+                        {/* Inputs según modo */}
+                        <div className="mt-3 grid grid-cols-1 gap-2">
+                          {paymentMode === "pago" ? (
+                            <>
+                              {/* Referencia + Importe + Fecha de pago */}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-xs">Fecha de pago</Label>
+                                    {errFechaPago ? (
+                                      <span className="text-[11px] text-red-600">
+                                        {errFechaPago}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <Input
+                                    type="date"
+                                    value={fechaPago}
+                                    onChange={(e) => setFechaPago(e.target.value)}
+                                    className="h-9"
+                                    max={new Date().toISOString().slice(0, 10)}
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-xs">Referencia</Label>
+                                    {errReferencia ? (
+                                      <span className="text-[11px] text-red-600">
+                                        {errReferencia}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <Input
+                                    placeholder="Ej. 123456/ABC"
+                                    value={referencia}
+                                    onChange={(e) => setReferencia(e.target.value)}
+                                    className="h-9"
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-xs">Importe pagado</Label>
+                                    {errImporte ? (
+                                      <span className="text-[11px] text-red-600">
+                                        {errImporte}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <Input
+                                    placeholder="Ej. 1,250.00"
+                                    inputMode="decimal"
+                                    value={importe}
+                                    onChange={(e) => setImporte(e.target.value)}
+                                    className="h-9"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Comprobante de pago */}
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between">
                                   <Label className="text-xs">
-                                    Comprobante de estudios (PDF o imagen)
+                                    Comprobante de pago (PDF o imagen)
                                   </Label>
-                                  {errFileEstudios ? (
+                                  {errFile ? (
                                     <span className="text-[11px] text-red-600">
-                                      {errFileEstudios}
+                                      {errFile}
                                     </span>
                                   ) : null}
                                 </div>
@@ -1020,107 +997,142 @@ export default function AlumnoInscripcionPage() {
                                   className="h-9"
                                   onChange={(e) => {
                                     const f = e.target.files?.[0] || null;
-                                    setFileEstudios(f);
-                                    setErrFileEstudios(validarComprobante(f));
+                                    setFile(f);
+                                    setErrFile(validarComprobante(f));
                                   }}
                                 />
-                                {fileEstudios ? (
+                                {file ? (
                                   <p className="text-[11px] text-neutral-600">
-                                    <b>{fileEstudios.name}</b> ·{" "}
-                                    {(fileEstudios.size / 1024).toFixed(0)} KB
+                                    <b>{file.name}</b> · {(file.size / 1024).toFixed(0)} KB
                                   </p>
                                 ) : null}
                               </div>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            {/* Comprobante de exención */}
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-xs">
-                                  Comprobante de exención (PDF o imagen)
-                                </Label>
-                                {errFileExencion ? (
-                                  <span className="text-[11px] text-red-600">
-                                    {errFileExencion}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <Input
-                                type="file"
-                                accept={ACCEPT}
-                                className="h-9"
-                                onChange={(e) => {
-                                  const f = e.target.files?.[0] || null;
-                                  setFileExencion(f);
-                                  setErrFileExencion(validarComprobante(f));
-                                }}
-                              />
-                              {fileExencion ? (
-                                <p className="text-[11px] text-neutral-600">
-                                  <b>{fileExencion.name}</b> ·{" "}
-                                  {(fileExencion.size / 1024).toFixed(0)} KB
-                                  </p>
-                              ) : null}
-                            </div>
-                          </>
-                        )}
 
-                        <div className="rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-[12px] text-amber-800">
-                          {paymentMode === "pago" ? (
-                            <>
-                              Tu estatus quedará <b>preinscrita</b> hasta que
-                              coordinación valide tu pago.
+                              {/* Comprobante de estudios (solo en PAGO y si es IPN) */}
+                              {isIPN && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-xs">
+                                      Comprobante de estudios (PDF o imagen)
+                                    </Label>
+                                    {errFileEstudios ? (
+                                      <span className="text-[11px] text-red-600">
+                                        {errFileEstudios}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <Input
+                                    type="file"
+                                    accept={ACCEPT}
+                                    className="h-9"
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0] || null;
+                                      setFileEstudios(f);
+                                      setErrFileEstudios(validarComprobante(f));
+                                    }}
+                                  />
+                                  {fileEstudios ? (
+                                    <p className="text-[11px] text-neutral-600">
+                                      <b>{fileEstudios.name}</b> ·{" "}
+                                      {(fileEstudios.size / 1024).toFixed(0)} KB
+                                    </p>
+                                  ) : null}
+                                </div>
+                              )}
                             </>
                           ) : (
                             <>
-                              Tu estatus quedará <b>en revisión de exención</b>{" "}
-                              hasta que coordinación valide tu documento.
+                              {/* Comprobante de exención */}
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-xs">
+                                    Comprobante de exención (PDF o imagen)
+                                  </Label>
+                                  {errFileExencion ? (
+                                    <span className="text-[11px] text-red-600">
+                                      {errFileExencion}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <Input
+                                  type="file"
+                                  accept={ACCEPT}
+                                  className="h-9"
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0] || null;
+                                    setFileExencion(f);
+                                    setErrFileExencion(validarComprobante(f));
+                                  }}
+                                />
+                                {fileExencion ? (
+                                  <p className="text-[11px] text-neutral-600">
+                                    <b>{fileExencion.name}</b> ·{" "}
+                                    {(fileExencion.size / 1024).toFixed(0)} KB
+                                  </p>
+                                ) : null}
+                              </div>
                             </>
                           )}
+
+                          <div className="rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-[12px] text-amber-800">
+                            {paymentMode === "pago" ? (
+                              <>
+                                Tu estatus quedará <b>preinscrita</b> hasta que
+                                coordinación valide tu pago.
+                              </>
+                            ) : (
+                              <>
+                                Tu estatus quedará <b>en revisión de exención</b>{" "}
+                                hasta que coordinación valide tu documento.
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <SheetFooter className="mt-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setOpenSheet(false)}
-                  disabled={submitting}
-                >
-                  {sheetMode === "detalle" ? "Cerrar" : "Cancelar"}
-                </Button>
-
-                {sheetMode === "tramite" && (
-                  <Button
-                    onClick={() => selected && onInscribirme(selected)}
-                    disabled={selSinLugares || selYaActiva || submitting}
-                    title={
-                      selYaActiva
-                        ? "Ya tienes una inscripción activa en este grupo"
-                        : selSinLugares
-                        ? "Sin lugares disponibles"
-                        : undefined
-                    }
-                  >
-                    {selYaActiva
-                      ? "Ya inscrita"
-                      : selSinLugares
-                      ? "Sin lugares"
-                      : submitting
-                      ? "Enviando…"
-                      : paymentMode === "pago"
-                      ? "Enviar comprobante y preinscribirme"
-                      : "Enviar exención"}
-                  </Button>
+                    )}
+                  </div>
                 )}
-              </SheetFooter>
+              </div>
+
+              {/* FOOTER sticky (botones siempre visibles) */}
+              <div className="sticky bottom-0 z-10 bg-white/95 backdrop-blur border-t px-3 sm:px-5 py-3">
+                <SheetFooter className="gap-2 sm:gap-0">
+                  <Button
+                    variant="outline"
+                    onClick={() => setOpenSheet(false)}
+                    disabled={submitting}
+                  >
+                    {sheetMode === "detalle" ? "Cerrar" : "Cancelar"}
+                  </Button>
+
+                  {sheetMode === "tramite" && (
+                    <Button
+                      onClick={() => selected && onInscribirme(selected)}
+                      disabled={selSinLugares || selYaActiva || submitting}
+                      title={
+                        selYaActiva
+                          ? "Ya tienes una inscripción activa en este grupo"
+                          : selSinLugares
+                          ? "Sin lugares disponibles"
+                          : undefined
+                      }
+                    >
+                      {selYaActiva
+                        ? "Ya inscrita"
+                        : selSinLugares
+                        ? "Sin lugares"
+                        : submitting
+                        ? "Enviando…"
+                        : paymentMode === "pago"
+                        ? "Enviar comprobante y preinscribirme"
+                        : "Enviar exención"}
+                    </Button>
+                  )}
+                </SheetFooter>
+              </div>
             </SheetContent>
           </Sheet>
+
 
           {/* Mobile Filters Sheet (separado del de detalle/trámite) */}
           <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
