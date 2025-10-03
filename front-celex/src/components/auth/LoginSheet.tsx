@@ -3,7 +3,17 @@
 
 import { useState, useRef } from "react";
 import { toast } from "sonner";
-import { Mail, Lock, Eye, EyeOff, LogIn } from "lucide-react";
+import {
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  LogIn,
+  ShieldCheck,
+  Sparkles,
+  ArrowRight,
+  Loader2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +24,7 @@ import {
   SheetTitle,
   SheetDescription,
   SheetTrigger,
+  // SheetFooter (no lo necesitamos por ahora)
 } from "@/components/ui/sheet";
 
 type LoginData = {
@@ -31,12 +42,12 @@ export default function LoginSheet({
   open,
   setOpen,
   onSuccess,
-  showTrigger = true,          // 👈 nueva prop
+  showTrigger = true,
 }: {
   open: boolean;
   setOpen: (v: boolean) => void;
   onSuccess: (data: LoginData) => void;
-  showTrigger?: boolean;       // 👈 nueva prop
+  showTrigger?: boolean;
 }) {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPwd, setLoginPwd] = useState("");
@@ -89,7 +100,10 @@ export default function LoginSheet({
       localStorage.setItem("celex_token", data.access_token);
       localStorage.setItem("celex_role", data.role ?? "");
       localStorage.setItem("celex_email", data.email ?? "");
-      localStorage.setItem("celex_nombre", `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim());
+      localStorage.setItem(
+        "celex_nombre",
+        `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim()
+      );
       localStorage.setItem("celex_curp", data.curp ?? "");
       localStorage.setItem("celex_is_ipn", String(!!data.is_ipn));
       localStorage.setItem("celex_boleta", data.boleta ?? "");
@@ -110,84 +124,200 @@ export default function LoginSheet({
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      {/* 👇 el trigger SOLO se muestra si showTrigger === true */}
+      {/* Trigger opcional */}
       {showTrigger && (
         <SheetTrigger asChild>
-          <Button variant="default" size="lg" className="gap-2 rounded-full px-5 shadow-md hover:shadow-lg">
+          <Button
+            variant="default"
+            size="lg"
+            className="gap-2 rounded-full px-5 shadow-md hover:shadow-lg"
+          >
             <LogIn className="h-4 w-4" />
             Iniciar sesión
           </Button>
         </SheetTrigger>
       )}
 
-      <SheetContent side="right" className="w-full sm:max-w-md p-0">
-        <div className="flex h-full flex-col items-center pt-8">
-          <div className="w-full max-w-sm px-6">
-            <SheetHeader className="text-center">
-              <SheetTitle className="font-title text-xl">
-                Bienvenido al CELEX "Diódoro Antúnez Echegaray"
-              </SheetTitle>
-              <SheetDescription className="text-neutral-500">
-                Ingresa tu correo y contraseña.
-              </SheetDescription>
-            </SheetHeader>
+      {/* Panel con mayor ancho en desktop y diseño visual mejorado */}
+      <SheetContent
+        side="right"
+        // max-w-xl en desktop para permitir el encabezado hero + formulario cómodo
+        className="w-full sm:max-w-xl p-0 overflow-hidden"
+      >
+        {/* Fondo decorativo (no interfiere con el contenido) */}
+        <div className="absolute inset-0 -z-10 opacity-20">
+          <div className="absolute -top-20 left-0 h-64 w-64 rounded-full bg-[#7c0040]/30 blur-3xl" />
+          <div className="absolute top-40 -right-10 h-64 w-64 rounded-full bg-fuchsia-400/30 blur-3xl" />
+        </div>
 
-            <form onSubmit={handleLogin} className="mt-6 space-y-6 w-full" autoComplete="on">
-              <div className="space-y-2 w-full">
-                <Label htmlFor="login-email">Correo</Label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                  <Input
-                    id="login-email"
-                    type="email"
-                    inputMode="email"
-                    placeholder="usuario@correo.com"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    className="pl-9"
-                    autoComplete="email"
-                    required
-                  />
+        {/* Contenedor principal */}
+        <div className="flex h-full flex-col">
+          {/* HERO / Encabezado visual */}
+          <div className="relative overflow-hidden border-b bg-gradient-to-br from-white via-fuchsia-50 to-rose-50">
+            <div className="relative px-6 pt-8 pb-6 sm:px-8">
+              <div className="flex items-start gap-3">
+                <div className="h-12 w-12 rounded-2xl bg-[#7c0040] text-white grid place-items-center shadow-md">
+                  <Sparkles className="h-6 w-6" />
                 </div>
-                {loginErrors.email && <p className="text-xs text-red-600">{loginErrors.email}</p>}
+                <div className="min-w-0">
+                  <SheetHeader className="text-left">
+                    <SheetTitle className="font-title text-xl sm:text-2xl leading-tight">
+                      CELEX “Diódoro Antúnez Echegaray”
+                    </SheetTitle>
+                    <SheetDescription className="text-neutral-600">
+                      Accede con tu correo y contraseña.
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="mt-3 flex items-center gap-2 text-[11px] font-medium text-neutral-700">
+                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                    <span>Acceso seguro</span>
+                    <span className="mx-1 opacity-40">•</span>
+                    <span>Datos protegidos</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-2 w-full">
-                <Label htmlFor="login-password">Contraseña</Label>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                  <Input
-                    id="login-password"
-                    ref={pwdRef}
-                    type={showLoginPwd ? "text" : "password"}
-                    placeholder="••••••••"
-                    value={loginPwd}
-                    onChange={(e) => setLoginPwd(e.target.value)}
-                    className="pl-9 pr-10"
-                    autoComplete="current-password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    aria-label={showLoginPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
-                    onClick={() => setShowLoginPwd((prev) => !prev)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-neutral-500 hover:bg-neutral-100 focus:outline-none z-10"
-                    aria-pressed={showLoginPwd}
-                  >
-                    {showLoginPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
+              {/* Cinta decorativa */}
+              <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#7c0040] via-fuchsia-500 to-rose-400 opacity-80" />
+            </div>
+          </div>
+
+          {/* CONTENIDO: Formulario + tips/links */}
+          <div className="flex-1 overflow-auto">
+            <div className="mx-auto w-full max-w-md px-6 py-6 sm:px-8 sm:py-8">
+              <form
+                onSubmit={handleLogin}
+                className="space-y-6"
+                autoComplete="on"
+                aria-label="Formulario de inicio de sesión"
+              >
+                {/* Email */}
+                <div className="space-y-2">
+                  <Label htmlFor="login-email">Correo</Label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                    <Input
+                      id="login-email"
+                      type="email"
+                      inputMode="email"
+                      placeholder="usuario@correo.com"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      className="pl-9"
+                      autoComplete="email"
+                      required
+                      aria-invalid={!!loginErrors.email}
+                      aria-describedby={loginErrors.email ? "login-email-error" : undefined}
+                    />
+                  </div>
+                  {loginErrors.email && (
+                    <p id="login-email-error" className="text-xs text-red-600">
+                      {loginErrors.email}
+                    </p>
+                  )}
                 </div>
 
-                {loginErrors.pwd && <p className="text-xs text-red-600">{loginErrors.pwd}</p>}
-              </div>
+                {/* Password */}
+                <div className="space-y-2">
+                  <Label htmlFor="login-password">Contraseña</Label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                    <Input
+                      id="login-password"
+                      ref={pwdRef}
+                      type={showLoginPwd ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={loginPwd}
+                      onChange={(e) => setLoginPwd(e.target.value)}
+                      className="pl-9 pr-10"
+                      autoComplete="current-password"
+                      required
+                      aria-invalid={!!loginErrors.pwd}
+                      aria-describedby={loginErrors.pwd ? "login-pwd-error" : undefined}
+                    />
+                    <button
+                      type="button"
+                      aria-label={showLoginPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
+                      onClick={() => setShowLoginPwd((prev) => !prev)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-neutral-500 hover:bg-neutral-100 focus:outline-none z-10"
+                      aria-pressed={showLoginPwd}
+                      title={showLoginPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
+                    >
+                      {showLoginPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {loginErrors.pwd && (
+                    <p id="login-pwd-error" className="text-xs text-red-600">
+                      {loginErrors.pwd}
+                    </p>
+                  )}
 
-              <Button type="submit" className="w-full h-11 text-base" disabled={loginLoading}>
-                {loginLoading ? "Entrando..." : "Entrar"}
+                  {/* Ayuda sutil de password */}
+                  <div className="flex items-center justify-between text-[11px] text-neutral-500">
+                    <span>6+ caracteres, distingue mayúsculas</span>
+                    <button
+                      type="button"
+                      className="underline-offset-2 hover:underline"
+                      onClick={() => toast.info("Si olvidaste tu contraseña, contacta a Coordinación.")}
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                  </div>
+                </div>
+
+                {/* CTA principal */}
+                <Button
+                  type="submit"
+                  className="w-full h-11 text-base font-semibold group"
+                  disabled={loginLoading}
+                >
+                  {loginLoading ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Entrando…
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2">
+                      Entrar
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                    </span>
+                  )}
+                </Button>
+
+                {/* Divider sutil */}
+                <div className="my-2 h-px w-full bg-gradient-to-r from-transparent via-neutral-200 to-transparent" />
+
+                {/* Nota legal / confidencialidad */}
+                <p className="text-[11px] leading-relaxed text-neutral-500">
+                  Al continuar, aceptas nuestras políticas de privacidad y el uso responsable de tu
+                  información. Este acceso es personal e intransferible.
+                </p>
+              </form>
+            </div>
+          </div>
+
+          {/* FOOTER sticky del sheet (acciones secundarias) */}
+          <div className="border-t bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
+            <div className="mx-auto flex w-full max-w-md items-center justify-between px-6 py-3 sm:max-w-xl">
+              <div className="text-[11px] text-neutral-500">
+                ¿No tienes cuenta?{" "}
+                <button
+                  type="button"
+                  className="font-medium text-[#7c0040] underline-offset-2 hover:underline"
+                  onClick={() => toast.info("El registro se realiza desde la página principal.")}
+                >
+                  Regístrate
+                </button>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2"
+                onClick={() => setOpen(false)}
+              >
+                Cancelar
               </Button>
-              <p className="text-center text-xs text-neutral-500">
-                ¿No tienes cuenta? Crea tu cuenta en la página principal.
-              </p>
-            </form>
+            </div>
           </div>
         </div>
       </SheetContent>
