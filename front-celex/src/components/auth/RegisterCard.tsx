@@ -344,8 +344,15 @@ export default function RegisterCard() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={regLoading}>
-              {regLoading ? "Creando..." : "Crear cuenta"}
+            <Button
+              type="submit"
+              disabled={regLoading}
+              className="w-full h-12 rounded-full text-base font-semibold tracking-wide
+                        bg-gradient-to-r from-[#7c0040] via-fuchsia-600 to-rose-500
+                        text-white shadow-md hover:shadow-lg hover:scale-[1.01]
+                        transition-all duration-200 ease-in-out"
+            >
+              {regLoading ? "Creando..." : "✨ Crear cuenta"}
             </Button>
           </form>
         </div>
