@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+
 import {
   listCiclos,
   listInscripcionesCoord,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/api";
 import { getToken } from "@/lib/sessions";
 import type { CicloDTO, InscripcionDTO } from "@/lib/api";
+import { getHistorialAlumno } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -61,6 +63,107 @@ type PreviewState = {
   isPdf?: boolean;
 };
 
+type HistItem = {
+  inscripcion_id: number;
+  ciclo_id: number;
+  ciclo_codigo: string;
+  idioma?: string | null;
+  nivel?: string | null;
+  modalidad?: string | null;
+  turno?: string | null;
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+  docente_nombre?: string | null;
+  calificacion?: number | null;
+};
+
+/* ================================================
+   FIX: Helpers y componente Pill a nivel módulo
+   (antes estaban dentro de useMemo(columns))
+================================================ */
+
+/** Icono de orden */
+function SortIcon({ column }: { column: any }) {
+  const s = column.getIsSorted();
+  if (s === "asc") return <ChevronUp className="w-3 h-3 ml-1" />;
+  if (s === "desc") return <ChevronDown className="w-3 h-3 ml-1" />;
+  return null;
+}
+
+/** Chip/píldora reutilizable */
+function Pill({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] bg-slate-50 text-slate-700">
+      {children}
+    </span>
+  );
+}
+
+  /** Quita prefijos tipo "Idioma." / "Nivel." y se queda con el último segmento */
+  function normalizeTaxonomy(value?: string | null): string {
+    if (!value) return "";
+    const t = String(value).trim();
+    // si trae puntos, nos quedamos con el último segmento
+    const last = t.includes(".") ? t.split(".").pop()! : t;
+    return last;
+  }
+
+  function titleCaseEs(s?: string | null): string {
+    if (!s) return "";
+    const t = String(s).replaceAll("_", " ").toLowerCase();
+    const mapAcentos: Record<string, string> = {
+      ingles: "Inglés",
+      frances: "Francés",
+      aleman: "Alemán",
+      japones: "Japonés",
+      chino: "Chino",
+      portugues: "Portugués",
+      italiano: "Italiano",
+    };
+    if (mapAcentos[t]) return mapAcentos[t];
+    return t.replace(/\b\w/g, (m) => m.toUpperCase());
+  }
+
+  function labelIdioma(idioma?: string | null): string {
+    const raw = normalizeTaxonomy(idioma); // p.ej. "Idioma.Ingles" -> "Ingles"
+    return titleCaseEs(raw || "");
+  }
+
+  function labelNivel(nivel?: string | null): string {
+    if (!nivel) return "";
+    const raw = normalizeTaxonomy(nivel); // p.ej. "Nivel.I2" -> "I2"
+    const n = String(raw).trim().toUpperCase(); // "I2"
+    const letra = n[0];
+    const num = n.slice(1);
+    const nivelMap: Record<string, string> = { B: "Básico", I: "Intermedio", A: "Avanzado" };
+    if (nivelMap[letra] && /^\d+$/.test(num)) return `${nivelMap[letra]} ${Number(num)}`;
+    const lower = n.toLowerCase();
+    if (lower.includes("basico") || lower.includes("básico")) return "Básico";
+    if (lower.includes("intermedio")) return "Intermedio";
+    if (lower.includes("avanzado")) return "Avanzado";
+    return titleCaseEs(n);
+  }
+
+
+function labelModalidad(modalidad?: string | null): string {
+  if (!modalidad) return "";
+  const t = String(modalidad).toLowerCase();
+  if (t.includes("intens")) return "Intensivo";
+  if (t.includes("regular")) return "Regular";
+  if (t.includes("sab")) return "Sabatino";
+  if (t.includes("linea") || t.includes("en linea") || t.includes("en_línea")) return "En línea";
+  return titleCaseEs(modalidad);
+}
+
+function labelTurno(turno?: string | null): string {
+  if (!turno) return "";
+  const t = String(turno).toLowerCase();
+  if (t.includes("mat")) return "Matutino";
+  if (t.includes("ves")) return "Vespertino";
+  if (t.includes("noc") || t.includes("noct")) return "Nocturno";
+  return titleCaseEs(turno);
+}
+
 export default function InscripcionesSection() {
   const [ciclos, setCiclos] = useState<CicloDTO[]>([]);
   const [cicloId, setCicloId] = useState<number | null>(null);
@@ -73,6 +176,10 @@ export default function InscripcionesSection() {
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState<number | null>(null);
 
+  const [histLoading, setHistLoading] = useState(false);
+  const [histItems, setHistItems] = useState<HistItem[]>([]);
+  const [histOpen, setHistOpen]   = useState(false);
+
   const [preview, setPreview] = useState<PreviewState>({
     open: false,
     ins: null,
@@ -82,13 +189,6 @@ export default function InscripcionesSection() {
     loading: false,
     isPdf: false,
   });
-
-  function SortIcon({ column }: { column: any }) {
-    const s = column.getIsSorted();
-    if (s === "asc") return <ChevronUp className="w-3 h-3 ml-1" />;
-    if (s === "desc") return <ChevronDown className="w-3 h-3 ml-1" />;
-    return null;
-  }
 
   // ====== visor ======
   const [isFull, setIsFull] = useState(false);
@@ -218,6 +318,19 @@ export default function InscripcionesSection() {
     }
   }
 
+  async function fetchHistorialAlumno(alumnoId: number) {
+    setHistLoading(true);
+    try {
+      const res = await getHistorialAlumno(alumnoId, {}); // puedes pasar filtros { anio, idioma, estado }
+      setHistItems(res?.items ?? []);
+    } catch (e: any) {
+      toast.error(typeof e?.message === "string" ? e.message : "No se pudo cargar el historial");
+      setHistItems([]);
+    } finally {
+      setHistLoading(false);
+    }
+  }
+
   // ====== abrir/cerrar visor ======
   async function openPreview(ins: InscripcionDTO, tipo: TipoArchivo) {
     const hasMeta =
@@ -229,6 +342,7 @@ export default function InscripcionesSection() {
       return;
     }
 
+    // Reset de visor
     setPreview({ open: true, ins, tipo, loading: true, url: null, mime: null, isPdf: false });
     setIsFull(false);
     setZoom(1);
@@ -236,6 +350,7 @@ export default function InscripcionesSection() {
     setFit("contain");
     setRejectOpen(false);
 
+    // Reset de edición de pago
     if (ins.tipo === "pago") {
       setEditReferencia(ins.referencia ?? "");
       setEditImporteStr(
@@ -248,6 +363,15 @@ export default function InscripcionesSection() {
       setEditFecha("");
     }
 
+    // ======= HISTORIAL DEL ALUMNO =======
+    setHistItems([]);
+    setHistLoading(false);
+    // setHistOpen(true); // si quieres abrirlo automático
+    if ((ins as any).alumno_id) {
+      void fetchHistorialAlumno((ins as any).alumno_id);
+    }
+
+    // ======= CARGA DEL ARCHIVO =======
     try {
       const token = getToken();
       const url = new URL(
@@ -284,19 +408,29 @@ export default function InscripcionesSection() {
   }
 
   function closePreview() {
+    // Revoca URL del archivo
     if (preview.url) {
       try { URL.revokeObjectURL(preview.url); } catch {}
     }
+
+    // Reset visor
     setPreview({ open: false, ins: null, tipo: null, url: null, mime: null, loading: false, isPdf: false });
     setIsFull(false);
     setZoom(1);
     setRotation(0);
     setFit("contain");
+
+    // Reset edición de pago
     setEditReferencia("");
     setEditImporteStr("");
     setEditFecha("");
     setSavingPago(false);
+
+    // Reset rechazo + historial
     setRejectOpen(false);
+    setHistOpen(false);
+    setHistItems([]);
+    setHistLoading(false);
   }
 
   // ====== guardar pago ======
@@ -459,140 +593,137 @@ export default function InscripcionesSection() {
   ==========================*/
   const [sorting, setSorting] = useState<SortingState>([]);
   const columns = useMemo<ColumnDef<InscripcionDTO>[]>(() => {
-  const statusOrder: Record<string, number> = {
-    confirmada: 1,
-    preinscrita: 2,
-    registrada: 3,
-    rechazada: 4,
-    cancelada: 5,
-  };
+    const statusOrder: Record<string, number> = {
+      confirmada: 1,
+      preinscrita: 2,
+      registrada: 3,
+      rechazada: 4,
+      cancelada: 5,
+    };
 
-  
-
-  return [
-    {
-      id: "alumno",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          Alumno <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (r) =>
-        `${r.alumno?.first_name ?? ""} ${r.alumno?.last_name ?? ""}`.trim().toLowerCase(),
-      cell: ({ row }) => {
-        const r = row.original;
-        return (
-          <div className="leading-tight">
-            <div>{r.alumno?.first_name} {r.alumno?.last_name}</div>
-            <div className="text-xs text-muted-foreground">{r.alumno?.email}</div>
-          </div>
-        );
-      },
-      sortingFn: "alphanumeric",
-    },
-    {
-      id: "tipo",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          Tipo <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (r) => {
-        const boleta =
-          (r as any)?.alumno?.boleta ??
-          (r as any)?.alumno?.boleta_ipn ??
-          (r as any)?.alumno?.codigo_ipn ??
-          null;
-        const esIPN = !!boleta || !!r.comprobante_estudios;
-        return esIPN ? "ipn" : "externo";
-      },
-      cell: ({ row }) => renderTipoAlumno(row.original),
-      sortingFn: "alphanumeric",
-    },
-    {
-      id: "estado",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          Estado <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (r) => statusOrder[(r.status as string) ?? "registrada"] ?? 99,
-      cell: ({ row }) => {
-        const r = row.original;
-        const s = (r.status as Exclude<StatusFiltro, "todas">) ?? "registrada";
-        const cfg = STATUS_STYLES[s] ?? STATUS_STYLES.registrada;
-        return (
-          <Badge
-            variant="outline"
-            className={`capitalize px-2 py-0.5 text-[12px] font-medium ${cfg.className}`}
-            title={cfg.label}
+    return [
+      {
+        id: "alumno",
+        header: ({ column }) => (
+          <button
+            type="button"
+            onClick={column.getToggleSortingHandler()}
+            className="inline-flex items-center gap-1 cursor-pointer select-none"
           >
-            {cfg.label}
-          </Badge>
-        );
+            Alumno <SortIcon column={column} />
+          </button>
+        ),
+        accessorFn: (r) =>
+          `${r.alumno?.first_name ?? ""} ${r.alumno?.last_name ?? ""}`.trim().toLowerCase(),
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <div className="leading-tight">
+              <div>{r.alumno?.first_name} {r.alumno?.last_name}</div>
+              <div className="text-xs text-muted-foreground">{r.alumno?.email}</div>
+            </div>
+          );
+        },
+        sortingFn: "alphanumeric",
       },
-      sortingFn: "basic",
-    },
-    {
-      id: "tramite",
-      header: ({ column }) => (
-        <button
-          type="button"
-          onClick={column.getToggleSortingHandler()}
-          className="inline-flex items-center gap-1 cursor-pointer select-none"
-        >
-          Trámite <SortIcon column={column} />
-        </button>
-      ),
-      accessorFn: (r) => (r.tipo ?? "").toString().toLowerCase(),
-      cell: ({ row }) => <span className="capitalize">{row.original.tipo}</span>,
-      sortingFn: "alphanumeric",
-    },
-    {
-      id: "comprobantes",
-      header: () => <div>Comprobantes</div>,
-      cell: ({ row }) => {
-        const r = row.original;
-        return (
-          <div className="flex flex-wrap gap-2">
-            {r.comprobante && (
-              <Button variant="secondary" size="sm" title="Ver comprobante de pago" onClick={() => openPreview(r, "comprobante")}>
-                <Eye className="w-4 h-4 mr-1" /> Ver pago
-              </Button>
-            )}
-            {r.comprobante_estudios && (
-              <Button variant="secondary" size="sm" title="Ver comprobante de estudios (IPN)" onClick={() => openPreview(r, "estudios")}>
-                <Eye className="w-4 h-4 mr-1" /> Ver estudios
-              </Button>
-            )}
-            {r.comprobante_exencion && (
-              <Button variant="secondary" size="sm" title="Ver comprobante de exención" onClick={() => openPreview(r, "exencion")}>
-                <Eye className="w-4 h-4 mr-1" /> Ver exención
-              </Button>
-            )}
-            {!r.comprobante && !r.comprobante_estudios && !r.comprobante_exencion && (
-              <span className="text-xs text-muted-foreground">Sin archivos</span>
-            )}
-          </div>
-        );
+      {
+        id: "tipo",
+        header: ({ column }) => (
+          <button
+            type="button"
+            onClick={column.getToggleSortingHandler()}
+            className="inline-flex items-center gap-1 cursor-pointer select-none"
+          >
+            Tipo <SortIcon column={column} />
+          </button>
+        ),
+        accessorFn: (r) => {
+          const boleta =
+            (r as any)?.alumno?.boleta ??
+            (r as any)?.alumno?.boleta_ipn ??
+            (r as any)?.alumno?.codigo_ipn ??
+            null;
+          const esIPN = !!boleta || !!r.comprobante_estudios;
+          return esIPN ? "ipn" : "externo";
+        },
+        cell: ({ row }) => renderTipoAlumno(row.original),
+        sortingFn: "alphanumeric",
       },
-      enableSorting: false,
-    },
-  ];
-}, []);
-
+      {
+        id: "estado",
+        header: ({ column }) => (
+          <button
+            type="button"
+            onClick={column.getToggleSortingHandler()}
+            className="inline-flex items-center gap-1 cursor-pointer select-none"
+          >
+            Estado <SortIcon column={column} />
+          </button>
+        ),
+        accessorFn: (r) => statusOrder[(r.status as string) ?? "registrada"] ?? 99,
+        cell: ({ row }) => {
+          const r = row.original;
+          const s = (r.status as Exclude<StatusFiltro, "todas">) ?? "registrada";
+          const cfg = STATUS_STYLES[s] ?? STATUS_STYLES.registrada;
+          return (
+            <Badge
+              variant="outline"
+              className={`capitalize px-2 py-0.5 text-[12px] font-medium ${cfg.className}`}
+              title={cfg.label}
+            >
+              {cfg.label}
+            </Badge>
+          );
+        },
+        sortingFn: "basic",
+      },
+      {
+        id: "tramite",
+        header: ({ column }) => (
+          <button
+            type="button"
+            onClick={column.getToggleSortingHandler()}
+            className="inline-flex items-center gap-1 cursor-pointer select-none"
+          >
+            Trámite <SortIcon column={column} />
+          </button>
+        ),
+        accessorFn: (r) => (r.tipo ?? "").toString().toLowerCase(),
+        cell: ({ row }) => <span className="capitalize">{row.original.tipo}</span>,
+        sortingFn: "alphanumeric",
+      },
+      {
+        id: "comprobantes",
+        header: () => <div>Comprobantes</div>,
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <div className="flex flex-wrap gap-2">
+              {r.comprobante && (
+                <Button variant="secondary" size="sm" title="Ver comprobante de pago" onClick={() => openPreview(r, "comprobante")}>
+                  <Eye className="w-4 h-4 mr-1" /> Ver pago
+                </Button>
+              )}
+              {r.comprobante_estudios && (
+                <Button variant="secondary" size="sm" title="Ver comprobante de estudios (IPN)" onClick={() => openPreview(r, "estudios")}>
+                  <Eye className="w-4 h-4 mr-1" /> Ver estudios
+                </Button>
+              )}
+              {r.comprobante_exencion && (
+                <Button variant="secondary" size="sm" title="Ver comprobante de exención" onClick={() => openPreview(r, "exencion")}>
+                  <Eye className="w-4 h-4 mr-1" /> Ver exención
+                </Button>
+              )}
+              {!r.comprobante && !r.comprobante_estudios && !r.comprobante_exencion && (
+                <span className="text-xs text-muted-foreground">Sin archivos</span>
+              )}
+            </div>
+          );
+        },
+        enableSorting: false,
+      },
+    ];
+  }, []);
 
   const table = useReactTable({
     data: filteredRows,
@@ -786,7 +917,6 @@ export default function InscripcionesSection() {
                       variant="outline"
                       size="sm"
                       onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-
                       disabled={!table.getCanNextPage()}
                     >
                       »
@@ -865,10 +995,25 @@ export default function InscripcionesSection() {
                 )}
               </DialogHeader>
 
-              {/* Acciones + Controles + Cerrar */}
+              {/* === Acciones + Controles + Cerrar (en la toolbar) === */}
               <div className="flex flex-wrap items-center gap-2">
                 {canValidate && (
                   <>
+                    
+                    {/* ← NUEVO: botón para abrir/cerrar el panel de historial */}
+                    <Button
+                      size="sm"
+                      onClick={() => setHistOpen((v) => !v)}
+                      title="Ver historial académico del alumno"
+                      variant="default"
+                      className={`bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800
+                                  focus-visible:ring-emerald-600
+                                  ${histOpen ? "bg-emerald-700 hover:bg-emerald-800" : ""}`}
+                    >
+                      Historial
+                    </Button>
+
+
                     <Button
                       size="sm"
                       onClick={() => handleValidate(preview.ins!.id, "APPROVE")}
@@ -878,6 +1023,7 @@ export default function InscripcionesSection() {
                       {validating === preview.ins!.id ? <Loader2 className="animate-spin w-4 h-4 mr-1" /> : null}
                       Aprobar
                     </Button>
+
                     <Button
                       size="sm"
                       variant={rejectOpen ? "secondary" : "destructive"}
@@ -896,6 +1042,9 @@ export default function InscripcionesSection() {
                     >
                       Rechazar
                     </Button>
+
+                    
+
                     <div className="h-6 w-px bg-border mx-1" />
                   </>
                 )}
@@ -954,7 +1103,7 @@ export default function InscripcionesSection() {
               </div>
             </div>
 
-            {/* Cuerpo (sin cambios de tamaño al escribir) */}
+            {/* Cuerpo */}
             <div className="flex-1 min-h-0 bg-neutral-50 flex overflow-hidden">
               {/* Preview */}
               <div
@@ -975,7 +1124,7 @@ export default function InscripcionesSection() {
                     />
                   ) : preview.mime?.startsWith("image/") ? (
                     <div className="w-full h-full overflow-auto flex items-center justify-center"
-                         style={{ scrollbarGutter: "stable both-edges" as any }}>
+                        style={{ scrollbarGutter: "stable both-edges" as any }}>
                       <img
                         src={preview.url}
                         alt="Comprobante"
@@ -1091,6 +1240,104 @@ export default function InscripcionesSection() {
                   </div>
                 </div>
               )}
+
+              {/* ===== Panel de HISTORIAL ===== */}
+              {histOpen && (
+                <div
+                  className="w-full md:w-[380px] min-w-[300px] border-t md:border-t-0 md:border-l bg-white shrink-0 overflow-y-auto mt-4 max-h-[80vh]"
+                  style={{ scrollbarGutter: "stable both-edges" as any }}
+                >
+
+                  {/* Header pegajoso */}
+                  <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 flex items-center justify-between">
+                    <div className="text-sm font-medium">
+                      Historial del alumno
+                      {preview.ins?.alumno?.first_name ? (
+                        <span className="text-muted-foreground font-normal">
+                          {" · "}
+                          {preview.ins.alumno.first_name} {preview.ins.alumno.last_name}
+                        </span>
+                      ) : null}
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => setHistOpen(false)} title="Ocultar historial">
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+
+                  {/* Contenido scrollable */}
+                  <div className="p-4 space-y-3">
+                    {histLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Cargando historial...
+                      </div>
+                    ) : histItems.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Sin registros previos.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {histItems.map((h) => (
+                          <div key={`${h.inscripcion_id}`} className="rounded-xl border p-3">
+                            {/* Encabezado: código + pills de idioma/nivel */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="text-sm font-medium">{h.ciclo_codigo}</div>
+                              <div className="flex flex-wrap gap-1">
+                                {h.idioma ? <Pill>{labelIdioma(h.idioma)}</Pill> : null}
+                                {h.nivel  ? <Pill>{labelNivel(h.nivel)}</Pill> : null}
+                              </div>
+                            </div>
+
+                            {/* Docente */}
+                            {h.docente_nombre ? (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                Docente: {h.docente_nombre}
+                              </div>
+                            ) : null}
+
+                            {/* Fechas */}
+                            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                              <div className="rounded-md bg-slate-50 p-2">
+                                <div className="text-[10px] uppercase text-muted-foreground">Inicio</div>
+                                <div className="tabular-nums">{h.fecha_inicio || "-"}</div>
+                              </div>
+                              <div className="rounded-md bg-slate-50 p-2">
+                                <div className="text-[10px] uppercase text-muted-foreground">Fin</div>
+                                <div className="tabular-nums">{h.fecha_fin || "-"}</div>
+                              </div>
+                            </div>
+
+                            {/* Modalidad / Turno en pills + Calificación */}
+                            <div className="mt-2 flex items-center justify-between">
+                              <div className="flex flex-wrap gap-1">
+                                {/*{h.modalidad ? <Pill>{labelModalidad(h.modalidad)}</Pill> : null}
+                                {h.turno     ? <Pill>{labelTurno(h.turno)}</Pill>     : null}*/}
+                              </div>
+                              <div className="text-sm">
+                                {typeof h.calificacion === "number" ? (
+                                  <Badge
+                                    variant="outline"
+                                    className={
+                                      h.calificacion >= 80
+                                        ? "border-emerald-300 text-emerald-800 bg-emerald-50"
+                                        : "border-red-300 text-red-800 bg-red-50"
+                                    }
+                                    title={h.calificacion >= 80 ? "Aprobado" : "Debajo de 80"}
+                                  >
+                                    Calificación:
+                                    <span className="tabular-nums ml-1">{h.calificacion.toFixed(1)}</span>
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-muted-foreground">Sin calificación</Badge>
+                                )}
+
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer */}
@@ -1105,6 +1352,7 @@ export default function InscripcionesSection() {
           </div>
         </DialogContent>
       </Dialog>
+
     </>
   );
 }

@@ -366,6 +366,9 @@ export type ComprobanteMeta = {
 export type InscripcionDTO = {
   id: number;
   ciclo_id: number;
+
+  alumno_id: number;            // 👈 nuevo
+
   status: "registrada" | "preinscrita" | "confirmada" | "rechazada" | "cancelada";
   tipo: InscripcionTipo;
   created_at: string;

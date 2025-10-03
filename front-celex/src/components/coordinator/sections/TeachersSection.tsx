@@ -849,9 +849,9 @@ function FilterCombobox({
                     <tr className="text-left text-neutral-500">
                       <th className="px-3 py-2">Código</th>
                       <th className="px-3 py-2">Idioma</th>
+                      <th className="px-3 py-2">Nivel</th>
                       <th className="px-3 py-2">Modalidad</th>
                       <th className="px-3 py-2">Turno</th>
-                      <th className="px-3 py-2">Nivel</th>
                       <th className="px-3 py-2">Horario</th>
                       <th className="px-3 py-2">Curso</th>
                     </tr>
@@ -867,9 +867,9 @@ function FilterCombobox({
                         <tr key={c.id} className="border-t">
                           <td className="px-3 py-2 font-medium">{c.codigo}</td>
                           <td className="px-3 py-2 capitalize">{c.idioma}</td>
+                          <td className="px-3 py-2">{(c as any).nivel ?? "—"}</td>
                           <td className="px-3 py-2 capitalize">{c.modalidad}</td>
                           <td className="px-3 py-2 capitalize">{c.turno}</td>
-                          <td className="px-3 py-2">{(c as any).nivel ?? "—"}</td>
                           <td className="px-3 py-2 tabular-nums">
                             <div className="flex items-center gap-1.5">
                               <Clock3 className="h-3.5 w-3.5" />

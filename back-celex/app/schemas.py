@@ -417,6 +417,9 @@ class ValidateInscripcionCoordIn(BaseModel):
 class InscripcionOut(BaseModel):
     id: int
     ciclo_id: int
+
+    alumno_id: int                     # <-- para poder pedir historial por alumno
+
     status: Literal["registrada", "preinscrita", "confirmada", "rechazada", "cancelada"]
 
     # tipo (pago | exencion)

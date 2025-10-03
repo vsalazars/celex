@@ -157,6 +157,7 @@ def _to_inscripcion_out(r: Inscripcion) -> InscripcionOut:
 
     return InscripcionOut(
         id=r.id,
+        alumno_id=r.alumno_id,              # ← ← ← FALTABA ESTO
         ciclo_id=r.ciclo_id,
         status=r.status,
         tipo=r.tipo,

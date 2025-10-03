@@ -241,20 +241,71 @@ type InscripcionLite = {
   } | null;
 };
 
-
-/* =============== Exportar a PDF (Carta + encabezado en 4 renglones) =============== */
+/* ============== Exportar a PDF (Carta, encabezado 2 columnas con Docente alineado + pills + orden ascendente) ============== */
 async function exportInscritosPDF(c: CicloDTO, rows: InscripcionLite[]) {
   if (!c) return;
   const { default: jsPDF } = await import("jspdf");
   const autoTable = (await import("jspdf-autotable")).default as any;
 
-  // Helpers
+  // ==== Helpers ====
   const safe = (s?: string | null) => (s?.toString() || "—").trim();
+
+  function abreviarDia(key: string) {
+    const m: Record<string, string> = {
+      lunes: "Lun", martes: "Mar", miercoles: "Mié", jueves: "Jue",
+      viernes: "Vie", sabado: "Sáb", domingo: "Dom",
+    };
+    return m[key] ?? key;
+  }
+  function hhmm(h?: string) {
+    if (!h) return "—";
+    const m = h.match(/^(\d{2}):(\d{2})/);
+    return m ? `${m[1]}:${m[2]}` : h;
+  }
+  // 29/sep/25 (encabezado compacto)
+  function dShortShort(s?: string) {
+    if (!s) return "—";
+    const dt = new Date(`${s}T00:00:00`);
+    if (isNaN(dt.getTime())) return "—";
+    const day = String(dt.getDate()).padStart(2, "0");
+    const mesShort = dt.toLocaleString("es-MX", { month: "short" }).replace(/\./g, "").toLowerCase();
+    const year = String(dt.getFullYear()).slice(-2);
+    return `${day}/${mesShort}/${year}`;
+  }
+  // 25/Sep/2025 16:45 hrs. (tabla)
+  function dWhenPDF(s?: string) {
+    if (!s) return "—";
+    const dt = new Date(s);
+    if (isNaN(dt.getTime())) return "—";
+    const mesesAbbr = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    const dia = String(dt.getDate()).padStart(2, "0");
+    const mes = mesesAbbr[dt.getMonth()];
+    const anio = dt.getFullYear();
+    const hh = String(dt.getHours()).padStart(2, "0");
+    const mm = String(dt.getMinutes()).padStart(2, "0");
+    return `${dia}/${mes}/${anio} ${hh}:${mm}`;
+  }
+
+  // Ajusta tamaño de fuente para que "text" quepa en maxW (aprox.)
+  function fitFontSize(doc: any, text: string, maxW: number, baseFs = 9.2, minFs = 8) {
+    let fs = baseFs;
+    doc.setFontSize(fs);
+    let w = doc.getTextWidth(text);
+    while (w > maxW && fs > minFs) {
+      fs -= 0.2;
+      doc.setFontSize(fs);
+      w = doc.getTextWidth(text);
+    }
+    return fs;
+  }
+
   const docenteNombre =
     c.docente && (c.docente.first_name || c.docente.last_name)
       ? `${c.docente.first_name ?? ""} ${c.docente.last_name ?? ""}`.trim()
       : "—";
   const docenteEmail = c.docente?.email || "—";
+  const docenteLinea = `${docenteNombre} • ${docenteEmail}`;
+
   const diasTxt = ((c as any).dias ?? []).length
     ? ((c as any).dias as string[]).map(abreviarDia).join(" • ")
     : "—";
@@ -262,74 +313,113 @@ async function exportInscritosPDF(c: CicloDTO, rows: InscripcionLite[]) {
     (c as any).hora_inicio && (c as any).hora_fin
       ? `${hhmm((c as any).hora_inicio)}–${hhmm((c as any).hora_fin)}`
       : "—";
-  const cursoTxt = `${c.curso?.from ? dShort(c.curso.from) : "—"} – ${c.curso?.to ? dShort(c.curso.to) : "—"}`;
-  const inscTxt = `${c.inscripcion?.from ? dShort(c.inscripcion.from) : "—"} – ${c.inscripcion?.to ? dShort(c.inscripcion.to) : "—"}`;
+  const cursoTxt = `${c.curso?.from ? dShortShort(c.curso.from) : "—"} – ${c.curso?.to ? dShortShort(c.curso.to) : "—"}`;
+  const inscTxt  = `${c.inscripcion?.from ? dShortShort(c.inscripcion.from) : "—"} – ${c.inscripcion?.to ? dShortShort(c.inscripcion.to) : "—"}`;
 
-  // Resumen inscritos
+  // Totales
   const total = rows.length;
   const ipnCount = rows.reduce((acc, r) => acc + (r.alumno?.is_ipn ? 1 : 0), 0);
   const externos = Math.max(0, total - ipnCount);
 
-  // Documento: CARTA
+  // ==== Documento carta ====
   const doc = new jsPDF({ unit: "pt", format: "letter" });
-  const margin = 48;
+  const margin = 40;
   const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
   const innerW = pageW - margin * 2;
   let y = margin;
 
-  // === Encabezado
+  // Título
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text(`Listado de inscritos`, margin, y);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10.5);
-  y += 16;
-
-    // --- Renglón 1 (más grande) ---
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12); // un poco más grande que el resto (que está en 10.5)
-  doc.text(
-    `Ciclo: ${safe(c.codigo)}  •  Idioma: ${safe(c.idioma)}  •  Nivel: ${safe((c as any).nivel as any)}`,
-    margin,
-    y
-  );
-  y += 14; // mayor espacio debajo
-
-  // --- Renglón 2 ---
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10.5);
-  doc.text(
-    `Modalidad: ${safe(c.modalidad)}  •  Turno: ${safe(c.turno)}  •  Cupo: ${safe((c as any).cupo_total as any)}  •  Asistencia: ${safe((c as any).modalidad_asistencia)}  •  Aula: ${safe((c as any).aula)}`,
-    margin,
-    y
-  );
+  doc.setFontSize(12);
+  doc.text("Listado de inscritos", margin, y);
   y += 12;
 
-  // --- Renglón 3 ---
-  doc.text(
-    `Inscripción: ${inscTxt}  •  Curso: ${cursoTxt}`,
-    margin,
-    y
+  // ==== Encabezado en dos columnas (meta, con Docente en columna izquierda) ====
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.2);
+
+  const gutter = 12;
+  const colW = Math.floor((innerW - gutter) / 2);
+  const leftX = margin;
+  const rightX = margin + colW + gutter;
+
+  // Medidas de columna izquierda (para “Docente” sin salto)
+  const leftLabelW = 75;                  // ancho de la columna de etiquetas (izquierda)
+  const leftValueW = colW - leftLabelW;   // ancho disponible para valores
+  const cellPad = 2;                      // cellPadding usado abajo
+
+  // Fit dinámico solo para la celda Docente
+  const docenteFitFont = fitFontSize(
+    doc,
+    docenteLinea,
+    leftValueW - cellPad * 2, // descuenta padding
+    9.2,
+    8
   );
-  y += 12;
 
-  // --- Renglón 4 ---
-  doc.text(
-    `Días: ${diasTxt}  •  Horario: ${horarioTxt}  •  Examen MT: ${c.examenMT ? dShort(c.examenMT) : "—"}  •  Examen final: ${c.examenFinal ? dShort(c.examenFinal) : "—"}`,
-    margin,
-    y
-  );
-  y += 10;
+  const leftRows: any[] = [
+    ["Ciclo", `${safe(c.codigo)}`],
+    ["Modalidad", `${safe(c.modalidad)} • Turno: ${safe(c.turno)} • Cupo: ${safe((c as any).cupo_total)}`],
+    ["Inscripción", `${inscTxt}`],
+    ["Días", `${diasTxt} • Horario: ${horarioTxt}`],
+    // Docente alineado en su fila/columna con fuente ajustada para NO partir línea
+    ["Docente", { content: docenteLinea, styles: { fontSize: docenteFitFont, overflow: "ellipsize" as const } }],
+  ];
 
-  // === Chips (Total / IPN / Externos)
-  const chipH = 18;
-  const padX = 8;
-  const radius = 5;
-  const gap = 6;
-  doc.setFontSize(9.5);
+  const rightRows = [
+    ["Idioma", `${safe(c.idioma)} • Nivel: ${safe((c as any).nivel)}`],
+    ["Asistencia", `${safe((c as any).modalidad_asistencia)} • Aula: ${safe((c as any).aula)}`],
+    ["Curso", `${cursoTxt}`],
+    ["Exámenes", `MT: ${c.examenMT ? dShortShort(c.examenMT) : "—"} • Final: ${c.examenFinal ? dShortShort(c.examenFinal) : "—"}`],
+  ];
 
+  const headStyles = { halign: "left" as const, fontStyle: "bold" as const, fillColor: [255,255,255], textColor: [0,0,0] };
+  const bodyStyles = { halign: "left" as const, cellPadding: cellPad, fontSize: 9.2 };
+
+  (autoTable as any)(doc, {
+    startY: y,
+    theme: "plain",
+    head: [["", ""]],
+    body: leftRows,
+    margin: { left: leftX, right: pageW - (leftX + colW) },
+    tableWidth: colW,
+    styles: { fontSize: 9.2, cellPadding: cellPad, overflow: "linebreak" },
+    headStyles,
+    bodyStyles,
+    columnStyles: { 0: { cellWidth: leftLabelW, fontStyle: "bold" }, 1: { cellWidth: leftValueW } },
+    didParseCell: (d: any) => {
+      // Color tenue para etiquetas
+      if (d.section === "body" && d.column.index === 0) d.cell.styles.textColor = [90,90,90];
+      // Asegura una sola línea en “Docente” (ya forzamos font size); evita linebreak
+      if (d.section === "body" && d.row.index === 4 && d.column.index === 1) {
+        d.cell.styles.overflow = "ellipsize";
+      }
+    },
+  });
+  const leftEndY = (doc as any).lastAutoTable.finalY;
+
+  (autoTable as any)(doc, {
+    startY: y,
+    theme: "plain",
+    head: [["", ""]],
+    body: rightRows,
+    margin: { left: rightX, right: margin },
+    tableWidth: colW,
+    styles: { fontSize: 9.2, cellPadding: cellPad, overflow: "linebreak" },
+    headStyles,
+    bodyStyles,
+    columnStyles: { 0: { cellWidth: 88, fontStyle: "bold" }, 1: { cellWidth: colW - 88 } },
+    didParseCell: (d: any) => {
+      if (d.section === "body" && d.column.index === 0) d.cell.styles.textColor = [90,90,90];
+    },
+  });
+  const rightEndY = (doc as any).lastAutoTable.finalY;
+
+  y = Math.max(leftEndY, rightEndY) + 6;
+
+  // ==== Pills de totales (después del encabezado) ====
+  const chipH = 18, padX = 8, radius = 5, gap = 6;
+  doc.setFontSize(9.2);
   function chip(text: string, x: number, color: [number, number, number]) {
     const w = doc.getTextWidth(text) + padX * 2;
     doc.setFillColor(...color);
@@ -340,51 +430,46 @@ async function exportInscritosPDF(c: CicloDTO, rows: InscripcionLite[]) {
     doc.setTextColor(0, 0, 0);
     return w;
   }
-
   let cx = margin;
-  cx += chip(`Total: ${total}`, cx, [51, 103, 214]) + gap;
-  cx += chip(`IPN: ${ipnCount}`, cx, [0, 150, 136]) + gap;
-  cx += chip(`Externos: ${externos}`, cx, [255, 152, 0]);
-  y += chipH + 10;
+  cx += chip(`Total: ${total}`, cx, [51, 103, 214]) + gap;   // azul
+  cx += chip(`IPN: ${ipnCount}`, cx, [0, 150, 136]) + gap;   // verde
+  cx += chip(`Externos: ${externos}`, cx, [255, 152, 0]);    // naranja
+  y += chipH + 8;
 
-  // === Docente
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10.5);
-  doc.text("Docente", margin, y);
-  doc.setFont("helvetica", "normal");
-  y += 12;
-  doc.text(`Nombre: ${docenteNombre}`, margin, y);
-  y += 12;
-  doc.text(`Email: ${docenteEmail}`, margin, y);
-  y += 8;
-
-  // === Tabla de inscritos
-  doc.setDrawColor(232);
+  // Separador
+  doc.setDrawColor(230);
   doc.line(margin, y, pageW - margin, y);
   y += 6;
 
-  const body = rows.map((r, idx) => {
+  // ==== Tabla de inscritos (compacta, ORDENADA ASC por fecha de creación) ====
+  const sorted = [...rows].sort((a, b) => {
+    const ta = new Date(a.created_at || 0).getTime();
+    const tb = new Date(b.created_at || 0).getTime();
+    return ta - tb; // más viejo -> más reciente
+  });
+
+  const body = sorted.map((r, idx) => {
     const name =
       `${(r.alumno?.first_name ?? "").trim()} ${(r.alumno?.last_name ?? "").trim()}`.trim() ||
       (r.alumno?.email ?? "—");
     const email = r.alumno?.email ?? "—";
     const boleta = r.alumno?.boleta ?? "—";
     const tipo = r.alumno?.is_ipn ? "IPN" : "Externo";
-    const creado = dWhen(r.created_at ?? undefined);
+    const creado = dWhenPDF(r.created_at ?? undefined); // 25/Sep/2025 16:45 hrs.
     return [idx + 1, name, email, boleta, tipo, creado];
   });
 
-  const COLS = [0.06, 0.30, 0.28, 0.12, 0.08, 0.16];
+  const COLS = [0.06, 0.30, 0.27, 0.12, 0.08, 0.17];
   const W = COLS.map((f) => Math.floor(innerW * f));
 
   (autoTable as any)(doc, {
     startY: y,
-    head: [["#", "Nombre", "Email", "Boleta", "Tipo", "Inscrito el"]],
+    head: [["#", "Nombre", "Email", "Boleta", "Tipo", "Inscripción"]],
     body,
     margin: { left: margin, right: margin },
     tableWidth: innerW,
-    styles: { fontSize: 9, cellPadding: 5, overflow: "linebreak", cellWidth: "wrap" },
-    headStyles: { fillColor: [238, 238, 238], textColor: [0, 0, 0], fontStyle: "bold" },
+    styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak", cellWidth: "wrap" },
+    headStyles: { fillColor: [242, 242, 242], textColor: [0, 0, 0], fontStyle: "bold" },
     alternateRowStyles: { fillColor: [250, 250, 250] },
     columnStyles: {
       0: { halign: "right", cellWidth: W[0] },
@@ -394,23 +479,16 @@ async function exportInscritosPDF(c: CicloDTO, rows: InscripcionLite[]) {
       4: { halign: "center", cellWidth: W[4] },
       5: { cellWidth: W[5] },
     },
+    didParseCell: (d: any) => { d.cell.styles.minCellHeight = 12; },
     didDrawPage: () => {
       const pageW_ = doc.internal.pageSize.getWidth();
       const pageH_ = doc.internal.pageSize.getHeight();
       doc.setFontSize(8);
       doc.setTextColor(120);
-      doc.text(
-        `Generado: ${new Date().toLocaleString("es-MX").replace(/\./g, "")}`,
-        margin,
-        pageH_ - 12,
-        { baseline: "bottom" as any }
-      );
+      doc.text(`Generado: ${new Date().toLocaleString("es-MX").replace(/\./g, "")}`, margin, pageH_ - 12, { baseline: "bottom" as any });
       const pageNo = `Página ${doc.internal.getNumberOfPages()}`;
       doc.text(pageNo, pageW_ - margin, pageH_ - 12, { align: "right", baseline: "bottom" as any });
       doc.setTextColor(0);
-    },
-    didParseCell: (data: any) => {
-      data.cell.styles.minCellHeight = 13;
     },
   });
 
@@ -418,6 +496,7 @@ async function exportInscritosPDF(c: CicloDTO, rows: InscripcionLite[]) {
   const filename = `${safe(c.codigo)}-inscritos-${ymd}.pdf`.replace(/\s+/g, "_");
   doc.save(filename);
 }
+
 
 
 /* ========================= MAIN ========================= */

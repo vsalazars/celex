@@ -63,6 +63,9 @@ def _to_inscripcion_out(r: models.Inscripcion) -> schemas.InscripcionOut:
     return schemas.InscripcionOut(
         id=r.id,
         ciclo_id=r.ciclo_id,
+
+        alumno_id=r.alumno_id,            # 👈 nuevo
+
         status=r.status,
         tipo=r.tipo,
         fecha_pago=r.fecha_pago,

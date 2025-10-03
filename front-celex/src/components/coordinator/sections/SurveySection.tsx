@@ -380,7 +380,7 @@ export default function SurveySection() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Orden</TableHead>
+                    
                     <TableHead>Nombre</TableHead>
                     <TableHead className="hidden md:table-cell">Descripción</TableHead>
                     <TableHead>Estado</TableHead>
@@ -401,16 +401,7 @@ export default function SurveySection() {
                   {!loading &&
                     categories.map((c, idx) => (
                       <TableRow key={`cat-${c.id}-${idx}`}>
-                        <TableCell className="w-28">
-                          <div className="inline-flex gap-1">
-                            <Button size="icon" variant="outline" onClick={() => moveCategory(c, "up")} disabled={idx === 0}>
-                              <ArrowUp className="h-4 w-4" />
-                            </Button>
-                            <Button size="icon" variant="outline" onClick={() => moveCategory(c, "down")} disabled={idx === categories.length - 1}>
-                              <ArrowDown className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                        
                         <TableCell className="font-medium">{c.name}</TableCell>
                         <TableCell className="hidden md:table-cell">{c.description || "—"}</TableCell>
                         <TableCell>
@@ -497,7 +488,6 @@ export default function SurveySection() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Orden</TableHead>
                     <TableHead>Pregunta</TableHead>
                     <TableHead className="hidden md:table-cell">Ayuda</TableHead>
                     <TableHead>Tipo</TableHead>
@@ -520,16 +510,7 @@ export default function SurveySection() {
                   {!loading &&
                     filteredQuestions.map((q, idx) => (
                       <TableRow key={`q-${q.id}-${idx}`}>
-                        <TableCell className="w-28">
-                          <div className="inline-flex gap-1">
-                            <Button size="icon" variant="outline" onClick={() => moveQuestion(q, "up")} disabled={idx === 0}>
-                              <ArrowUp className="h-4 w-4" />
-                            </Button>
-                            <Button size="icon" variant="outline" onClick={() => moveQuestion(q, "down")} disabled={idx === filteredQuestions.length - 1}>
-                              <ArrowDown className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                        
                         <TableCell className="font-medium">
                           <div className="mb-1">{q.text}</div>
                           <div className="text-xs text-neutral-500">
