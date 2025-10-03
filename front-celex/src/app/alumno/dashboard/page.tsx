@@ -17,6 +17,9 @@ import {
   BadgeDollarSign,
   LogOut,
   Loader2,
+  LayoutDashboard,
+  History,
+  HelpCircle,
 } from "lucide-react";
 
 export default function AlumnoDashboardPage() {
@@ -122,7 +125,35 @@ export default function AlumnoDashboardPage() {
                   desc="Comprobantes y estados."
                   icon={<BadgeDollarSign className="h-5 w-5" />}
                   onClick={() => router.push("/alumno/pagos")}
-                />
+                 />
+
+                 <QuickAction
+                    title="Colocación"
+                    desc="Examen para ubicar tu nivel."
+                    icon={<GraduationCap className="h-5 w-5" />}
+                    onClick={() => router.push("/alumno/placement")}
+                  />
+
+                  <QuickAction
+                    title="Historial"
+                    desc="Calificaciones y asistencias."
+                    icon={<History className="h-5 w-5" />}
+                    onClick={() => router.push("/alumno/historial")}
+                  />
+
+                  <QuickAction
+                    title="Perfil"
+                    desc="Datos y credenciales."
+                    icon={<UserIcon className="h-5 w-5" />}
+                    onClick={() => router.push("/alumno/perfil")}
+                  />
+
+                  <QuickAction
+                    title="Ayuda"
+                    desc="Preguntas frecuentes."
+                    icon={<HelpCircle className="h-5 w-5" />}
+                    onClick={() => router.push("/alumno/ayuda")}
+                  />
               </div>
             </section>
 

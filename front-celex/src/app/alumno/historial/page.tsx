@@ -377,7 +377,7 @@ export default function AlumnoHistorialPage() {
           <Card className="shadow-sm">
             <CardHeader className="flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               <CardTitle className="text-base sm:text-lg">
-                Historial / Boleta
+                Historial de calificaciones
               </CardTitle>
               <div className="w-full sm:w-80">
                 <Input
