@@ -139,6 +139,28 @@ const fmtMXNfromCentavos = (cent?: number | null) =>
         maximumFractionDigits: 2,
       }).format(cent / 100);
 
+function formatGrade(g?: number | null) {
+  if (g == null || isNaN(Number(g))) return "—";
+  const v = Number(g);
+  // Heurística: si es 0–10 mostramos 1 decimal; si es 0–100 mostramos entero/1 decimal
+  if (v <= 10) return v.toFixed(1);
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+function formatGradeTone(g?: number | null): { text: string; tone: "green" | "red" | "neutral" } {
+  if (g == null || isNaN(Number(g))) {
+    return { text: "—", tone: "neutral" };
+  }
+  const v = Number(g);
+  const text = v.toFixed(1); // mostramos 1 decimal, p.ej. 82.0
+
+  // Regla que pediste: >= 80 verde, < 80 rojo
+  if (v >= 80) return { text, tone: "green" };
+  return { text, tone: "red" };
+}
+
+
+
 /* === Helper de errores === */
 function errorToText(e: any) {
   if (!e) return "Error desconocido";
@@ -293,6 +315,8 @@ function InscripcionCard({
   surveyAvailable,
   surveySubmitted,
   openingFor,
+  grade, // ⬅️ NUEVO
+
 }: {
   x: InscripcionDTO;
   onCancel: (id: number) => void;
@@ -301,6 +325,7 @@ function InscripcionCard({
   surveyAvailable: boolean;
   surveySubmitted: boolean;
   openingFor: number | null;
+  grade: number | null; // ⬅️ NUEVO
 }) {
   const meta = statusMeta(x.status);
   const tone = toneClasses(meta.tone);
@@ -355,13 +380,27 @@ function InscripcionCard({
               </div>
             </div>
 
-            {/* “Calificación” placeholder compacto (no funcional, se mantiene) */}
+            {/* “Calificación” compacto */}
             <div className="hidden sm:block">
               <div className="text-[11px] text-neutral-500 mb-1 text-right">Calificación</div>
-              <div className="h-9 w-16 rounded-xl border border-dashed text-sm font-semibold grid place-items-center text-neutral-700">
-                —
-              </div>
+              {(() => {
+                const { text, tone } = formatGradeTone(grade);
+                const color =
+                  tone === "green"
+                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                    : tone === "red"
+                    ? "bg-red-100 text-red-800 border-red-300"
+                    : "text-neutral-700 border-neutral-300";
+                return (
+                  <div
+                    className={`h-9 w-16 rounded-xl border text-sm font-semibold grid place-items-center ${color}`}
+                  >
+                    {text}
+                  </div>
+                );
+              })()}
             </div>
+          
           </div>
         </div>
 
@@ -603,6 +642,10 @@ export default function Page() {
   const [openingFor, setOpeningFor] = useState<number | null>(null);
   const [submittedMap, setSubmittedMap] = useState<Record<number, boolean>>({});
 
+  // Mapa: inscripcion_id -> promedio (o null si no hay)
+  const [gradesByInscripcion, setGradesByInscripcion] = useState<Record<number, number | null>>({});
+
+
   // wizard 1x1
   const [qIndex, setQIndex] = useState(0);
   // comentarios adicionales (opcional)
@@ -614,6 +657,20 @@ export default function Page() {
       const data = await listMisInscripciones();
       const items = Array.isArray(data) ? data : [];
       setRows(items);
+
+        // ⬇️ INSERTA AQUÍ este try/catch del historial
+    try {
+      const hist = await apiFetch(`${API_URL}/alumno/historial`, { auth: true });
+      const gmap: Record<number, number | null> = {};
+      for (const it of (hist?.items ?? [])) {
+        gmap[it.inscripcion_id] = (typeof it.promedio === "number") ? it.promedio : null;
+      }
+      setGradesByInscripcion(gmap);
+    } catch (e: any) {
+      console.error(e);
+      setGradesByInscripcion({});
+    }
+    // ⬆️ HASTA AQUÍ
 
       try {
         const ids = items.map((r) => r.id);
@@ -918,6 +975,7 @@ export default function Page() {
                   surveyAvailable={!!surveyAvailability[x.id]}
                   surveySubmitted={!!submittedMap[x.id]}
                   openingFor={openingFor}
+                  grade={gradesByInscripcion[x.id] ?? null}  // ⬅️ AQUI
                 />
               ))}
             </div>
