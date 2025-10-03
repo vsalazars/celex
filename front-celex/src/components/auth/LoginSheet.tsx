@@ -10,7 +10,6 @@ import {
   EyeOff,
   LogIn,
   ShieldCheck,
-  Sparkles,
   ArrowRight,
   Loader2,
 } from "lucide-react";
@@ -24,7 +23,6 @@ import {
   SheetTitle,
   SheetDescription,
   SheetTrigger,
-  // SheetFooter (no lo necesitamos por ahora)
 } from "@/components/ui/sheet";
 
 type LoginData = {
@@ -124,7 +122,6 @@ export default function LoginSheet({
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      {/* Trigger opcional */}
       {showTrigger && (
         <SheetTrigger asChild>
           <Button
@@ -138,13 +135,11 @@ export default function LoginSheet({
         </SheetTrigger>
       )}
 
-      {/* Panel con mayor ancho en desktop y diseño visual mejorado */}
       <SheetContent
         side="right"
-        // max-w-xl en desktop para permitir el encabezado hero + formulario cómodo
         className="w-full sm:max-w-xl p-0 overflow-hidden"
       >
-        {/* Fondo decorativo (no interfiere con el contenido) */}
+        {/* Fondo decorativo */}
         <div className="absolute inset-0 -z-10 opacity-20">
           <div className="absolute -top-20 left-0 h-64 w-64 rounded-full bg-[#7c0040]/30 blur-3xl" />
           <div className="absolute top-40 -right-10 h-64 w-64 rounded-full bg-fuchsia-400/30 blur-3xl" />
@@ -152,28 +147,33 @@ export default function LoginSheet({
 
         {/* Contenedor principal */}
         <div className="flex h-full flex-col">
-          {/* HERO / Encabezado visual */}
+          {/* HERO / Encabezado visual (sin ícono) */}
           <div className="relative overflow-hidden border-b bg-gradient-to-br from-white via-fuchsia-50 to-rose-50">
             <div className="relative px-6 pt-8 pb-6 sm:px-8">
-              <div className="flex items-start gap-3">
-                <div className="h-12 w-12 rounded-2xl bg-[#7c0040] text-white grid place-items-center shadow-md">
-                  <Sparkles className="h-6 w-6" />
-                </div>
-                <div className="min-w-0">
-                  <SheetHeader className="text-left">
-                    <SheetTitle className="font-title text-xl sm:text-2xl leading-tight">
-                      CELEX “Diódoro Antúnez Echegaray”
-                    </SheetTitle>
-                    <SheetDescription className="text-neutral-600">
-                      Accede con tu correo y contraseña.
-                    </SheetDescription>
-                  </SheetHeader>
-                  <div className="mt-3 flex items-center gap-2 text-[11px] font-medium text-neutral-700">
-                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                    <span>Acceso seguro</span>
-                    <span className="mx-1 opacity-40">•</span>
-                    <span>Datos protegidos</span>
-                  </div>
+              <div className="min-w-0">
+                
+
+                <SheetHeader className="text-left">
+                  <SheetTitle className="font-title leading-tight">
+                    <span className="block text-[38px] sm:text-[32px] font-extrabold tracking-tight text-[#7c0040]">
+                      CELEX
+                    </span>
+                    <span className="block text-md sm:text-base text-neutral-700 mt-0.5">
+                      “Diódoro Antúnez”
+                    </span>
+                  </SheetTitle>
+                  <SheetDescription className="text-neutral-600">
+                    Accede con tu correo y contraseña.
+                  </SheetDescription>
+                </SheetHeader>
+
+                
+                
+                <div className="mt-3 flex items-center gap-2 text-[11px] font-medium text-neutral-700">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  <span>Acceso seguro</span>
+                  <span className="mx-1 opacity-40">•</span>
+                  <span>Datos protegidos</span>
                 </div>
               </div>
 
@@ -182,7 +182,7 @@ export default function LoginSheet({
             </div>
           </div>
 
-          {/* CONTENIDO: Formulario + tips/links */}
+          {/* CONTENIDO */}
           <div className="flex-1 overflow-auto">
             <div className="mx-auto w-full max-w-md px-6 py-6 sm:px-8 sm:py-8">
               <form
@@ -296,7 +296,7 @@ export default function LoginSheet({
             </div>
           </div>
 
-          {/* FOOTER sticky del sheet (acciones secundarias) */}
+          {/* FOOTER sticky del sheet */}
           <div className="border-t bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
             <div className="mx-auto flex w-full max-w-md items-center justify-between px-6 py-3 sm:max-w-xl">
               <div className="text-[11px] text-neutral-500">
