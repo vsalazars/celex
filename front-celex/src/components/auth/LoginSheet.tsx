@@ -267,26 +267,26 @@ export default function LoginSheet({
 
                 {/* CTA principal */}
                 <Button
-                    type="submit"
-                    disabled={loginLoading}
-                    className="group w-full h-12 rounded-full text-base font-semibold tracking-wide
-                              bg-gradient-to-r from-[#7c0040] via-fuchsia-600 to-rose-500
-                              text-white shadow-md hover:shadow-lg hover:scale-[1.01]
-                              transition-all duration-200 ease-in-out
-                              disabled:opacity-70 disabled:hover:scale-100"
-                  >
-                    {loginLoading ? (
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Entrando…
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-2">
-                        Entrar
-                        <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" />
-                      </span>
-                    )}
-                  </Button>
+                  type="submit"
+                  disabled={loginLoading}
+                  className="group w-full h-12 rounded-full text-base font-semibold tracking-wide
+                            bg-gradient-to-r from-[#7c0040] via-[#5a002f] to-[#400022]
+                            text-white shadow-md hover:shadow-lg hover:scale-[1.01]
+                            transition-all duration-200 ease-in-out
+                            disabled:opacity-70 disabled:hover:scale-100"
+                >
+                  {loginLoading ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Entrando…
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2">
+                      Entrar
+                      <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" />
+                    </span>
+                  )}
+                </Button>
 
 
                 {/* Divider sutil */}
