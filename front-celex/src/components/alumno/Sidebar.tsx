@@ -13,12 +13,12 @@ import NavLink from "./NavLink";
 
 const links = [
   { href: "/alumno/dashboard", label: "Inicio", icon: <Home className="h-4 w-4" /> }, // 👈 cambiado
+  { href: "/alumno/perfil", label: "Perfil", icon: <User className="h-4 w-4" /> },
   { href: "/alumno/cursos", label: "Mis cursos", icon: <BookOpen className="h-4 w-4" /> },
   { href: "/alumno/inscripcion", label: "Inscripción", icon: <BookOpen className="h-4 w-4" /> },
   { href: "/alumno/placement", label: "Colocación", icon: <GraduationCap className="h-4 w-4" /> },
   { href: "/alumno/pagos", label: "Pagos", icon: <CreditCard className="h-4 w-4" /> },
   { href: "/alumno/historial", label: "Historial", icon: <History className="h-4 w-4" /> },
-  { href: "/alumno/perfil", label: "Perfil", icon: <User className="h-4 w-4" /> },
   { href: "/alumno/ayuda", label: "Ayuda", icon: <HelpCircle className="h-4 w-4" /> },
 ];
 
