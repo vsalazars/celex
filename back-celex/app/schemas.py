@@ -418,7 +418,7 @@ class InscripcionOut(BaseModel):
     id: int
     ciclo_id: int
 
-    alumno_id: int                     # <-- para poder pedir historial por alumno
+    alumno_id: int | None = None
 
     status: Literal["registrada", "preinscrita", "confirmada", "rechazada", "cancelada"]
 
