@@ -155,10 +155,10 @@ export default function LoginSheet({
 
                 <SheetHeader className="text-left">
                   <SheetTitle className="font-title leading-tight">
-                    <span className="block text-[38px] sm:text-[32px] font-extrabold tracking-tight text-[#7c0040]">
+                    <span className="block text-[58px] sm:text-[32px] font-extrabold tracking-tight text-[#7c0040]">
                       CELEX
                     </span>
-                    <span className="block text-md sm:text-base text-neutral-700 mt-0.5">
+                    <span className="block text-xl sm:text-base text-neutral-700 mt-0.5">
                       “Diódoro Antúnez”
                     </span>
                   </SheetTitle>
