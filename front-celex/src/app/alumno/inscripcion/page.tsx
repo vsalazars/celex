@@ -1326,13 +1326,11 @@ function CardCiclo({
         ) : null}
       </div>
 
-      <div className="mt-2 text-xs text-neutral-700 space-y-1">
+      <div className="mt-2 text-sm text-neutral-700 space-y-1">
         <div>
           <b>Inscripción:</b> {d(c.inscripcion?.from)} – {d(c.inscripcion?.to)}
         </div>
-        <div>
-          <b>Horario:</b> {h(c.hora_inicio)}-{h(c.hora_fin)}
-        </div>
+      
       </div>
 
       {/* Barrita de capacidad */}

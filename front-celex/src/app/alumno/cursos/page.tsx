@@ -765,26 +765,42 @@ export default function Page() {
     }
   };
 
-  // flatten ordenado para 1x1
-  const flatQs: SurveyQuestion[] = useMemo(() => {
-    const cats = [...surveyCategories].sort((a, b) => a.order - b.order);
-    const byCat: Record<number, SurveyQuestion[]> = {};
-    for (const q of surveyQuestions) {
-      if (!byCat[q.category_id]) byCat[q.category_id] = [];
-      byCat[q.category_id].push(q);
-    }
-    for (const cid of Object.keys(byCat)) {
-      byCat[Number(cid)].sort((a, b) => a.order - b.order);
-    }
-    const list: SurveyQuestion[] = [];
-    for (const cat of cats) {
-      const qs = byCat[cat.id] || [];
-      for (const q of qs) list.push(q);
-    }
-    const orphan = surveyQuestions.filter((q) => !cats.find((c) => c.id === q.category_id));
-    orphan.sort((a, b) => a.order - b.order);
-    return [...list, ...orphan];
-  }, [surveyCategories, surveyQuestions]);
+  // flatten ordenado para 1x1, pero moviendo open_text al final
+const flatQs: SurveyQuestion[] = useMemo(() => {
+  // 1) Ordena categorías
+  const cats = [...surveyCategories].sort((a, b) => a.order - b.order);
+
+  // 2) Agrupa preguntas por categoría y ordénalas dentro de cada categoría
+  const byCat: Record<number, SurveyQuestion[]> = {};
+  for (const q of surveyQuestions) {
+    if (!byCat[q.category_id]) byCat[q.category_id] = [];
+    byCat[q.category_id].push(q);
+  }
+  for (const cid of Object.keys(byCat)) {
+    byCat[Number(cid)].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0));
+  }
+
+  // 3) Lista “base”: categorías en orden + preguntas huérfanas al final
+  const orderedInCats: SurveyQuestion[] = [];
+  for (const cat of cats) {
+    const qs = byCat[cat.id] || [];
+    for (const q of qs) orderedInCats.push(q);
+  }
+  const orphan = surveyQuestions
+    .filter((q) => !cats.find((c) => c.id === q.category_id))
+    .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0));
+
+  const base = [...orderedInCats, ...orphan];
+
+  // 4) Partición estable: primero NO open_text, luego open_text (manteniendo su orden relativo)
+  const openTexts = base.filter((q) => q.type === "open_text");
+  const others = base.filter((q) => q.type !== "open_text");
+
+  return [...others, ...openTexts];
+}, [surveyCategories, surveyQuestions]);
+
+
+
 
   const questionCount = flatQs.length;
   const currentQ = questionCount > 0 && qIndex >= 0 && qIndex < questionCount ? flatQs[qIndex] : null;
