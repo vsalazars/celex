@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Mail, Lock, Eye, EyeOff, UserRoundPlus, IdCard, BadgeCheck, LogIn
+  Mail, Lock, Eye, EyeOff, UserRoundPlus, IdCard, BadgeCheck, LogIn, Loader2
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -96,14 +96,49 @@ export default function RegisterCard() {
         body: JSON.stringify(payload),
       });
 
+      // --- Manejo de errores mejorado (409, 400 y otros) ---
       if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        const msg =
-          (data?.detail &&
-            (Array.isArray(data.detail) ? data.detail[0]?.msg : data.detail)) ||
-          "No se pudo crear la cuenta";
-        throw new Error(typeof msg === "string" ? msg : "Error de registro");
+        const data = await resp.json().catch(() => ({} as any));
+        const detail = data?.detail;
+        const detailMsg =
+          typeof detail === "string"
+            ? detail
+            : typeof detail?.message === "string"
+            ? detail.message
+            : (Array.isArray(detail) ? detail[0]?.msg : null);
+
+        if (resp.status === 409) {
+          const msg = detailMsg || "Este correo o CURP ya están registrados.";
+          // Toast con acción para abrir el Login
+          toast.info(msg, {
+            action: {
+              label: "Iniciar sesión",
+              onClick: () => setLoginOpen(true),
+            },
+          });
+          // Opcional: marca errores de campo si backend manda { field }
+          if (typeof detail === "object" && detail?.field) {
+            setRegErrors((prev) => ({ ...prev, [detail.field]: msg }));
+          }
+          // Detén el flujo (no limpies el formulario)
+          return;
+        }
+
+        if (resp.status === 400) {
+          const msg =
+            detailMsg ||
+            "Datos inválidos. Revisa el formulario.";
+          // Intenta mapear a campos si vino un objeto { field, message }
+          if (typeof detail === "object" && detail?.field && detail?.message) {
+            setRegErrors((prev) => ({ ...prev, [detail.field]: detail.message }));
+          }
+          throw new Error(msg);
+        }
+
+        // Cualquier otro status
+        throw new Error(detailMsg || "No se pudo crear la cuenta");
       }
+      // --- fin manejo de errores ---
 
       toast.success("Cuenta creada. Revisa tu correo para confirmar.");
       setRegNombre("");
@@ -156,7 +191,6 @@ export default function RegisterCard() {
             ¿Ya tienes cuenta? Inicia sesión
           </button>
         </div>
-
 
         {/* Tarjeta con selector IPN y formulario */}
         <div className="mb-4 rounded-2xl border bg-neutral-50 p-3 sm:p-4">
