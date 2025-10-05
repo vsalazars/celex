@@ -1,5 +1,5 @@
 # app/email_utils.py
-import smtplib, ssl, email.utils, logging
+import smtplib, ssl, email.utils
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
@@ -10,16 +10,14 @@ FROM_NAME = "CELEX CECyT 15 Diódoro Antúnez Echegaray"
 
 def send_email(to_email: str, subject: str, body_html: str, body_text: str | None = None) -> bool:
     from_email = settings.FROM_EMAIL or settings.SMTP_USER
-    host = settings.SMTP_HOST          # 👈 mantener hostname (p.ej. smtp.titan.email)
-    port = int(settings.SMTP_PORT)
-    use_ssl = bool(settings.SMTP_USE_SSL)
-    debug = bool(settings.SMTP_DEBUG)
 
-    # Mensaje
+    # ✅ RFC 2047: display name con acentos correctamente codificado
     display_from = formataddr((str(Header(FROM_NAME, "utf-8")), from_email))
+    display_to   = to_email  # si quisieras: formataddr((None, to_email))
+
     msg = MIMEMultipart("alternative")
     msg["From"] = display_from
-    msg["To"] = to_email
+    msg["To"] = display_to
     msg["Subject"] = str(Header(subject, "utf-8"))
     msg["Date"] = email.utils.formatdate(localtime=True)
     msg["Message-ID"] = email.utils.make_msgid(domain=from_email.split("@")[-1])
@@ -30,31 +28,26 @@ def send_email(to_email: str, subject: str, body_html: str, body_text: str | Non
         msg.attach(MIMEText(body_text, "plain", "utf-8"))
     msg.attach(MIMEText(body_html, "html", "utf-8"))
 
-    ctx = ssl.create_default_context()
-    server = None
     try:
-        if use_ssl:
-            # 👇 Usa el HOSTNAME para que el certificado coincida (SNI correcto)
-            server = smtplib.SMTP_SSL(host, port, timeout=30, context=ctx)
+        if settings.SMTP_USE_SSL:
+            context = ssl.create_default_context()
+            server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context, timeout=30)
         else:
-            server = smtplib.SMTP(host, port, timeout=30)
-            server.ehlo()
-            server.starttls(context=ctx)    # 👈 con contexto
-            server.ehlo()
+            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+            server.ehlo(); server.starttls(); server.ehlo()
 
-        if debug:
+        if settings.SMTP_DEBUG:
             server.set_debuglevel(1)
 
         server.login(settings.SMTP_USER, settings.SMTP_PASS)
         server.sendmail(from_email, [to_email], msg.as_string())
-        logging.info(f"✅ Email enviado a {to_email} (asunto: {subject})")
+        server.quit()
+        print(f"✅ Correo enviado a {to_email}: {subject}")
         return True
     except Exception as e:
-        logging.exception(f"❌ Error enviando email a {to_email}: {e}")
-        return False
-    finally:
+        print(f"⚠ Error enviando correo a {to_email}: {e}")
         try:
-            if server:
-                server.quit()
+            server.quit()
         except Exception:
             pass
+        return False
