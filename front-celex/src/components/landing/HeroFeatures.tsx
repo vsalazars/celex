@@ -770,7 +770,7 @@ export default function HeroFeatures() {
                     const tone = capTone(disp);
                     const pct = capPercent(disp, total);
                     const aula = (e as any).salon ?? (e as any).aula ?? (e as any).sala ?? undefined;
-
+                  
                     return (
                       <div key={keyId} className="rounded-2xl border bg-white p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow">
                         <div className="mb-2 min-w-0">
@@ -828,10 +828,19 @@ export default function HeroFeatures() {
                             </div>
                           ) : null}
 
+                          {/* Inscripción */}
                           <div>
-                            <div className="mb-1 font-semibold">Inscripción</div>
-                            {/* Cuando tengas inscripcion.from/to en exámenes, puedes mostrarlo aquí */}
-                            <div className="ml-6">—</div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <CalendarDays className="h-4 w-4 shrink-0" /> <b>Inscripción</b>
+                            </div>
+                            <div className="ml-6">
+                              {(() => {
+                                const ins = (e as any)?.inscripcion;
+                                const from = ins?.from ?? (e as any)?.insc_inicio ?? null;
+                                const to   = ins?.to   ?? (e as any)?.insc_fin    ?? null;
+                                return (from || to) ? `${d(from)} – ${d(to)}` : "—";
+                              })()}
+                            </div>
                           </div>
                         </div>
 
