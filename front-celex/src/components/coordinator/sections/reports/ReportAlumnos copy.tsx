@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, Printer, Users, CheckCircle2, Clock, XCircle, GraduationCap, Globe } from "lucide-react";
+import { Download, Printer } from "lucide-react";
 import { ReportFiltersState } from "./useReportFilters";
 import { downloadCSV, exportNodeToPDF } from "./utils/export";
 import { getReporteInscritos, type ReportReporteInscritos } from "@/lib/api";
@@ -20,9 +20,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 
-/* =========================
-   Helpers de nombres/orden
-   ========================= */
+// ---------- Helpers ----------
 const collator = new Intl.Collator("es", { sensitivity: "base" });
 
 function parseAlumno(full: string) {
@@ -71,7 +69,7 @@ function formatFechaHora24(fecha?: string | null) {
     const mm = String(d.getMinutes()).padStart(2, "0");
     return `${dia}/${mes}/${anio} ${hh}:${mm}`;
   } catch {
-    return fecha || "—";
+    return fecha;
   }
 }
 
@@ -82,10 +80,10 @@ function EstadoBadge({ estado }: { estado: string | null | undefined }) {
     "px-2 py-0.5 text-xs rounded-full border inline-flex items-center justify-center";
   let label = estado || "—";
 
-  if (["confirmada", "confirmado", "activo", "validado", "inscrito", "inscrita"].includes(e)) {
+  if (["confirmada", "confirmado", "activo", "validado", "inscrito"].includes(e)) {
     cls += " bg-green-100 text-green-800 border-green-200";
   } else if (
-    ["pendiente", "pendiente_pago", "en proceso", "registrada", "preinscrita"].includes(e)
+    ["pendiente", "pendiente_pago", "en proceso", "registrada"].includes(e)
   ) {
     cls += " bg-amber-100 text-amber-800 border-amber-200";
   } else if (["rechazada", "rechazado", "cancelado", "baja"].includes(e)) {
@@ -97,43 +95,7 @@ function EstadoBadge({ estado }: { estado: string | null | undefined }) {
   return <span className={cls}>{label}</span>;
 }
 
-/* =========================
-   Card compacta reutilizable
-   ========================= */
-type StatCardProps = { icon: React.ElementType; label: string; value: string | number; tone?: "slate" | "emerald" | "amber" | "red" | "indigo" };
-function StatCardCompact({ icon: Icon, label, value, tone = "slate" }: StatCardProps) {
-  const tones: Record<string, string> = {
-    slate: "border-border bg-background/70",
-    emerald: "border-emerald-200/60 dark:border-emerald-900/40 bg-emerald-50/40 dark:bg-emerald-950/20",
-    amber: "border-amber-200/60 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20",
-    red: "border-red-200/60 dark:border-red-900/40 bg-red-50/40 dark:bg-red-950/20",
-    indigo: "border-indigo-200/60 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-950/20",
-  };
-  const textTones: Record<string, string> = {
-    slate: "text-slate-700 dark:text-slate-300",
-    emerald: "text-emerald-700 dark:text-emerald-300",
-    amber: "text-amber-700 dark:text-amber-300",
-    red: "text-red-700 dark:text-red-300",
-    indigo: "text-indigo-700 dark:text-indigo-300",
-  };
-  return (
-    <div className={`rounded-xl border ${tones[tone]} p-2 md:p-3`}>
-      <div className="flex items-center gap-2">
-        <div className={`h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded-lg ${textTones[tone]} bg-white/70 dark:bg-black/20`}>
-          <Icon className="h-4 w-4 md:h-5 md:w-5" aria-hidden="true" />
-        </div>
-        <div className="flex-1">
-          <div className="text-[11px] md:text-xs text-muted-foreground leading-none">{label}</div>
-          <div className="text-lg md:text-xl font-semibold tracking-tight mt-0.5">{value}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========
-   Tipos
-   ========= */
+// ---------- Tipos ----------
 type AlumnoRow = {
   inscripcion_id: string | number;
   boleta?: string | null;
@@ -193,38 +155,6 @@ export default function ReportAlumnos({ filters }: { filters: ReportFiltersState
       .sort((x, y) => compareByApellidoNombre(x.nombre || "", y.nombre || ""));
   }, [reporte]);
 
-  /* =========
-     RESUMEN
-     ========= */
-  const resumen = useMemo(() => {
-    const acc = {
-      total: 0,
-      ipn: 0,
-      externos: 0,
-      confirmados: 0,
-      pendientes: 0,
-      rechazados: 0,
-    };
-    for (const r of rows) {
-      acc.total += 1;
-      if (r.ipn) acc.ipn += 1;
-      else acc.externos += 1;
-
-      const e = String(r.estado ?? "").toLowerCase().trim();
-      if (["confirmada", "confirmado", "activo", "validado", "inscrito", "inscrita"].includes(e)) {
-        acc.confirmados += 1;
-      } else if (["rechazada", "rechazado", "cancelado", "baja"].includes(e)) {
-        acc.rechazados += 1;
-      } else {
-        acc.pendientes += 1;
-      }
-    }
-    return acc;
-  }, [rows]);
-
-  /* =========
-     CSV / PDF
-     ========= */
   const csv = () => {
     if (!rows.length || !reporte) return;
     const data = rows.map((r) => {
@@ -244,9 +174,6 @@ export default function ReportAlumnos({ filters }: { filters: ReportFiltersState
 
   const pdf = () => exportNodeToPDF(ref.current, "Alumnos inscritos");
 
-  /* =========
-     Tabla
-     ========= */
   const columns = useMemo<ColumnDef<AlumnoRow>[]>(
     () => [
       {
@@ -363,20 +290,10 @@ export default function ReportAlumnos({ filters }: { filters: ReportFiltersState
             <Button size="sm" variant="outline" onClick={csv} disabled={!rows.length}>
               <Download className="h-4 w-4 mr-2" /> CSV
             </Button>
-            <Button size="sm" onClick={() => exportNodeToPDF(ref.current, "Alumnos inscritos")} disabled={!rows.length}>
+            <Button size="sm" onClick={pdf} disabled={!rows.length}>
               <Printer className="h-4 w-4 mr-2" /> PDF
             </Button>
           </div>
-        </div>
-
-        {/* ====== Cards de resumen (igual estilo que pagos) ====== */}
-        <div className="mt-3 grid grid-cols-2 md:grid-cols-6 gap-2">
-          <StatCardCompact icon={Users} label="Total alumnos" value={resumen.total} tone="slate" />
-          <StatCardCompact icon={GraduationCap} label="IPN" value={resumen.ipn} tone="indigo" />
-          <StatCardCompact icon={Globe} label="Externos" value={resumen.externos} tone="slate" />
-          <StatCardCompact icon={CheckCircle2} label="Confirmados" value={resumen.confirmados} tone="emerald" />
-          <StatCardCompact icon={Clock} label="Pendientes" value={resumen.pendientes} tone="amber" />
-          <StatCardCompact icon={XCircle} label="Rechazados" value={resumen.rechazados} tone="red" />
         </div>
 
         <Separator className="my-3" />

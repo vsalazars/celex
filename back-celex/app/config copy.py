@@ -11,18 +11,14 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] | str = []
 
-    # SMTP / Titan (fallback / local)
+    # SMTP / Titan
     SMTP_HOST: str = "smtp.titan.email"
     SMTP_PORT: int = 465
     SMTP_USER: str = ""
     SMTP_PASS: str = ""
     FROM_EMAIL: str = ""
-    SMTP_USE_SSL: bool = True
-    SMTP_DEBUG: bool = False
-
-    # RESEND
-    RESEND_API_KEY: str = ""
-    RESEND_FROM: str = "CELEX UPIITA <celex@resend.dev>"
+    SMTP_USE_SSL: bool = True      # True => SMTP_SSL:465; False => STARTTLS:587
+    SMTP_DEBUG: bool = False       # True para ver diálogo SMTP
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
