@@ -47,37 +47,38 @@ export async function apiFetch<T = any>(
 ): Promise<T> {
   const headers = new Headers(init?.headers || {});
 
-  // Aceptamos json por defecto si no hay preferencia
+  // Acepta JSON por defecto
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json, */*;q=0.1");
   }
 
+  // Auth
   if (init?.auth) {
     const token = getToken();
     if (!token) throw new Error("Sesión inválida");
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  // Si nos pasaron "json", armamos el body y el Content-Type (a menos que sea FormData)
+  // Body / Content-Type helpers
   let body: BodyInit | undefined = init?.body;
-  if (!isFormDataBody(init) && init?.json !== undefined) {
+  const isFD = typeof FormData !== "undefined" && init?.body instanceof FormData;
+
+  if (!isFD && init?.json !== undefined) {
     if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     body = JSON.stringify(init.json);
   }
-
-  // ⚠️ NO forzar JSON si mandamos FormData (multipart) o si ya lo pusimos con json
-  if (!isFormDataBody(init) && !headers.has("Content-Type") && body && init?.json === undefined) {
+  if (!isFD && !headers.has("Content-Type") && body && init?.json === undefined) {
     headers.set("Content-Type", "application/json");
   }
-  if (isFormDataBody(init) && headers.has("Content-Type")) {
+  if (isFD && headers.has("Content-Type")) {
     headers.delete("Content-Type");
   }
 
+  // Fetch
   let res: Response;
   try {
     res = await fetch(input, { ...init, headers, body, cache: "no-store" });
   } catch (err: any) {
-    // Aquí cae el famoso "TypeError: Failed to fetch"
     const detail = err?.message || String(err);
     throw new Error(
       `No se pudo conectar con la API (${input}). ` +
@@ -86,12 +87,28 @@ export async function apiFetch<T = any>(
     );
   }
 
+  // Errores HTTP
   if (!res.ok) {
     if (res.status === 401) {
       try { clearSession(); } catch {}
+
+      const k = "celex_last_401";
+      const last = Number(sessionStorage.getItem(k) || "0");
+      const now = Date.now();
+      if (now - last > 3000) {
+        sessionStorage.setItem(k, String(now));
+        if (typeof window !== "undefined") {
+          try {
+            const { toast } = await import("sonner");
+            toast.error("Tu sesión expiró. Inicia sesión nuevamente.");
+          } catch {}
+          window.location.href = "/";
+        }
+      }
       throw new Error("No autorizado. Vuelve a iniciar sesión.");
     }
 
+    // Construir mensaje de error legible
     let detail = `Error ${res.status}`;
     try {
       const ctype = res.headers.get("content-type") || "";
@@ -102,15 +119,13 @@ export async function apiFetch<T = any>(
         const t = await res.text();
         if (t) detail = t;
       }
-    } catch {
-      // swallow
-    }
+    } catch {}
     throw new Error(detail);
   }
 
+  // OK
   if (res.status === 204) return undefined as unknown as T;
 
-  // Devuelve JSON si hay; si no, texto.
   const ctype = res.headers.get("content-type") || "";
   if (ctype.includes("application/json")) {
     return (await res.json()) as T;
@@ -118,6 +133,7 @@ export async function apiFetch<T = any>(
   const text = await res.text();
   return (text as unknown) as T;
 }
+
 
 // 👇 Exporta buildURL para que puedas importarlo como named export
 export function buildURL(
