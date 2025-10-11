@@ -1,7 +1,7 @@
 "use client";
 
+import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState } from "react";
 import { toast } from "sonner";
 import { resetPassword } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Lock } from "lucide-react";
 
-export default function ResetPasswordPage() {
+// Opcional: evita prerender estático de la ruta
+export const dynamic = "force-dynamic";
+
+function ResetPasswordInner() {
   const sp = useSearchParams();
   const router = useRouter();
   const token = (sp.get("token") || "").trim();
@@ -120,5 +123,19 @@ export default function ResetPasswordPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen grid place-items-center">
+          <div className="text-sm text-neutral-600">Cargando…</div>
+        </div>
+      }
+    >
+      <ResetPasswordInner />
+    </Suspense>
   );
 }
