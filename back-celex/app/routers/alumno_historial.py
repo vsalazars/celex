@@ -46,7 +46,11 @@ def get_historial_alumno(
     inscripciones: List[Inscripcion] = (
         db.query(Inscripcion)
         .options(joinedload(Inscripcion.ciclo))
-        .filter(Inscripcion.alumno_id == current_user.id)
+        .filter(
+            Inscripcion.alumno_id == current_user.id,
+            Inscripcion.status == "confirmada",          # 👈 sólo confirmadas
+            Inscripcion.validated_at.isnot(None),        # 👈 aseguramos que fue validada
+        )
         .all()
     )
 
