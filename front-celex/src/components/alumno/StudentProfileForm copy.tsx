@@ -15,9 +15,6 @@ import {
   Hash,
   Building2,
   Globe,
-  Shield,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -35,8 +32,6 @@ import {
 
 import { getAlumnoPerfil, updateAlumnoPerfil, type AlumnoPerfil } from "@/lib/student";
 import { getSession } from "@/lib/sessions";
-import { apiFetch, buildURL } from "@/lib/api";
-
 
 /* —————————————————————————————————————————————————————
    Helpers
@@ -114,15 +109,6 @@ type FormValues = {
 };
 
 /* —————————————————————————————————————————————————————
-   NUEVO: tipos para cambio de contraseña
-————————————————————————————————————————————————————— */
-type PasswordFormValues = {
-  current_password: string;
-  new_password: string;
-  confirm_new_password: string;
-};
-
-/* —————————————————————————————————————————————————————
    UI presets (mobile-first)
 ————————————————————————————————————————————————————— */
 const inputClass = "h-11 text-[15px]";
@@ -133,78 +119,16 @@ const sectionTitleClass = "text-base sm:text-lg font-semibold tracking-tight fle
 const GUINDA = "#7c0040";
 
 /* —————————————————————————————————————————————————————
-   NUEVO: llamada al backend para cambio de contraseña
-————————————————————————————————————————————————————— */
-async function changePasswordAPI(body: PasswordFormValues, token?: string) {
-  const base = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, "") || "";
-  const url = `${base}/alumno/perfil/password`;
-
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (e: any) {
-    // Error de red / CORS / proxy
-    throw {
-      status: 0,
-      message: "Fallo de red. ¿API caída o CORS?",
-      raw: e?.message,
-    };
-  }
-
-  // Intenta JSON; si no, toma texto
-  let payload: any = null;
-  const text = await res.text();
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    payload = text || null;
-  }
-
-  if (!res.ok) {
-    // Estructuras típicas de FastAPI:
-    //  - 400/401: {"detail": "mensaje"}
-    //  - 422: {"detail":[{loc: [...,"field"], msg: "error", type: "..."}]}
-    const detail =
-      (payload && typeof payload === "object" && payload.detail) ||
-      (payload && typeof payload === "string" && payload) ||
-      "No se pudo cambiar la contraseña.";
-
-    const message =
-      Array.isArray(detail)
-        ? detail.map((d: any) => d?.msg || JSON.stringify(d)).join("; ")
-        : detail;
-
-    throw {
-      status: res.status,
-      message,
-      payload, // para que el caller pueda mapear errores de campo
-    };
-  }
-
-  // OK
-  return payload || { detail: "Contraseña actualizada correctamente." };
-}
-
-
-/* —————————————————————————————————————————————————————
    Component
 ————————————————————————————————————————————————————— */
 export default function StudentProfileForm() {
   const session = getSession();
-  const { nombre: nombreFull, email, curp, is_ipn: sessionIsIPN, boleta: sessionBoleta, token } = {
+  const { nombre: nombreFull, email, curp, is_ipn: sessionIsIPN, boleta: sessionBoleta } = {
     nombre: session?.nombre || "",
     email: session?.email || "",
     curp: session?.curp || "",
     is_ipn: !!session?.is_ipn,
     boleta: session?.boleta || "",
-    token: (session as any)?.token || (session as any)?.accessToken || undefined,
   };
 
   const { nombre, apellidos } = splitNombre(nombreFull);
@@ -232,22 +156,6 @@ export default function StudentProfileForm() {
     },
     mode: "onChange",
   });
-
-  /* —————————————————————————————————————————————————————
-     NUEVO: form de contraseña (independiente del perfil)
-     (SIN <form> para evitar anidación)
-  —————————————————————————————————————————————————————— */
-  const pwdForm = useForm<PasswordFormValues>({
-    defaultValues: {
-      current_password: "",
-      new_password: "",
-      confirm_new_password: "",
-    },
-    mode: "onChange",
-  });
-  const [showPwd, setShowPwd] = useState(false);
-  const [showNewPwd, setShowNewPwd] = useState(false);
-  const [showConfirmPwd, setShowConfirmPwd] = useState(false);
 
   const [isIPN, setIsIPN] = useState<boolean>(sessionIsIPN);
   const watchCURP = form.watch("curp");
@@ -356,76 +264,6 @@ export default function StudentProfileForm() {
       toast.error(e?.message || "No se pudo guardar el perfil.");
     }
   }
-
- /* —————————————————————————————————————————————————————
-   NUEVO: submit de contraseña (usa apiFetch/buildURL)
-————————————————————————————————————————————————————— */
-async function onSubmitPassword(values: PasswordFormValues) {
-  // Validaciones rápidas
-  if (!values.current_password || values.current_password.length < 6) {
-    pwdForm.setError("current_password", { type: "manual", message: "Contraseña actual inválida" });
-    toast.error("Revisa tu contraseña actual.");
-    return;
-  }
-  if (!values.new_password || values.new_password.length < 8) {
-    pwdForm.setError("new_password", { type: "manual", message: "Mínimo 8 caracteres" });
-    toast.error("La nueva contraseña es muy corta.");
-    return;
-  }
-  if (values.new_password === values.current_password) {
-    pwdForm.setError("new_password", { type: "manual", message: "Debe ser distinta a la actual" });
-    toast.error("La nueva contraseña debe ser distinta.");
-    return;
-  }
-  if (values.new_password !== values.confirm_new_password) {
-    pwdForm.setError("confirm_new_password", { type: "manual", message: "No coincide" });
-    toast.error("La confirmación no coincide.");
-    return;
-  }
-
-  try {
-    const url = buildURL("/alumno/perfil/password");
-    await apiFetch(url, {
-      method: "POST",
-      auth: true,                 // ← usa el token del storage automáticamente
-      json: {
-        current_password: values.current_password,
-        new_password: values.new_password,
-        confirm_new_password: values.confirm_new_password,
-      },
-    });
-
-    toast.success("Contraseña cambiada correctamente.");
-    pwdForm.reset();
-  } catch (err: any) {
-    const msg = String(err?.message || "");
-    // Casos típicos mapeados a errores de campo
-    if (/No autorizado|expiró|iniciar sesión/i.test(msg)) {
-      toast.error("Tu sesión expiró. Vuelve a iniciar sesión.");
-      return;
-    }
-    if (/actual.*incorrecta/i.test(msg)) {
-      pwdForm.setError("current_password", { type: "server", message: msg });
-      toast.error(msg);
-      return;
-    }
-    if (/new_password|confirm/i.test(msg)) {
-      // Si el back manda 422 con detalle, apiFetch ya lo empaquetó en el mensaje
-      if (/confirm/i.test(msg)) {
-        pwdForm.setError("confirm_new_password", { type: "server", message: msg });
-      } else {
-        pwdForm.setError("new_password", { type: "server", message: msg });
-      }
-      toast.error("Revisa los campos marcados.");
-      return;
-    }
-
-    // Genérico
-    toast.error(msg || "No se pudo cambiar la contraseña.");
-  }
-}
-
-
 
   /* —————————————————————————————————————————————————————
      Render
@@ -782,7 +620,7 @@ async function onSubmitPassword(values: PasswordFormValues) {
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 md-grid-cols-2 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
                         name="ipn_unidad"
@@ -838,136 +676,6 @@ async function onSubmitPassword(values: PasswordFormValues) {
               </Card>
             </AccordionItem>
           )}
-
-          {/* ===================== NUEVO: SEGURIDAD (cambiar contraseña) ===================== */}
-          <AccordionItem value="seguridad" className="border-none">
-            <Card className={cardClass}>
-              <CardHeader className={cardHeaderClass}>
-                <AccordionTrigger className="px-0">
-                  <CardTitle className={sectionTitleClass}>
-                    <Shield className="h-5 w-5" style={{ color: GUINDA }} />
-                    Seguridad
-                  </CardTitle>
-                </AccordionTrigger>
-              </CardHeader>
-              <AccordionContent>
-                <CardContent className="p-4 sm:p-6 space-y-4">
-                  {/* Importante: NO usar <form> aquí para evitar anidación */}
-                  <Form {...pwdForm}>
-                    <div className="space-y-4" role="group" aria-labelledby="seguridad-title">
-                      <FormField
-                        control={pwdForm.control}
-                        name="current_password"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel id="seguridad-title">Contraseña actual</FormLabel>
-                            <div className="relative">
-                              <FormControl>
-                                <Input
-                                  className={inputClass + " pr-10"}
-                                  type={showPwd ? "text" : "password"}
-                                  placeholder="Tu contraseña actual"
-                                  autoComplete="current-password"
-                                  {...field}
-                                />
-                              </FormControl>
-                              <button
-                                type="button"
-                                onClick={() => setShowPwd(v => !v)}
-                                className="absolute inset-y-0 right-2 inline-flex items-center"
-                                aria-label={showPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
-                              >
-                                {showPwd ? <EyeOff className="h-4 w-4 text-neutral-500" /> : <Eye className="h-4 w-4 text-neutral-500" />}
-                              </button>
-                            </div>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <FormField
-                          control={pwdForm.control}
-                          name="new_password"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Nueva contraseña</FormLabel>
-                              <div className="relative">
-                                <FormControl>
-                                  <Input
-                                    className={inputClass + " pr-10"}
-                                    type={showNewPwd ? "text" : "password"}
-                                    placeholder="Mínimo 8 caracteres"
-                                    autoComplete="new-password"
-                                    {...field}
-                                  />
-                                </FormControl>
-                                <button
-                                  type="button"
-                                  onClick={() => setShowNewPwd(v => !v)}
-                                  className="absolute inset-y-0 right-2 inline-flex items-center"
-                                  aria-label={showNewPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
-                                >
-                                  {showNewPwd ? <EyeOff className="h-4 w-4 text-neutral-500" /> : <Eye className="h-4 w-4 text-neutral-500" />}
-                                </button>
-                              </div>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={pwdForm.control}
-                          name="confirm_new_password"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Confirmar nueva contraseña</FormLabel>
-                              <div className="relative">
-                                <FormControl>
-                                  <Input
-                                    className={inputClass + " pr-10"}
-                                    type={showConfirmPwd ? "text" : "password"}
-                                    placeholder="Vuelve a escribirla"
-                                    autoComplete="new-password"
-                                    {...field}
-                                  />
-                                </FormControl>
-                                <button
-                                  type="button"
-                                  onClick={() => setShowConfirmPwd(v => !v)}
-                                  className="absolute inset-y-0 right-2 inline-flex items-center"
-                                  aria-label={showConfirmPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
-                                >
-                                  {showConfirmPwd ? <EyeOff className="h-4 w-4 text-neutral-500" /> : <Eye className="h-4 w-4 text-neutral-500" />}
-                                </button>
-                              </div>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-end">
-                        {/* Botón tipo button y submit manual para evitar <form> interno */}
-                        <Button
-                          type="button"
-                          className="h-11 px-6 text-[15px]"
-                          onClick={pwdForm.handleSubmit(onSubmitPassword)}
-                        >
-                          Cambiar contraseña
-                        </Button>
-                      </div>
-
-                      <p className="text-xs text-muted-foreground">
-                        Sugerencia: usa una frase con al menos 8 caracteres. Evita reutilizar contraseñas.
-                      </p>
-                    </div>
-                  </Form>
-                </CardContent>
-              </AccordionContent>
-            </Card>
-          </AccordionItem>
-          {/* =================== FIN SECCIÓN NUEVA =================== */}
         </Accordion>
 
         <Separator className="hidden sm:block" />

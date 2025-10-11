@@ -973,3 +973,35 @@ class HistorialAlumnoResponse(BaseModel):
     items: List[HistorialCicloItem]
 
 
+
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(..., min_length=6)
+    new_password:     str = Field(..., min_length=8)
+    confirm_new_password: str
+
+    @model_validator(mode="after")
+    def _check_match_and_strength(self):
+        if self.new_password != self.confirm_new_password:
+            raise ValueError("La confirmación no coincide con la nueva contraseña")
+        if self.current_password == self.new_password:
+            raise ValueError("La nueva contraseña debe ser distinta a la actual")
+        # (Opcional) Reglas mínimas de complejidad:
+        # import re
+        # if not re.search(r"[A-Z]", self.new_password) or not re.search(r"\d", self.new_password):
+        #     raise ValueError("La nueva contraseña debe tener al menos una mayúscula y un dígito")
+        return self
+    
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+class ResetPasswordIn(BaseModel):
+    token: constr(strip_whitespace=True, min_length=20, max_length=300)  # viene por URL
+    new_password: constr(min_length=8)
+    confirm_new_password: str
+
+    @model_validator(mode="after")
+    def _check_match(self):
+        if self.new_password != self.confirm_new_password:
+            raise ValueError("La confirmación no coincide")
+        return self

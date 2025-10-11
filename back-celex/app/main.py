@@ -35,6 +35,11 @@ from .routers.alumno_perfil import router as alumno_perfil_router
 from app.routers import coordinacion_alumnos
 from .routers import docente_reportes  # 👈 importa el router nuevo
 from .routers import coordinacion_dashboard
+from app.routers import coordinacion_perfil
+from app.routers import docente_perfil
+from app.routers import auth_password_reset
+
+
 
 
 
@@ -76,6 +81,12 @@ app.include_router(alumno_perfil_router)
 app.include_router(coordinacion_alumnos.router)
 app.include_router(docente_reportes.router)  # 👈 monta endpoints del docente
 app.include_router(coordinacion_dashboard.router)
+app.include_router(coordinacion_perfil.router)
+app.include_router(docente_perfil.router)
+app.include_router(auth_password_reset.router)
+
+
+
 
 
 # 👇 añade este hook de startup
@@ -148,4 +159,5 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 @app.get("/health")
 def health():
     return {"ok": True}
+
 

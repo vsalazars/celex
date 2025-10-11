@@ -1,7 +1,7 @@
 # app/auth.py
 from datetime import datetime, timedelta, timezone
 import os
-from typing import Optional, Union
+from typing import Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -38,21 +38,10 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # === JWT helpers ===
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """
-    Crea un JWT con los campos que envíes en `data` (por ejemplo: {"sub": "123"}).
-    Recomendado: usa `issue_access_token_for_user_id(user.id)` para estandarizar a sub = user.id.
-    """
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-def issue_access_token_for_user_id(user_id: Union[int, str], ttl_minutes: Optional[int] = None) -> str:
-    """
-    Helper recomendado para emitir tokens nuevos con sub = user.id (no email).
-    """
-    minutes = ACCESS_TOKEN_EXPIRE_MINUTES if ttl_minutes is None else ttl_minutes
-    return create_access_token({"sub": str(user_id)}, expires_delta=timedelta(minutes=minutes))
 
 # === DB dependency ===
 def get_db():
@@ -64,11 +53,6 @@ def get_db():
 
 # === Auth dependencies ===
 def get_current_user(token: str = Depends(oauth2_scheme), db=Depends(get_db)) -> User:
-    """
-    Acepta tokens con:
-      - NUEVO: sub = user.id  (string numérica)
-      - LEGADO: sub = email
-    """
     cred_exc = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No autorizado",
@@ -76,20 +60,13 @@ def get_current_user(token: str = Depends(oauth2_scheme), db=Depends(get_db)) ->
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        sub = payload.get("sub")
-        if sub is None:
+        email = payload.get("sub")
+        if email is None:
             raise cred_exc
     except JWTError:
         raise cred_exc
 
-    # Intento 1: tratar sub como id
-    user = None
-    if isinstance(sub, (int,)) or (isinstance(sub, str) and sub.isdigit()):
-        user = db.query(User).filter(User.id == int(sub)).first()
-    else:
-        # Intento 2 (legado): tratar sub como email
-        user = db.query(User).filter(User.email == str(sub)).first()
-
+    user = db.query(User).filter(User.email == email).first()
     if not user or not user.is_active:
         raise cred_exc
     return user
@@ -99,7 +76,7 @@ def require_superuser(current_user: User = Depends(get_current_user)) -> User:
         raise HTTPException(status_code=403, detail="Requiere superuser")
     return current_user
 
-# ✅ coordinador o superuser
+# ✅ NUEVO: coordinador o superuser
 def require_coordinator_or_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role not in (UserRole.coordinator, UserRole.superuser):
         raise HTTPException(status_code=403, detail="Permisos insuficientes (coordinador o superuser)")

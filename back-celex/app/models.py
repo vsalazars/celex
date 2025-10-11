@@ -2,7 +2,7 @@
 import enum
 from sqlalchemy import (
     Column, Integer, String, Date, Time, Text, DateTime,
-    Boolean, CheckConstraint, UniqueConstraint, ForeignKey, Numeric, func
+    Boolean, CheckConstraint, UniqueConstraint, ForeignKey, Numeric, func, Index
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import relationship
@@ -11,7 +11,6 @@ from datetime import datetime
 
 # 👇 Usa SIEMPRE el Base único del proyecto
 from .database import Base
-
 
 # -------------------- Enums base --------------------
 class UserRole(str, enum.Enum):
@@ -478,3 +477,34 @@ class SurveyAnswer(Base):
     value_text = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_pwreset_token_hash"),
+        Index("ix_pwreset_user_expires", "user_id", "expires_at"),
+    )
+
+    id = Column(Integer, primary_key=True)
+
+    # A quién pertenece el token
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    user = relationship("User", backref="password_reset_tokens")
+
+    # ⚠️ Guardamos SOLO el hash del token (no el token en claro)
+    token_hash = Column(String(128), nullable=False)  # sha256 hex -> 64; deja 128 por si cambias algoritmo
+
+    # Estado/tiempos
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at    = Column(DateTime(timezone=True), nullable=True)
+
+    # Metadatos opcionales para auditoría
+    request_ip      = Column(String(64), nullable=True)
+    request_ua      = Column(String(255), nullable=True)
+    consumed_ip     = Column(String(64), nullable=True)
+    consumed_ua     = Column(String(255), nullable=True)
+
+    # Por si en un futuro quieres otros propósitos (email_verify, etc.)
+    purpose = Column(String(40), nullable=False, default="password_reset")

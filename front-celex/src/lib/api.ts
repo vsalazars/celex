@@ -1664,3 +1664,67 @@ export async function listPlacementExamsLite(params?: {
   const raw = await apiFetch<PlacementExamLite[] | { items?: PlacementExamLite[] }>(url, { auth: true });
   return Array.isArray(raw) ? raw : raw?.items ?? [];
 }
+
+
+
+// ====================================================
+// Cambio de contraseña del alumno (CELEX) — CORREGIDO
+// ====================================================
+export type ChangePasswordIn = {
+  current_password: string;
+  new_password: string;
+  confirm_new_password: string;
+};
+
+export async function changeAlumnoPassword(payload: ChangePasswordIn): Promise<void> {
+  // pega directo al backend real usando API_URL y Authorization
+  const url = buildURL("/alumno/perfil/password");
+  await apiFetch<void>(url, {
+    method: "POST",
+    json: payload,   // usa el helper json
+    auth: true,      // <-- agrega Authorization: Bearer <token>
+  });
+}
+
+
+export async function changeCoordinatorPassword(payload: ChangePasswordIn): Promise<void> {
+  const url = buildURL("/coordinacion/perfil/password");
+  await apiFetch(url, {
+    method: "POST",
+    json: payload,
+    auth: true,
+  });
+}
+
+
+
+export async function changeTeacherPassword(payload: {
+  current_password: string;
+  new_password: string;
+  confirm_new_password: string;
+}): Promise<void> {
+  const url = buildURL("/docente/perfil/password");
+  await apiFetch(url, {
+    method: "POST",
+    json: payload,
+    auth: true,
+  });
+}
+
+
+// =================== Password reset (público) ===================
+export async function requestPasswordReset(email: string): Promise<void> {
+  const url = buildURL("/auth/password/forgot");
+  await apiFetch(url, { method: "POST", json: { email } }); // no requiere auth
+}
+
+export type ResetPasswordIn = {
+  token: string;
+  new_password: string;
+  confirm_new_password: string;
+};
+
+export async function resetPassword(payload: ResetPasswordIn): Promise<void> {
+  const url = buildURL("/auth/password/reset");
+  await apiFetch<void>(url, { method: "POST", json: payload }); // no auth
+}

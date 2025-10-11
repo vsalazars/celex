@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   ArrowRight,
   Loader2,
+  SendHorizonal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,15 @@ import {
   SheetDescription,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { requestPasswordReset } from "@/lib/api"; // <- ya lo tienes en lib/api.ts
 
 type LoginData = {
   access_token: string;
@@ -52,8 +62,14 @@ export default function LoginSheet({
   const [showLoginPwd, setShowLoginPwd] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginErrors, setLoginErrors] = useState<{ email?: string; pwd?: string }>({});
-  const pwdRef = useRef<HTMLInputElement>(null);
 
+  // Forgot password modal
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+
+  const pwdRef = useRef<HTMLInputElement>(null);
   const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -120,212 +136,302 @@ export default function LoginSheet({
     }
   };
 
+  const openForgotModal = () => {
+    setForgotError(null);
+    setForgotEmail(loginEmail.trim()); // prellenar con lo que haya
+    setForgotOpen(true);
+  };
+
+  const submitForgot = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setForgotError(null);
+    const email = forgotEmail.trim().toLowerCase();
+    if (!emailRegex.test(email)) {
+      setForgotError("Escribe un correo válido");
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      await requestPasswordReset(email);
+      toast.success("Si el correo existe, te enviamos un enlace de recuperación.");
+      setForgotOpen(false);
+    } catch (err: any) {
+      setForgotError(err?.message || "No se pudo iniciar la recuperación.");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      {showTrigger && (
-        <SheetTrigger asChild>
-          <Button
-            variant="default"
-            size="lg"
-            className="gap-2 rounded-full px-5 shadow-md hover:shadow-lg"
-          >
-            <LogIn className="h-4 w-4" />
-            Iniciar sesión
-          </Button>
-        </SheetTrigger>
-      )}
+    <>
+      <Sheet open={open} onOpenChange={setOpen}>
+        {showTrigger && (
+          <SheetTrigger asChild>
+            <Button
+              variant="default"
+              size="lg"
+              className="gap-2 rounded-full px-5 shadow-md hover:shadow-lg"
+            >
+              <LogIn className="h-4 w-4" />
+              Iniciar sesión
+            </Button>
+          </SheetTrigger>
+        )}
 
-      <SheetContent
-        side="right"
-        className="w-full sm:max-w-xl p-0 overflow-hidden"
-      >
-        {/* Fondo decorativo */}
-        <div className="absolute inset-0 -z-10 opacity-20">
-          <div className="absolute -top-20 left-0 h-64 w-64 rounded-full bg-[#7c0040]/30 blur-3xl" />
-          <div className="absolute top-40 -right-10 h-64 w-64 rounded-full bg-fuchsia-400/30 blur-3xl" />
-        </div>
-
-        {/* Contenedor principal */}
-        <div className="flex h-full flex-col">
-          {/* HERO / Encabezado visual (sin ícono) */}
-          <div className="relative overflow-hidden border-b bg-gradient-to-br from-white via-fuchsia-50 to-rose-50">
-            <div className="relative px-6 pt-8 pb-6 sm:px-8">
-              <div className="min-w-0">
-                
-
-                <SheetHeader className="text-left">
-                  <SheetTitle className="font-title leading-tight">
-                    <span className="block text-[58px] sm:text-[32px] font-extrabold tracking-tight text-[#7c0040]">
-                      CELEX
-                    </span>
-                    <span className="block text-xl sm:text-base text-neutral-700 mt-0.5">
-                      “Diódoro Antúnez”
-                    </span>
-                  </SheetTitle>
-                  <SheetDescription className="text-neutral-600">
-                    Accede con tu correo y contraseña.
-                  </SheetDescription>
-                </SheetHeader>
-
-                
-                
-                <div className="mt-3 flex items-center gap-2 text-[11px] font-medium text-neutral-700">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                  <span>Acceso seguro</span>
-                  <span className="mx-1 opacity-40">•</span>
-                  <span>Datos protegidos</span>
-                </div>
-              </div>
-
-              {/* Cinta decorativa */}
-              <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#7c0040] via-fuchsia-500 to-rose-400 opacity-80" />
-            </div>
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-xl p-0 overflow-hidden"
+        >
+          {/* Fondo decorativo */}
+          <div className="absolute inset-0 -z-10 opacity-20">
+            <div className="absolute -top-20 left-0 h-64 w-64 rounded-full bg-[#7c0040]/30 blur-3xl" />
+            <div className="absolute top-40 -right-10 h-64 w-64 rounded-full bg-fuchsia-400/30 blur-3xl" />
           </div>
 
-          {/* CONTENIDO */}
-          <div className="flex-1 overflow-auto">
-            <div className="mx-auto w-full max-w-md px-6 py-6 sm:px-8 sm:py-8">
-              <form
-                onSubmit={handleLogin}
-                className="space-y-6"
-                autoComplete="on"
-                aria-label="Formulario de inicio de sesión"
-              >
-                {/* Email */}
-                <div className="space-y-2">
-                  <Label htmlFor="login-email">Correo</Label>
-                  <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                    <Input
-                      id="login-email"
-                      type="email"
-                      inputMode="email"
-                      placeholder="usuario@correo.com"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      className="pl-9"
-                      autoComplete="email"
-                      required
-                      aria-invalid={!!loginErrors.email}
-                      aria-describedby={loginErrors.email ? "login-email-error" : undefined}
-                    />
-                  </div>
-                  {loginErrors.email && (
-                    <p id="login-email-error" className="text-xs text-red-600">
-                      {loginErrors.email}
-                    </p>
-                  )}
-                </div>
+          {/* Contenedor principal */}
+          <div className="flex h-full flex-col">
+            {/* HERO */}
+            <div className="relative overflow-hidden border-b bg-gradient-to-br from-white via-fuchsia-50 to-rose-50">
+              <div className="relative px-6 pt-8 pb-6 sm:px-8">
+                <div className="min-w-0">
+                  <SheetHeader className="text-left">
+                    <SheetTitle className="font-title leading-tight">
+                      <span className="block text-[58px] sm:text-[32px] font-extrabold tracking-tight text-[#7c0040]">
+                        CELEX
+                      </span>
+                      <span className="block text-xl sm:text-base text-neutral-700 mt-0.5">
+                        “Diódoro Antúnez”
+                      </span>
+                    </SheetTitle>
+                    <SheetDescription className="text-neutral-600">
+                      Accede con tu correo y contraseña.
+                    </SheetDescription>
+                  </SheetHeader>
 
-                {/* Password */}
-                <div className="space-y-2">
-                  <Label htmlFor="login-password">Contraseña</Label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                    <Input
-                      id="login-password"
-                      ref={pwdRef}
-                      type={showLoginPwd ? "text" : "password"}
-                      placeholder="••••••••"
-                      value={loginPwd}
-                      onChange={(e) => setLoginPwd(e.target.value)}
-                      className="pl-9 pr-10"
-                      autoComplete="current-password"
-                      required
-                      aria-invalid={!!loginErrors.pwd}
-                      aria-describedby={loginErrors.pwd ? "login-pwd-error" : undefined}
-                    />
-                    <button
-                      type="button"
-                      aria-label={showLoginPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
-                      onClick={() => setShowLoginPwd((prev) => !prev)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-neutral-500 hover:bg-neutral-100 focus:outline-none z-10"
-                      aria-pressed={showLoginPwd}
-                      title={showLoginPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
-                    >
-                      {showLoginPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                  {loginErrors.pwd && (
-                    <p id="login-pwd-error" className="text-xs text-red-600">
-                      {loginErrors.pwd}
-                    </p>
-                  )}
-
-                  {/* Ayuda sutil de password */}
-                  <div className="flex items-center justify-between text-[11px] text-neutral-500">
-                    <span>6+ caracteres, distingue mayúsculas</span>
-                    <button
-                      type="button"
-                      className="underline-offset-2 hover:underline"
-                      onClick={() => toast.info("Si olvidaste tu contraseña, contacta a Coordinación.")}
-                    >
-                      ¿Olvidaste tu contraseña?
-                    </button>
+                  <div className="mt-3 flex items-center gap-2 text-[11px] font-medium text-neutral-700">
+                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                    <span>Acceso seguro</span>
+                    <span className="mx-1 opacity-40">•</span>
+                    <span>Datos protegidos</span>
                   </div>
                 </div>
 
-                {/* CTA principal */}
+                <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#7c0040] via-fuchsia-500 to-rose-400 opacity-80" />
+              </div>
+            </div>
+
+            {/* CONTENIDO */}
+            <div className="flex-1 overflow-auto">
+              <div className="mx-auto w-full max-w-md px-6 py-6 sm:px-8 sm:py-8">
+                <form
+                  onSubmit={handleLogin}
+                  className="space-y-6"
+                  autoComplete="on"
+                  aria-label="Formulario de inicio de sesión"
+                >
+                  {/* Email */}
+                  <div className="space-y-2">
+                    <Label htmlFor="login-email">Correo</Label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                      <Input
+                        id="login-email"
+                        type="email"
+                        inputMode="email"
+                        placeholder="usuario@correo.com"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        className="pl-9"
+                        autoComplete="email"
+                        required
+                        aria-invalid={!!loginErrors.email}
+                        aria-describedby={loginErrors.email ? "login-email-error" : undefined}
+                      />
+                    </div>
+                    {loginErrors.email && (
+                      <p id="login-email-error" className="text-xs text-red-600">
+                        {loginErrors.email}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Password */}
+                  <div className="space-y-2">
+                    <Label htmlFor="login-password">Contraseña</Label>
+                    <div className="relative">
+                      <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                      <Input
+                        id="login-password"
+                        ref={pwdRef}
+                        type={showLoginPwd ? "text" : "password"}
+                        placeholder="••••••••"
+                        value={loginPwd}
+                        onChange={(e) => setLoginPwd(e.target.value)}
+                        className="pl-9 pr-10"
+                        autoComplete="current-password"
+                        required
+                        aria-invalid={!!loginErrors.pwd}
+                        aria-describedby={loginErrors.pwd ? "login-pwd-error" : undefined}
+                      />
+                      <button
+                        type="button"
+                        aria-label={showLoginPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
+                        onClick={() => setShowLoginPwd((prev) => !prev)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-neutral-500 hover:bg-neutral-100 focus:outline-none z-10"
+                        aria-pressed={showLoginPwd}
+                        title={showLoginPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
+                      >
+                        {showLoginPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {loginErrors.pwd && (
+                      <p id="login-pwd-error" className="text-xs text-red-600">
+                        {loginErrors.pwd}
+                      </p>
+                    )}
+
+                    {/* Ayuda sutil de password */}
+                    <div className="flex items-center justify-between text-[11px] text-neutral-500">
+                      <span>6+ caracteres, distingue mayúsculas</span>
+                      <button
+                        type="button"
+                        className="underline-offset-2 hover:underline disabled:opacity-60"
+                        onClick={openForgotModal}
+                      >
+                        ¿Olvidaste tu contraseña?
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* CTA principal */}
+                  <Button
+                    type="submit"
+                    disabled={loginLoading}
+                    className="group w-full h-12 rounded-full text-base font-semibold tracking-wide
+                              bg-gradient-to-r from-[#7c0040] via-[#5a002f] to-[#400022]
+                              text-white shadow-md hover:shadow-lg hover:scale-[1.01]
+                              transition-all duration-200 ease-in-out
+                              disabled:opacity-70 disabled:hover:scale-100"
+                  >
+                    {loginLoading ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Entrando…
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-2">
+                        Entrar
+                        <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" />
+                      </span>
+                    )}
+                  </Button>
+
+                  {/* Divider sutil */}
+                  <div className="my-2 h-px w-full bg-gradient-to-r from-transparent via-neutral-200 to-transparent" />
+
+                  {/* Nota legal / confidencialidad */}
+                  <p className="text-[11px] leading-relaxed text-neutral-500">
+                    Al continuar, aceptas nuestras políticas de privacidad y el uso responsable de tu
+                    información. Este acceso es personal e intransferible.
+                  </p>
+                </form>
+              </div>
+            </div>
+
+            {/* FOOTER */}
+            <div className="border-t bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
+              <div className="mx-auto flex w-full max-w-md items-center justify-between px-6 py-3 sm:max-w-xl">
+                <div className="text-[11px] text-neutral-500">
+                  ¿No tienes cuenta?{" "}
+                  <button
+                    type="button"
+                    className="font-medium text-[#7c0040] underline-offset-2 hover:underline"
+                    onClick={() => toast.info("El registro se realiza desde la página principal.")}
+                  >
+                    Regístrate
+                  </button>
+                </div>
                 <Button
-                  type="submit"
-                  disabled={loginLoading}
-                  className="group w-full h-12 rounded-full text-base font-semibold tracking-wide
-                            bg-gradient-to-r from-[#7c0040] via-[#5a002f] to-[#400022]
-                            text-white shadow-md hover:shadow-lg hover:scale-[1.01]
-                            transition-all duration-200 ease-in-out
-                            disabled:opacity-70 disabled:hover:scale-100"
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setOpen(false)}
                 >
-                  {loginLoading ? (
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      Entrando…
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-2">
-                      Entrar
-                      <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" />
-                    </span>
-                  )}
+                  Cancelar
                 </Button>
-
-
-                {/* Divider sutil */}
-                <div className="my-2 h-px w-full bg-gradient-to-r from-transparent via-neutral-200 to-transparent" />
-
-                {/* Nota legal / confidencialidad */}
-                <p className="text-[11px] leading-relaxed text-neutral-500">
-                  Al continuar, aceptas nuestras políticas de privacidad y el uso responsable de tu
-                  información. Este acceso es personal e intransferible.
-                </p>
-              </form>
+              </div>
             </div>
           </div>
+        </SheetContent>
+      </Sheet>
 
-          {/* FOOTER sticky del sheet */}
-          <div className="border-t bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50">
-            <div className="mx-auto flex w-full max-w-md items-center justify-between px-6 py-3 sm:max-w-xl">
-              <div className="text-[11px] text-neutral-500">
-                ¿No tienes cuenta?{" "}
-                <button
-                  type="button"
-                  className="font-medium text-[#7c0040] underline-offset-2 hover:underline"
-                  onClick={() => toast.info("El registro se realiza desde la página principal.")}
-                >
-                  Regístrate
-                </button>
+      {/* ===== Modal de Recuperación ===== */}
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={submitForgot} className="space-y-5">
+            <DialogHeader>
+              <DialogTitle>Recuperar contraseña</DialogTitle>
+              <DialogDescription>
+                Te enviaremos un enlace temporal para restablecer tu contraseña.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <Label htmlFor="forgot-email">Correo electrónico</Label>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  inputMode="email"
+                  placeholder="usuario@correo.com"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  className="pl-9"
+                  autoFocus
+                  aria-invalid={!!forgotError}
+                  aria-describedby={forgotError ? "forgot-email-error" : undefined}
+                />
               </div>
+              {forgotError && (
+                <p id="forgot-email-error" className="text-xs text-red-600">
+                  {forgotError}
+                </p>
+              )}
+              <p className="text-[11px] text-neutral-500">
+                El enlace expira en ~30 minutos.
+              </p>
+            </div>
+
+            <DialogFooter className="gap-2">
               <Button
+                type="button"
                 variant="ghost"
-                size="sm"
-                className="gap-2"
-                onClick={() => setOpen(false)}
+                onClick={() => setForgotOpen(false)}
               >
                 Cancelar
               </Button>
-            </div>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
+              <Button
+                type="submit"
+                disabled={forgotLoading || !emailRegex.test(forgotEmail.trim())}
+                className="gap-2"
+              >
+                {forgotLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Enviando…
+                  </>
+                ) : (
+                  <>
+                    <SendHorizonal className="h-4 w-4" />
+                    Enviar enlace
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

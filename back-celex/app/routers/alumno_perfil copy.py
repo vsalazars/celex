@@ -1,10 +1,10 @@
 # app/routers/alumno_perfil.py
 from fastapi import APIRouter, Depends, HTTPException, status
+
 from sqlalchemy.orm import Session
-from sqlalchemy import update, select
 
 from app.database import get_db
-from app.auth import get_current_user, verify_password, get_password_hash
+from app.auth import get_current_user
 from app.models import User
 from app.schemas import AlumnoPerfilOut, AlumnoPerfilUpdate, ChangePasswordIn
 
@@ -53,11 +53,11 @@ def _to_out(user: User) -> AlumnoPerfilOut:
     ipn = None
     if user.is_ipn:
         ipn = {
-            "nivel": user.ipn_nivel or "Superior",
+            "nivel": user.ipn_nivel or "Superior",  # valor por defecto razonable
             "unidad": user.ipn_unidad or "",
         }
 
-    # Tutor
+    # Tutor (normaliza vacíos a None y valida parentesco)
     tutor = None
     if any([user.tutor_nombre, user.tutor_parentesco, user.tutor_telefono]):
         parentesco = (user.tutor_parentesco or None)
@@ -89,6 +89,7 @@ def get_perfil(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Solo lectura: no necesitamos merge aquí
     return _to_out(current_user)
 
 
@@ -98,7 +99,8 @@ def update_perfil(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    user = db.merge(current_user)
+    # IMPORTANTÍSIMO: re-adjuntar el user a ESTA sesión
+    user = db.merge(current_user)  # devuelve una instancia ligada a 'db'
 
     # === Campos básicos ===
     if payload.nombre is not None:
@@ -110,6 +112,7 @@ def update_perfil(
         if v:
             user.last_name = v
     if payload.email is not None:
+        # si NO quieres permitir cambiar email, comenta la línea siguiente
         user.email = (payload.email or "").lower().strip() or user.email
     if payload.curp is not None:
         user.curp = (payload.curp or "").strip().upper() or user.curp
@@ -129,6 +132,7 @@ def update_perfil(
         user.addr_cp        = (d.cp or "").strip() or None
 
     # === IPN ===
+    # is_ipn del payload se ignora; la verdad está en DB (user.is_ipn)
     if user.is_ipn:
         if payload.boleta is not None:
             user.boleta = (payload.boleta or "").strip() or None
@@ -140,11 +144,13 @@ def update_perfil(
         user.ipn_nivel = None
         user.ipn_unidad = None
 
-    # === Tutor / menor de edad ===
-    curp_ref = user.curp
+    # === Reglas para TUTOR cuando es menor de edad ===
+    # Determinamos edad con la CURP "resultante" (la recién enviada o la actual)
+    curp_ref = user.curp  # ya normalizada arriba si vino en el payload
     age = _parse_age_from_curp(curp_ref)
 
     if age is not None and age < 18:
+        # Debe enviarse tutor con los 3 campos obligatorios
         if payload.tutor is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -163,22 +169,23 @@ def update_perfil(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Faltan campos de tutor: {', '.join(missing)}.",
             )
+        # Guardar tutor completo
         user.tutor_nombre = t.nombre.strip()
         user.tutor_parentesco = t.parentesco.strip()
         user.tutor_telefono = t.telefono.strip()
     else:
+        # Si NO es menor: si viene tutor explícitamente, se respeta (actualiza o limpia)
         if payload.tutor is not None:
             t = payload.tutor
             user.tutor_nombre = (t.nombre or "").strip() or None
             user.tutor_parentesco = (t.parentesco or "").strip() or None
             user.tutor_telefono = (t.telefono or "").strip() or None
+        # Si no vino, no tocamos lo existente.
 
+    # ¡OJO!: no llames a db.add(user); ya está ligado a la sesión
     db.commit()
     db.refresh(user)
     return _to_out(user)
-
-
-
 
 @router.post("/perfil/password", status_code=200)
 def change_password(
@@ -186,88 +193,20 @@ def change_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Cambia la contraseña del usuario autenticado.
-    - Verifica la contraseña actual.
-    - Evita reutilizar la misma contraseña.
-    - Fuerza UPDATE a nivel SQL y confirma que se persistió.
-    """
     # Reasociar el usuario a ESTA sesión
     user = db.merge(current_user)
 
     # 1) Verificar contraseña actual
-    if not user.hashed_password:
+    if not verify_password(payload.current_password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El usuario no tiene una contraseña registrada.",
+            detail="La contraseña actual es incorrecta.",
         )
 
-    try:
-        ok = verify_password(payload.current_password, user.hashed_password)
-    except Exception as e:
-        # Solo si bcrypt falla realmente
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno al verificar la contraseña: {type(e).__name__}",
-        )
-
-    if not ok:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La contraseña actual no es correcta.",
-        )
-
-    # 2) Evitar reutilizar la misma
-    try:
-        if verify_password(payload.new_password, user.hashed_password or ""):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La nueva contraseña no puede ser igual a la actual.",
-            )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al validar la nueva contraseña: {type(e).__name__}",
-        )
-
-    # 3) Calcular hash nuevo
-    try:
-        new_hash = get_password_hash(payload.new_password)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al generar el hash de la contraseña: {type(e).__name__}",
-        )
-
-    # 4) Forzar UPDATE y validar filas afectadas
-    stmt = (
-        update(User)
-        .where(User.id == user.id)
-        .values(hashed_password=new_hash)
-    )
-    res = db.execute(stmt)
+    # 2) (Las demás validaciones ya las hace el esquema)
+    # 3) Hashear y guardar
+    user.hashed_password = get_password_hash(payload.new_password)
     db.commit()
 
-    if res.rowcount == 0:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No se pudo actualizar la contraseña (ninguna fila modificada).",
-        )
-
-    # 5) Confirmar persistencia
-    refreshed = db.execute(select(User).where(User.id == user.id)).scalar_one()
-    try:
-        ok = verify_password(payload.new_password, refreshed.hashed_password or "")
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al verificar la persistencia del hash: {type(e).__name__}",
-        )
-
-    if not ok:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="La contraseña no se persistió correctamente en la base de datos.",
-        )
-
+    # (Opcional) db.refresh(user)
     return {"detail": "Contraseña actualizada correctamente."}
