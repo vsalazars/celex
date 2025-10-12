@@ -238,7 +238,7 @@ def invite_docente(
 
     subject = "Tu cuenta de Docente CELEX"
 
-    # Enviar correo (usa tu utilería; ahora Mailjet API por HTTPS 443)
+    # Enviar correo (usa tu utilería; ahora Postmark API por HTTPS 443)
     ok = send_email(email_norm, subject, html, text_alt)
     if not ok:
         # No interrumpimos el flujo del alta, pero puedes loguear/observar en tu Sentry

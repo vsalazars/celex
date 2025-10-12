@@ -16,9 +16,11 @@ class Settings(BaseSettings):
     # --- CORS ---
     CORS_ORIGINS: List[str] | str = []
 
-    # --- Mailjet (API HTTPS 443, no SMTP) ---
-    MAILJET_API_KEY: Optional[str] = None
-    MAILJET_API_SECRET: Optional[str] = None
+    # --- Correo: Postmark (API HTTPS 443, no SMTP) ---
+    POSTMARK_SERVER_TOKEN: Optional[str] = None
+    POSTMARK_MESSAGE_STREAM: str = "outboundTransactional"
+
+    # --- Remitente / cabeceras comunes ---
     FROM_EMAIL: Optional[str] = "celex@upiita.mx"
     FROM_NAME: str = "CELEX CECyT 15 Diódoro Antúnez Echegaray"
     REPLY_TO_EMAIL: Optional[str] = None  # si quieres reply-to distinto

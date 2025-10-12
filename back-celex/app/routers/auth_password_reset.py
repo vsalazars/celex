@@ -191,7 +191,7 @@ def request_password_reset(payload: ForgotPasswordIn, request: Request, db: Sess
         "Este correo fue generado automáticamente; por favor no respondas."
     )
 
-    # Enviar sin revelar existencia del correo (Mailjet via send_email)
+    # Enviar sin revelar existencia del correo (Postmark via send_email)
     ok = send_email(user.email, subject, body_html, body_text)
     if not ok:
         # Log no bloqueante: mantén el flujo idéntico hacia el cliente
@@ -219,7 +219,8 @@ def reset_password(payload: ResetPasswordIn, request: Request, db: Session = Dep
     if prt.used_at is not None:
         raise HTTPException(status_code=400, detail="El token ya fue utilizado.")
     if prt.expires_at < now:
-        raise HTTPException(statuscode=400, detail="El token expiró. Solicita uno nuevo.")  # <- ojo: corrigimos abajo
+        # fix: statuscode -> status_code
+        raise HTTPException(status_code=400, detail="El token expiró. Solicita uno nuevo.")
 
     # Cambiar contraseña
     user = db.execute(select(User).where(User.id == prt.user_id)).scalar_one()
