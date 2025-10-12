@@ -1,3 +1,4 @@
+# app/routers/coordinacion_docentes.py
 from typing import Optional, List, Literal, Union
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
@@ -7,8 +8,10 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from ..auth import get_db, require_coordinator_or_admin, get_password_hash
 from ..models import User, UserRole
 from ..email_utils import send_email
+
 import secrets, string
 import re
+from datetime import datetime
 
 router = APIRouter(prefix="/coordinacion/docentes", tags=["coordinación-docentes"])
 
@@ -148,80 +151,98 @@ def invite_docente(
     db.commit()
     db.refresh(user)
 
-   # Enviar correo con instrucciones y contraseña (formato IPN guinda)
+    # ======= Email (HTML conservando formato) =======
+    current_year = datetime.now().year
     html = f"""
     <!-- Preheader (oculto) -->
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    Alta de Docente CELEX — credenciales temporales e instrucciones.
+      Alta de Docente CELEX — credenciales temporales e instrucciones.
     </div>
 
     <div style="font-family: Arial, Helvetica, sans-serif; background-color:#f6f6f6; padding:24px;">
-    <div style="max-width:640px; margin:0 auto; background:#ffffff; border:1px solid #e6e6e6; border-radius:10px; overflow:hidden;">
+      <div style="max-width:640px; margin:0 auto; background:#ffffff; border:1px solid #e6e6e6; border-radius:10px; overflow:hidden;">
 
         <!-- Header guinda -->
         <div style="background:#7A003C; padding:18px 24px; text-align:center;">
-        <div style="font-size:20px; font-weight:700; color:#ffffff; letter-spacing:0.3px;">
+          <div style="font-size:20px; font-weight:700; color:#ffffff; letter-spacing:0.3px;">
             CELEX CECyT 15 “Diódoro Antúnez Echegaray”
-        </div>
-        <div style="font-size:12px; color:#f3e6ee; margin-top:2px;">
+          </div>
+          <div style="font-size:12px; color:#f3e6ee; margin-top:2px;">
             Instituto Politécnico Nacional
-        </div>
+          </div>
         </div>
 
         <!-- Contenido -->
         <div style="padding:24px;">
-        <h1 style="margin:0 0 12px 0; font-size:20px; line-height:1.3; color:#222;">
+          <h1 style="margin:0 0 12px 0; font-size:20px; line-height:1.3; color:#222;">
             Alta de Docente CELEX
-        </h1>
+          </h1>
 
-        <p style="margin:0 0 16px 0; font-size:15px; color:#444;">
+          <p style="margin:0 0 16px 0; font-size:15px; color:#444;">
             Se creó una cuenta de docente asociada a este correo.
-        </p>
+          </p>
 
-        <!-- Credenciales -->
-        <div style="border:1px solid #ececec; border-radius:8px; overflow:hidden; margin:18px 0;">
+          <!-- Credenciales -->
+          <div style="border:1px solid #ececec; border-radius:8px; overflow:hidden; margin:18px 0;">
             <div style="background:#faf7f9; padding:10px 14px; font-weight:600; color:#7A003C;">
-            Credenciales de acceso al sistema
+              Credenciales de acceso al sistema
             </div>
             <div style="padding:14px;">
-            <table role="presentation" width="100%" style="border-collapse:collapse;">
+              <table role="presentation" width="100%" style="border-collapse:collapse;">
                 <tr>
-                <td style="padding:8px 0; width:34%; color:#555; font-weight:600;">Usuario</td>
-                <td style="padding:8px 0; color:#222;">{email_norm}</td>
+                  <td style="padding:8px 0; width:34%; color:#555; font-weight:600;">Usuario</td>
+                  <td style="padding:8px 0; color:#222;">{email_norm}</td>
                 </tr>
                 <tr>
-                <td style="padding:8px 0; color:#555; font-weight:600;">Contraseña temporal</td>
-                <td style="padding:8px 0; color:#111;">
+                  <td style="padding:8px 0; color:#555; font-weight:600;">Contraseña temporal</td>
+                  <td style="padding:8px 0; color:#111;">
                     <span style="display:inline-block; padding:6px 10px; border:1px dashed #c9a2b4; border-radius:6px; font-family:Consolas, Menlo, monospace; font-size:16px;">
-                    {temp_password}
+                      {temp_password}
                     </span>
-                </td>
+                  </td>
                 </tr>
-            </table>
+              </table>
             </div>
-        </div>
-        <!-- Avisos -->
-        <div style="background:#fff8f0; border:1px solid #f1d2b6; border-radius:8px; padding:12px 14px; color:#7a4b00; font-size:13px;">
-            <strong>Importante:</strong> Inicia sesión lo antes posible y cambia tu contraseña de inmediato.
-        </div>
+          </div>
 
-        <!-- Soporte / firma -->
-        <p style="margin:18px 0 0 0; font-size:12px; color:#666; line-height:1.5;">
+          <!-- Avisos -->
+          <div style="background:#fff8f0; border:1px solid #f1d2b6; border-radius:8px; padding:12px 14px; color:#7a4b00; font-size:13px;">
+            <strong>Importante:</strong> Inicia sesión lo antes posible y cambia tu contraseña de inmediato.
+          </div>
+
+          <!-- Soporte / firma -->
+          <p style="margin:18px 0 0 0; font-size:12px; color:#666; line-height:1.5;">
             Este correo fue generado automáticamente; por favor no respondas a esta dirección.
             Si necesitas ayuda, contacta a la coordinación.
-        </p>
+          </p>
         </div>
 
         <!-- Footer -->
         <div style="background:#f3f3f3; padding:14px 18px; text-align:center; font-size:11px; color:#666;">
-        © {str.__new__(str)}2025 CELEX CECyT 15 — IPN
+          © {current_year} CELEX CECyT 15 — IPN
         </div>
 
-    </div>
+      </div>
     </div>
     """
 
-    send_email(email_norm, "Tu cuenta de Docente CELEX", html)
+    # Texto plano (opcional, ayuda a entregabilidad; no afecta el formato del HTML)
+    text_alt = (
+        "Alta de Docente CELEX\n\n"
+        "Se creó una cuenta de docente asociada a este correo.\n\n"
+        f"Usuario: {email_norm}\n"
+        f"Contraseña temporal: {temp_password}\n\n"
+        "Importante: Inicia sesión lo antes posible y cambia tu contraseña de inmediato.\n"
+        "Este correo fue generado automáticamente; no respondas a esta dirección."
+    )
+
+    subject = "Tu cuenta de Docente CELEX"
+
+    # Enviar correo (usa tu utilería; ahora Mailjet API por HTTPS 443)
+    ok = send_email(email_norm, subject, html, text_alt)
+    if not ok:
+        # No interrumpimos el flujo del alta, pero puedes loguear/observar en tu Sentry
+        print(f"⚠ No se pudo enviar el correo de alta para {email_norm}")
 
     return TeacherOut(
         id=user.id,
@@ -238,7 +259,7 @@ def suspend_docente(
     db: Session = Depends(get_db),
     _: User = Depends(require_coordinator_or_admin),
 ):
-    user: User | None = db.query(User).filter(
+    user: Optional[User] = db.query(User).filter(
         User.id == teacher_id, User.role == UserRole.teacher
     ).first()
     if not user:
@@ -254,7 +275,7 @@ def activate_docente(
     db: Session = Depends(get_db),
     _: User = Depends(require_coordinator_or_admin),
 ):
-    user: User | None = db.query(User).filter(
+    user: Optional[User] = db.query(User).filter(
         User.id == teacher_id, User.role == UserRole.teacher
     ).first()
     if not user:

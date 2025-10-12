@@ -1,53 +1,89 @@
 # app/email_utils.py
-import smtplib, ssl, email.utils
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.header import Header
-from email.utils import formataddr
+import json
+import urllib.request
+import urllib.error
+from typing import Optional
 from app.config import settings
 
-FROM_NAME = "CELEX CECyT 15 Diódoro Antúnez Echegaray"
+MAILJET_API_URL = "https://api.mailjet.com/v3.1/send"
 
-def send_email(to_email: str, subject: str, body_html: str, body_text: str | None = None) -> bool:
-    from_email = settings.FROM_EMAIL or settings.SMTP_USER
 
-    # ✅ RFC 2047: display name con acentos correctamente codificado
-    display_from = formataddr((str(Header(FROM_NAME, "utf-8")), from_email))
-    display_to   = to_email  # si quisieras: formataddr((None, to_email))
+def _send_via_mailjet_api(
+    from_email: str,
+    from_name: str,
+    to_email: str,
+    subject: str,
+    body_html: str,
+    body_text: Optional[str] = None,
+) -> bool:
+    """
+    Envío de correos usando la API HTTPS de Mailjet (no SMTP).
+    """
+    api_key = getattr(settings, "MAILJET_API_KEY", None)
+    api_secret = getattr(settings, "MAILJET_API_SECRET", None)
 
-    msg = MIMEMultipart("alternative")
-    msg["From"] = display_from
-    msg["To"] = display_to
-    msg["Subject"] = str(Header(subject, "utf-8"))
-    msg["Date"] = email.utils.formatdate(localtime=True)
-    msg["Message-ID"] = email.utils.make_msgid(domain=from_email.split("@")[-1])
-    msg["Reply-To"] = from_email
-    msg["List-Unsubscribe"] = f"<mailto:{from_email}?subject=unsubscribe>"
+    if not api_key or not api_secret:
+        print("⚠ MAILJET_API_KEY o MAILJET_API_SECRET no configuradas.")
+        return False
 
-    if body_text:
-        msg.attach(MIMEText(body_text, "plain", "utf-8"))
-    msg.attach(MIMEText(body_html, "html", "utf-8"))
+    payload = {
+        "Messages": [
+            {
+                "From": {"Email": from_email, "Name": from_name},
+                "To": [{"Email": to_email}],
+                "Subject": subject,
+                "TextPart": body_text or "",
+                "HTMLPart": body_html,
+                "CustomID": "CELEXEmail",
+            }
+        ]
+    }
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        MAILJET_API_URL,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    # Autenticación básica HTTP
+    import base64
+    auth_header = base64.b64encode(f"{api_key}:{api_secret}".encode()).decode()
+    req.add_header("Authorization", f"Basic {auth_header}")
 
     try:
-        if settings.SMTP_USE_SSL:
-            context = ssl.create_default_context()
-            server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context, timeout=30)
-        else:
-            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
-            server.ehlo(); server.starttls(); server.ehlo()
-
-        if settings.SMTP_DEBUG:
-            server.set_debuglevel(1)
-
-        server.login(settings.SMTP_USER, settings.SMTP_PASS)
-        server.sendmail(from_email, [to_email], msg.as_string())
-        server.quit()
-        print(f"✅ Correo enviado a {to_email}: {subject}")
-        return True
-    except Exception as e:
-        print(f"⚠ Error enviando correo a {to_email}: {e}")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            status = resp.getcode()
+            body = resp.read().decode("utf-8", errors="ignore")
+            if 200 <= status < 300:
+                print(f"✅ [Mailjet] Correo enviado a {to_email}")
+                return True
+            else:
+                print(f"⚠ [Mailjet API] Status {status}: {body}")
+                return False
+    except urllib.error.HTTPError as e:
         try:
-            server.quit()
+            body = e.read().decode("utf-8", errors="ignore")
         except Exception:
-            pass
+            body = str(e)
+        print(f"⚠ [Mailjet API] HTTPError {e.code}: {body}")
         return False
+    except Exception as e:
+        print(f"⚠ [Mailjet API] Error general: {e}")
+        return False
+
+
+def send_email(to_email: str, subject: str, body_html: str, body_text: Optional[str] = None) -> bool:
+    """
+    API de envío unificada. Usa Mailjet vía HTTPS 443.
+    """
+    from_email = getattr(settings, "FROM_EMAIL", None)
+    from_name = getattr(settings, "FROM_NAME", "CELEX")
+    if not from_email:
+        print("⚠ FROM_EMAIL no configurado.")
+        return False
+
+    return _send_via_mailjet_api(from_email, from_name, to_email, subject, body_html, body_text)

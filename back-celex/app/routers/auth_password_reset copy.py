@@ -57,7 +57,7 @@ def _build_reset_link(raw_token: str, request: Request) -> str:
             base = f"{scheme}://{host}"
         else:
             base = "http://localhost:3000"
-    base = str(base).rstrip("/")
+    base = base.rstrip("/")
     return f"{base}/reset-password?token={raw_token}"
 
 
@@ -98,12 +98,12 @@ def request_password_reset(payload: ForgotPasswordIn, request: Request, db: Sess
     db.add(prt)
     db.commit()
 
-    # Email — formato IPN guinda con CTA (conservado)
+    # Email — formato IPN guinda con CTA
     link = _build_reset_link(raw, request)
     subject = f"Restablecimiento de contraseña — CELEX (expira en {RESET_EXP_MINUTES} min)"
 
+
     first_name = (user.first_name or "alumno").strip()
-    current_year = datetime.now().year
 
     body_html = f"""
     <!-- Preheader (oculto) -->
@@ -175,7 +175,7 @@ def request_password_reset(payload: ForgotPasswordIn, request: Request, db: Sess
 
         <!-- Footer -->
         <div style="background:#f3f3f3; padding:14px 18px; text-align:center; font-size:11px; color:#666;">
-          © {current_year} CELEX CECyT 15 — IPN
+          © 2025 CELEX CECyT 15 — IPN
         </div>
 
       </div>
@@ -187,15 +187,10 @@ def request_password_reset(payload: ForgotPasswordIn, request: Request, db: Sess
         f"Solicitaste restablecer tu contraseña de CELEX.\n\n"
         f"Usa este enlace para continuar (expira en {RESET_EXP_MINUTES} minutos):\n"
         f"{link}\n\n"
-        "Si no solicitaste este cambio, puedes ignorar este correo.\n"
-        "Este correo fue generado automáticamente; por favor no respondas."
+        "Si no solicitaste este cambio, puedes ignorar este correo."
     )
 
-    # Enviar sin revelar existencia del correo (Mailjet via send_email)
-    ok = send_email(user.email, subject, body_html, body_text)
-    if not ok:
-        # Log no bloqueante: mantén el flujo idéntico hacia el cliente
-        print(f"⚠ No se pudo enviar correo de reset a {user.email}")
+    send_email(user.email, subject, body_html, body_text)
 
     return {"detail": "Si el correo existe, enviaremos instrucciones de recuperación."}
 
@@ -219,7 +214,7 @@ def reset_password(payload: ResetPasswordIn, request: Request, db: Session = Dep
     if prt.used_at is not None:
         raise HTTPException(status_code=400, detail="El token ya fue utilizado.")
     if prt.expires_at < now:
-        raise HTTPException(statuscode=400, detail="El token expiró. Solicita uno nuevo.")  # <- ojo: corrigimos abajo
+        raise HTTPException(status_code=400, detail="El token expiró. Solicita uno nuevo.")
 
     # Cambiar contraseña
     user = db.execute(select(User).where(User.id == prt.user_id)).scalar_one()
