@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update, delete
 from datetime import datetime, timedelta, timezone
-import secrets, hashlib
+import secrets, hashlib, os
 
 from app.database import get_db
 from app.models import User, PasswordResetToken
@@ -16,7 +16,10 @@ print("[auth_password_reset] loaded from:", __file__)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
+# ====== Config ======
 RESET_EXP_MINUTES = 30  # token válido 30 min
+# Cooldown para evitar spam de solicitudes (en segundos). Si no se establece, usa 60s.
+RESET_COOLDOWN_SECONDS = int(os.getenv("RESET_COOLDOWN_SECONDS", "60"))
 
 
 # --- Schemas (usa los tuyos si ya existen) ---
@@ -61,24 +64,65 @@ def _build_reset_link(raw_token: str, request: Request) -> str:
     return f"{base}/reset-password?token={raw_token}"
 
 
+def _seconds_to_pretty(s: int) -> str:
+    if s <= 0:
+        return "unos segundos"
+    if s < 60:
+        return f"{s} segundos"
+    m, r = divmod(s, 60)
+    if m < 60:
+        return f"{m} min" if r == 0 else f"{m} min {r} s"
+    h, r = divmod(m, 60)
+    return f"{h} h {r} min" if r else f"{h} h"
+
+
 @router.post("/password/forgot", status_code=200)
 def request_password_reset(payload: ForgotPasswordIn, request: Request, db: Session = Depends(get_db)):
+    email_in = payload.email.lower().strip()
+
     # Siempre 200 para evitar enumeración de usuarios
     user = db.execute(
-        select(User).where(User.email == payload.email.lower().strip())
+        select(User).where(User.email == email_in)
     ).scalar_one_or_none()
 
-    if not user or not user.is_active:
+    # Caso 1: el correo NO existe -> no enviar correo, respuesta genérica
+    if not user:
+        print(f"[RESET] Correo no encontrado: {email_in} (sin envío). IP={getattr(request.client, 'host', None)}")
         return {"detail": "Si el correo existe, enviaremos instrucciones de recuperación."}
+
+    # Caso 2: usuario INACTIVO -> mensaje claro (no revela la existencia del correo en general,
+    # pero para tu portal CELEX es útil). No se envía correo.
+    if not user.is_active:
+        print(f"[RESET] Usuario inactivo: {email_in} (sin envío).")
+        return {"detail": "Tu cuenta está inactiva. Contacta a la coordinación."}
+
+    # Cooldown simple por usuario para evitar spam/costos:
+    # Busca el último token creado para este usuario
+    now = datetime.now(timezone.utc)
+    last_token = db.execute(
+        select(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.purpose == "password_reset",
+        )
+        .order_by(PasswordResetToken.created_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    if last_token and (now - (last_token.created_at or now)).total_seconds() < RESET_COOLDOWN_SECONDS:
+        remaining = RESET_COOLDOWN_SECONDS - int((now - last_token.created_at).total_seconds())
+        pretty = _seconds_to_pretty(remaining)
+        print(f"[RESET] Cooldown activo para {email_in}. Espera {pretty} antes de nueva solicitud.")
+        # No enviamos correo nuevo; mensaje amable y neutral para el cliente
+        return {"detail": f"Ya enviamos instrucciones recientemente. Intenta de nuevo en ~{pretty}."}
 
     # Generar token crudo y hash
     raw = secrets.token_urlsafe(48)
     token_hash = _sha256_hex(raw)
 
-    now = datetime.now(timezone.utc)
     exp = now + timedelta(minutes=RESET_EXP_MINUTES)
 
-    # Invalidar tokens previos
+    # Invalidar tokens previos (limpieza)
     db.execute(
         delete(PasswordResetToken).where(
             PasswordResetToken.user_id == user.id,
@@ -98,7 +142,7 @@ def request_password_reset(payload: ForgotPasswordIn, request: Request, db: Sess
     db.add(prt)
     db.commit()
 
-    # Email — formato IPN guinda con CTA (conservado)
+    # Email — formato IPN guinda con CTA (se conserva tal cual)
     link = _build_reset_link(raw, request)
     subject = f"Restablecimiento de contraseña — CELEX (expira en {RESET_EXP_MINUTES} min)"
 
@@ -191,12 +235,13 @@ def request_password_reset(payload: ForgotPasswordIn, request: Request, db: Sess
         "Este correo fue generado automáticamente; por favor no respondas."
     )
 
-    # Enviar sin revelar existencia del correo (Postmark via send_email)
+    # Enviar sin revelar información adicional a clientes no privilegiados
     ok = send_email(user.email, subject, body_html, body_text)
     if not ok:
         # Log no bloqueante: mantén el flujo idéntico hacia el cliente
         print(f"⚠ No se pudo enviar correo de reset a {user.email}")
 
+    print(f"[RESET] Email de recuperación generado y enviado a {user.email}. Token expira en {RESET_EXP_MINUTES} min.")
     return {"detail": "Si el correo existe, enviaremos instrucciones de recuperación."}
 
 
@@ -219,7 +264,6 @@ def reset_password(payload: ResetPasswordIn, request: Request, db: Session = Dep
     if prt.used_at is not None:
         raise HTTPException(status_code=400, detail="El token ya fue utilizado.")
     if prt.expires_at < now:
-        # fix: statuscode -> status_code
         raise HTTPException(status_code=400, detail="El token expiró. Solicita uno nuevo.")
 
     # Cambiar contraseña
@@ -248,4 +292,5 @@ def reset_password(payload: ResetPasswordIn, request: Request, db: Session = Dep
     )
 
     db.commit()
+    print(f"[RESET] Contraseña restablecida para user_id={user.id} ({user.email}).")
     return {"detail": "Tu contraseña fue restablecida correctamente."}
