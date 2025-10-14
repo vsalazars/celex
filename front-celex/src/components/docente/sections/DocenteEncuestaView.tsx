@@ -696,7 +696,7 @@ export default function DocenteEncuestaView({ defaultAnio, defaultIdioma }: Prop
               </div>
             ) : dataPct.length === 0 ? (
               <div className="h-full flex items-center justify-center text-muted-foreground">
-                {selected ? "Sin resultados." : "Selecciona un ciclo para ver la encuesta."}
+                {selected ? "Sin resultados." : "Selecciona un curso para ver la encuesta."}
               </div>
             ) : (
               <ResponsiveBar

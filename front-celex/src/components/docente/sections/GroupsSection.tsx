@@ -409,7 +409,7 @@ export default function GroupsSection() {
             {cicloMatriz ? (
               <AttendanceMatrix cicloId={cicloMatriz.id} />
             ) : (
-              <p className="text-sm text-neutral-500">Selecciona un grupo…</p>
+              <p className="text-sm text-neutral-500">Selecciona un curso...</p>
             )}
           </div>
         </SheetContent>

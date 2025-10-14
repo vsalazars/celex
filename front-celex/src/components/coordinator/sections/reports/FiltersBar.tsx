@@ -439,10 +439,10 @@ export default function FiltersBar({
 
       {/* Ciclo */}
       <div className="md:col-span-5">
-        <Label>Ciclo</Label>
+        <Label>Curso</Label>
         <Select value={cicloId} onValueChange={(v) => setCicloId(v === "__clear__" ? "" : v)}>
           <SelectTrigger disabled={loadingCiclos}>
-            <SelectValue placeholder={loadingCiclos ? "Cargando..." : "Selecciona un ciclo"} />
+            <SelectValue placeholder={loadingCiclos ? "Cargando..." : "Selecciona un curso"} />
           </SelectTrigger>
           <SelectContent>
             {(Array.isArray(ciclos) ? ciclos : []).map((c: CicloLite) => (

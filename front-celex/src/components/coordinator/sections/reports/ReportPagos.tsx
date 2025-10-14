@@ -552,7 +552,7 @@ export default function ReportPagos({ filters }: { filters: ReportFiltersState }
               ) : !cicloId ? (
                 <UiTableRow>
                   <UiTableCell colSpan={table.getAllColumns().length} className="py-3 text-center text-muted-foreground">
-                    Selecciona un ciclo en la barra superior.
+                    Selecciona un curso en la barra superior.
                   </UiTableCell>
                 </UiTableRow>
               ) : table.getRowModel().rows?.length ? (

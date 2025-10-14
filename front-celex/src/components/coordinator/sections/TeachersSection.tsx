@@ -211,7 +211,7 @@ export default function TeachersSection() {
         return (
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => openHistorial(t)}>
-              Ver ciclos
+              Ver cursos
             </Button>
 
             <AlertDialog>

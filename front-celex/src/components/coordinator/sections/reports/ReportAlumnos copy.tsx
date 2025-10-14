@@ -343,7 +343,7 @@ export default function ReportAlumnos({ filters }: { filters: ReportFiltersState
                 ) : (
                   <tr>
                     <td colSpan={table.getAllLeafColumns().length} className="p-3 text-center text-gray-600">
-                      {cicloId ? "Sin resultados." : "Selecciona un ciclo en la barra superior."}
+                      {cicloId ? "Sin resultados." : "Selecciona un curso en la barra superior."}
                     </td>
                   </tr>
                 )}

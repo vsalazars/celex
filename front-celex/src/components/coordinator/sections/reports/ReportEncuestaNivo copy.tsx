@@ -531,7 +531,7 @@ export default function ReportEncuestaPorcentaje({
               </div>
             ) : dataPct.length === 0 ? (
               <div className="h-full flex items-center justify-center text-muted-foreground">
-                {cicloId ? "Sin resultados." : "Selecciona un ciclo para ver la encuesta."}
+                {cicloId ? "Sin resultados." : "Selecciona un curso para ver la encuesta."}
               </div>
             ) : (
               <ResponsiveBar

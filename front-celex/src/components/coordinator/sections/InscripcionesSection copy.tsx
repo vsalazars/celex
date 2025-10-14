@@ -771,7 +771,7 @@ export default function InscripcionesSection() {
               <label className="mb-1 block text-xs text-muted-foreground">Ciclo</label>
               <Select value={cicloId ? String(cicloId) : ""} onValueChange={(v) => setCicloId(Number(v))}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecciona un ciclo" />
+                  <SelectValue placeholder="Selecciona un curso" />
                 </SelectTrigger>
                 <SelectContent>
                   {ciclosFiltrados.map((c) => (
@@ -825,7 +825,7 @@ export default function InscripcionesSection() {
             </div>
           ) : filteredRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {cicloId ? "No hay inscripciones para este ciclo y filtros." : "Selecciona un ciclo para comenzar."}
+              {cicloId ? "No hay inscripciones para este grupo y filtros." : "Selecciona un curso para comenzar."}
             </p>
           ) : (
             <>
