@@ -1,20 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-// Si usas shadcn Avatar, descomenta e integra:
-// import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-
-function getInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "CE";
-  if (parts.length === 1) return parts[0][0] || "C";
-  return (parts[0][0] + parts[parts.length - 1][0]) || "CE";
-}
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { User as UserIcon } from "lucide-react";
 
 export default function UserInfo() {
-  const [name, setName]   = useState<string>("");
+  const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
-  const [role, setRole]   = useState<string>("");
+  const [role, setRole] = useState<string>("");
 
   useEffect(() => {
     try {
@@ -24,32 +17,28 @@ export default function UserInfo() {
     } catch {}
   }, []);
 
-  const initials = getInitials(name || "CE");
-
   return (
     <div className="flex items-center gap-3 rounded-xl border bg-white p-3">
-      {/* Avatar shadcn opcional
-      <Avatar className="h-9 w-9">
+      {/* Avatar con ícono de usuario */}
+      <Avatar className="h-9 w-9 shrink-0 flex-none">
         <AvatarImage alt={name} />
-        <AvatarFallback>{initials.toUpperCase()}</AvatarFallback>
+        <AvatarFallback className="bg-[#7c0040] text-white flex items-center justify-center">
+          <UserIcon className="h-4 w-4" />
+        </AvatarFallback>
       </Avatar>
-      */}
-
-      {/* Fallback simple */}
-      <div className="grid h-9 w-9 place-items-center rounded-full bg-[#7c0040] text-xs font-semibold text-white">
-        {initials.toUpperCase()}
-      </div>
 
       <div className="min-w-0">
-        {/* Nombre completo con primario */}
+        {/* Nombre */}
         <div className="text-sm font-medium break-words text-[#7c0040]">
           {name || "Coordinador(a)"}
         </div>
-        {/* Correo truncable */}
+
+        {/* Correo */}
         <div className="truncate text-[11px] text-neutral-500">
           {email || "—"}
         </div>
-        {/* Rol en renglón aparte */}
+
+        {/* Rol */}
         {role && (
           <div className="text-[11px] text-neutral-500">
             {role}
