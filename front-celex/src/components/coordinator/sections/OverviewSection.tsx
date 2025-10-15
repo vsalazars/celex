@@ -1185,24 +1185,6 @@ export default function OverviewSectionConLinea({
         </div>
       </div>
 
-    {/* ⬇️ PÉGALO AQUÍ MISMO — ANTES DEL </div> FINAL DEL WRAPPER */}
-<style jsx global>{`
-  .h-svh { height: 100svh; }
-  .text-\\[10\\.5px\\] { font-size: 10.5px; line-height: 1.2; }
-  .text-\\[11px\\]    { font-size: 11px;    line-height: 1.25; }
-  .text-\\[13px\\]    { font-size: 13px;    line-height: 1.3;  }
-  .blur-\\[2px\\] { filter: blur(2px); }
-  .shadow-\\[0_3px_16px_-6px_rgba\\(0,0,0,0\\.22\\)\\] { box-shadow: 0 3px 16px -6px rgba(0,0,0,0.22); }
-  .hover\\:shadow-\\[0_10px_24px_-10px_rgba\\(0,0,0,0\\.25\\)\\]:hover { box-shadow: 0 10px 24px -10px rgba(0,0,0,0.25); }
-  .shadow-\\[0_6px_24px_rgba\\(0,0,0,0\\.18\\)\\] { box-shadow: 0 6px 24px rgba(0,0,0,0.18); }
-  .hover\\:shadow-\\[0_16px_40px_rgba\\(0,0,0,0\\.22\\)\\]:hover { box-shadow: 0 16px 40px rgba(0,0,0,0.22); }
-  .supports-\\[backdrop-filter\\]\\:bg-background\\/70 {
-    backdrop-filter: saturate(120%) blur(6px);
-    background-color: rgba(0,0,0,0.04);
-  }
-  .min-h-\\[220px\\] { min-height: 220px; }
-`}</style>
-
     </div>
 
   );
