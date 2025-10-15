@@ -1198,6 +1198,8 @@ export type HistorialCicloItem = {
 
   calificacion?: number | null;
 
+  evaluacion?: EvaluacionDetalle | null; // 👈 deja esta versión
+
   docente_id?: number | null;
   docente_nombre?: string | null;
   docente_email?: string | null;
@@ -1471,6 +1473,17 @@ export type CoordKpisOut = {
   pagos_verificados_pct: number;
   pagos_monto_total: number;
   promedio_global_pct: number;
+  // 👇 nuevos
+  aprobados_80_count: number;
+  reprobados_count: number;
+  aprobados_80_pct: number;
+  // 👇 NUEVOS
+  top_idioma?: string | null
+  top_idioma_grupos?: number
+  docente_mejor_id?: number | string | null
+  docente_mejor_nombre?: string | null
+  docente_mejor_pct?: number | null
+  docente_mejor_grupos?: number
 };
 
 export type CoordCategoriaAgg = {
@@ -1603,12 +1616,14 @@ export async function getCoordPreguntasAgg(params: {
 export async function getCoordRanking(params?: {
   anio?: number;
   idioma?: string;
+  cicloId?: number;      // ← nuevo
   limitTop?: number;
   limitBottom?: number;
 }): Promise<CoordRankingOut> {
   const url = buildURL("/coordinacion/reportes/ranking-docentes", {
     anio: params?.anio,
     idioma: params?.idioma,
+    cicloId: params?.cicloId,       // ← pasa al back
     limitTop: params?.limitTop ?? 5,
     limitBottom: params?.limitBottom ?? 5,
   });

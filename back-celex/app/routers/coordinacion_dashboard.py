@@ -18,6 +18,7 @@ from ..models import (
     SurveyQuestion,
     SurveyResponse,
     SurveyAnswer,
+    Evaluacion,
 )
 
 router = APIRouter(prefix="/coordinacion", tags=["Coordinación - Dashboard"])
@@ -44,6 +45,17 @@ class KpisOut(BaseModel):
     pagos_verificados_pct: float
     pagos_monto_total: float
     promedio_global_pct: float
+    # 👇 NUEVOS
+    aprobados_80_count: int
+    reprobados_count: int
+    aprobados_80_pct: float
+    # 👉 agrega estos (opcionales)
+    top_idioma: str | None = None
+    top_idioma_grupos: int | None = 0
+    docente_mejor_id: int | str | None = None
+    docente_mejor_nombre: str | None = None
+    docente_mejor_pct: float | None = None
+    docente_mejor_grupos: int | None = 0
 
 
 class SerieGlobalOut(BaseModel):
@@ -177,19 +189,37 @@ def kpis_coordinacion(
 ):
     """
     Por defecto agrega TODOS los ciclos (con filtros anio/idioma).
-    Si viene cicloId, se restringe a ese ciclo. Esto permite que el frontend cambie
-    los KPIs según el ciclo seleccionado, mientras que el ranking se mantiene global.
+    Si viene cicloId, se restringe a ese ciclo.
     """
-    # universo de ciclos
+    # Universo de ciclos
     if cicloId is not None:
         ciclos_ids_sq = db.query(Ciclo.id).filter(Ciclo.id == cicloId).subquery()
+        ciclos_q = db.query(Ciclo).filter(Ciclo.id == cicloId)
     else:
-        ciclos_ids_sq = _flt_ciclos_q(db, anio, idioma).with_entities(Ciclo.id).subquery()
+        ciclos_q = _flt_ciclos_q(db, anio, idioma)
+        ciclos_ids_sq = ciclos_q.with_entities(Ciclo.id).subquery()
 
-    # Grupos activos (mientras no exista tabla grupos: contamos ciclos en el universo)
+    # ===== Grupos activos (mientras no exista tabla grupos: contamos ciclos en el universo)
     grupos_activos = db.query(func.count()).select_from(ciclos_ids_sq).scalar() or 0
 
-    # Docentes asignados
+    # ===== Idioma con más grupos (nombre del idioma y cantidad)
+    try:
+        idioma_top_row = (
+            cursos_top := db.query(Ciclo.idioma, func.count(Ciclo.id).label("n"))
+            .filter(Ciclo.id.in_(ciclos_ids_sq))
+            .group_by(Ciclo.idioma)
+            .order_by(func.count(Ciclo.id).desc())
+            .first()
+        )
+        if idioma_top_row:
+            top_idioma = str(idioma_top_row[0]) if idioma_top_row[0] is not None else None
+            top_idioma_grupos = int(idioma_top_row[1] or 0)
+        else:
+            top_idioma, top_idioma_grupos = None, 0
+    except Exception:
+        top_idioma, top_idioma_grupos = None, 0
+
+    # ===== Docentes asignados
     docentes_asignados = (
         db.query(func.count(func.distinct(Ciclo.docente_id)))
         .filter(Ciclo.id.in_(ciclos_ids_sq))
@@ -198,11 +228,10 @@ def kpis_coordinacion(
         or 0
     )
 
-    # ---------- Alumnos ----------
+    # ===== Alumnos (preferencia: Inscripcion si existe)
     alumnos_total = 0
     alumnos_ipn = 0
     try:
-        # Fuente preferida: Inscripcion (si existe en tu proyecto)
         from ..models import Inscripcion  # type: ignore
 
         estados_activos = ["registrada", "preinscrita", "confirmada"]
@@ -237,7 +266,7 @@ def kpis_coordinacion(
         else:
             raise RuntimeError("Inscripcion.alumno_is_ipn no disponible")
     except Exception:
-        # Fallback heurístico con usuarios + encuestas
+        # Fallback: heurística con usuarios + encuestas
         ipn_email_like = or_(
             func.lower(User.email).like("%@ipn.mx"),
             func.lower(User.email).like("%.ipn.mx%"),
@@ -268,7 +297,7 @@ def kpis_coordinacion(
 
     alumnos_externos = max(int(alumnos_total) - int(alumnos_ipn), 0)
 
-    # ---------- Pagos: suma de importes validados ----------
+    # ===== Pagos: suma de importes validados
     pagos_verificados_pct = 0.0
     pagos_monto_total = 0.0
     try:
@@ -300,7 +329,7 @@ def kpis_coordinacion(
         pagos_verificados_pct = 0.0
         pagos_monto_total = 0.0
 
-    # Promedio global (0..100)
+    # ===== Promedio global (0..100)
     sum_vals, n_vals = (
         db.query(func.coalesce(func.sum(SurveyAnswer.value_int), 0), func.count(SurveyAnswer.value_int))
         .join(SurveyResponse, SurveyResponse.id == SurveyAnswer.response_id)
@@ -310,6 +339,92 @@ def kpis_coordinacion(
     )
     prom_global = round(((float(sum_vals) / float(n_vals)) / 5.0) * 100.0, 1) if (n_vals or 0) > 0 else 0.0
 
+    # ===== Aprobados / Reprobados (promedio_final)
+    try:
+        eval_base = db.query(Evaluacion).filter(Evaluacion.ciclo_id.in_(ciclos_ids_sq))
+        eval_base = eval_base.filter(Evaluacion.promedio_final.isnot(None))
+
+        total_eval = eval_base.count()
+        aprobados_80 = (
+            db.query(func.count())
+            .select_from(Evaluacion)
+            .filter(Evaluacion.ciclo_id.in_(ciclos_ids_sq))
+            .filter(Evaluacion.promedio_final >= 80)
+            .scalar()
+            or 0
+        )
+        reprobados = (
+            db.query(func.count())
+            .select_from(Evaluacion)
+            .filter(Evaluacion.ciclo_id.in_(ciclos_ids_sq))
+            .filter(Evaluacion.promedio_final < 80)
+            .scalar()
+            or 0
+        )
+        aprobados_80_pct = round((aprobados_80 / total_eval) * 100.0, 1) if total_eval > 0 else 0.0
+    except Exception:
+        aprobados_80, reprobados, aprobados_80_pct = 0, 0, 0.0
+
+    # ===== Docente MEJOR evaluado (sobre el mismo universo de ciclos)
+    docente_mejor_id = None
+    docente_mejor_nombre = None
+    docente_mejor_pct = None
+    docente_mejor_grupos = 0
+    try:
+        # Puntuación por docente (0..100)
+        rows = (
+            db.query(
+                Ciclo.docente_id.label("doc_id"),
+                _promedio_pct_heuristica(
+                    func.coalesce(func.sum(SurveyAnswer.value_int), 0),
+                    func.count(SurveyAnswer.value_int),
+                ).label("pct"),
+            )
+            .join(SurveyResponse, SurveyResponse.ciclo_id == Ciclo.id)
+            .join(SurveyAnswer, SurveyAnswer.response_id == SurveyResponse.id)
+            .filter(Ciclo.id.in_(ciclos_ids_sq))
+            .filter(Ciclo.docente_id.isnot(None))
+            .group_by(Ciclo.docente_id)
+            .all()
+        )
+
+        if rows:
+            # Grupos por docente
+            grupos_rows = (
+                db.query(Ciclo.docente_id.label("doc_id"), func.count(Ciclo.id).label("grupos"))
+                .filter(Ciclo.id.in_(ciclos_ids_sq))
+                .filter(Ciclo.docente_id.isnot(None))
+                .group_by(Ciclo.docente_id)
+                .all()
+            )
+            grupos_map = {int(r.doc_id): int(r.grupos or 0) for r in grupos_rows if r.doc_id is not None}
+
+            # Nombre docente
+            doc_ids = [int(r.doc_id) for r in rows if r.doc_id is not None]
+            nombres = {}
+            if doc_ids:
+                nombres = dict(db.query(User.id, _docente_nombre_expr()).filter(User.id.in_(doc_ids)).all())
+
+            # Elegir mejor por pct
+            best = max(
+                (
+                    (int(r.doc_id), float(getattr(r, "pct", 0.0) or 0.0))
+                    for r in rows
+                    if r.doc_id is not None
+                ),
+                key=lambda t: t[1],
+                default=None,
+            )
+
+            if best:
+                docente_mejor_id = best[0]
+                docente_mejor_pct = round(best[1], 1)
+                docente_mejor_nombre = str(nombres.get(best[0], "Docente"))
+                docente_mejor_grupos = int(grupos_map.get(best[0], 0))
+    except Exception:
+        pass
+
+    # ===== Respuesta
     return KpisOut(
         grupos_activos=int(grupos_activos),
         docentes_asignados=int(docentes_asignados),
@@ -319,6 +434,16 @@ def kpis_coordinacion(
         pagos_verificados_pct=pagos_verificados_pct,
         pagos_monto_total=pagos_monto_total,
         promedio_global_pct=prom_global,
+        aprobados_80_count=int(aprobados_80),
+        reprobados_count=int(reprobados),
+        aprobados_80_pct=aprobados_80_pct,
+        # Enriquecidos:
+        top_idioma=top_idioma,
+        top_idioma_grupos=int(top_idioma_grupos),
+        docente_mejor_id=docente_mejor_id,
+        docente_mejor_nombre=docente_mejor_nombre,
+        docente_mejor_pct=docente_mejor_pct,
+        docente_mejor_grupos=int(docente_mejor_grupos),
     )
 
 

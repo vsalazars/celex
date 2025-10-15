@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, literal, or_, case
+from sqlalchemy import func, literal, or_, case, cast, String
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -102,6 +102,15 @@ class ReportCicloLite(BaseModel):
     codigo: str
     idioma: Optional[str] = None
     anio: Optional[int] = None
+
+
+# === NUEVO ===
+class MontosOut(BaseModel):
+    inscripciones_total_mxn: float
+    inscripciones_count: int
+    placement_total_mxn: float
+    placement_count: int
+    total_mxn: float
 
 
 # =========================
@@ -310,6 +319,96 @@ def kpis_coordinacion(
         pagos_verificados_pct=pagos_verificados_pct,
         pagos_monto_total=pagos_monto_total,
         promedio_global_pct=prom_global,
+    )
+
+
+# === NUEVO ===
+@router.get("/resumen/montos", response_model=MontosOut)
+def resumen_montos(
+    cicloId: Optional[int] = Query(None),
+    anio: Optional[int] = Query(None),
+    idioma: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current: User = Depends(require_coordinator_or_admin),
+):
+    """
+    Montos de:
+    - Inscripciones confirmadas (por ciclo / filtros)
+    - Exámenes de colocación validados (por idioma / año)
+    Retorna totales en MXN y contadores.
+    """
+    # ---------- Universo de ciclos para inscripciones ----------
+    if cicloId is not None:
+        ciclos_ids_sq = db.query(Ciclo.id).filter(Ciclo.id == cicloId).subquery()
+    else:
+        ciclos_ids_sq = _flt_ciclos_q(db, anio, idioma).with_entities(Ciclo.id).subquery()
+
+    # ---------- Inscripciones ----------
+    insc_total_cent = 0
+    insc_count = 0
+    try:
+        from ..models import Inscripcion  # type: ignore
+
+        base = db.query(Inscripcion).filter(Inscripcion.ciclo_id.in_(ciclos_ids_sq))
+        # solo confirmadas
+        if hasattr(Inscripcion, "status"):
+            base = base.filter(Inscripcion.status == "confirmada")
+        if hasattr(Inscripcion, "validated_at"):
+            base = base.filter(Inscripcion.validated_at.isnot(None))
+        if hasattr(Inscripcion, "tipo"):
+            base = base.filter(Inscripcion.tipo == "pago")
+
+        insc_count = base.count()
+        insc_total_cent = (
+            base.with_entities(func.coalesce(func.sum(getattr(Inscripcion, "importe_centavos", literal(0))), 0)).scalar()
+            or 0
+        )
+    except Exception:
+        insc_total_cent = 0
+        insc_count = 0
+
+    # ---------- Placement (exámenes de colocación) ----------
+    place_total_cent = 0
+    place_count = 0
+    try:
+        from ..models import PlacementExam, PlacementRegistro, PlacementRegistroStatus  # type: ignore
+
+        reg = (
+            db.query(PlacementRegistro)
+            .join(PlacementExam, PlacementExam.id == PlacementRegistro.exam_id)
+        )
+
+        # Solo registros validados
+        try:
+            reg = reg.filter(PlacementRegistro.status == PlacementRegistroStatus.VALIDADA)
+        except Exception:
+            reg = reg.filter(func.lower(func.coalesce(PlacementRegistro.status, "")) == "validada")
+
+        # Filtro idioma si se envía
+        if idioma and hasattr(PlacementExam, "idioma"):
+            reg = reg.filter(or_(PlacementExam.idioma == idioma, PlacementExam.idioma.ilike(str(idioma))))
+
+        # Filtro por año si se envía (funciona para DATE o TEXT tipo 'YYYY-MM-DD')
+        if anio and hasattr(PlacementExam, "fecha"):
+            reg = reg.filter(cast(PlacementExam.fecha, String).like(f"{anio}-%"))
+
+        place_count = reg.count()
+        place_total_cent = reg.with_entities(func.coalesce(func.sum(PlacementRegistro.importe_centavos), 0)).scalar() or 0
+
+    except Exception:
+        place_total_cent = 0
+        place_count = 0
+
+    inscripciones_total_mxn = round(float(insc_total_cent) / 100.0, 2)
+    placement_total_mxn = round(float(place_total_cent) / 100.0, 2)
+    total_mxn = round(inscripciones_total_mxn + placement_total_mxn, 2)
+
+    return MontosOut(
+        inscripciones_total_mxn=inscripciones_total_mxn,
+        inscripciones_count=int(insc_count),
+        placement_total_mxn=placement_total_mxn,
+        placement_count=int(place_count),
+        total_mxn=total_mxn,
     )
 
 
@@ -617,7 +716,7 @@ def comentarios_recientes(
                 ciclo=r.ciclo,
                 docente=str(nombres.get(r.docente_id, "Docente")) if r.docente_id is not None else None,
                 pregunta=r.pregunta,
-                texto=(r.texto or "").strip(),
+                texto=(r.texto or "").trim() if hasattr(str, "trim") else (r.texto or "").strip(),
                 created_at=r.created_at.isoformat() if r.created_at else None,
             )
         )
