@@ -24,14 +24,9 @@ import {
   RefreshCcw,
   Search,
   LineChart as LineChartIcon,
-  BarChart3 as BarChartIcon, // ← seguimos usando el alias
+  BarChart3 as BarChartIcon,
   CheckSquare,
   Square,
-  Gauge,
-  ListChecks,
-  ClipboardCheck,
-  Target,  // ← añadido
-  Users,   // ← añadido
 } from "lucide-react";
 import {
   Sheet,
@@ -291,7 +286,7 @@ export default function DocenteEncuestaView({ defaultAnio, defaultIdioma }: Prop
         selectedCatIds.includes(String(p.categoria?.id ?? "sin_categoria"))
     );
     const items = base.map((p, idx) => {
-      const { pct, promedio, total } = computePct(p); // 👈 incluye total
+      const { pct, promedio } = computePct(p);
       const catId = p.categoria?.id ?? "sin_categoria";
       const catName = p.categoria?.name ?? "General";
       const catOrder = p.categoria?.order ?? 9999;
@@ -299,7 +294,6 @@ export default function DocenteEncuestaView({ defaultAnio, defaultIdioma }: Prop
         pregunta: `P${idx + 1}`,
         pct,
         promedio,
-        total, // 👈 agregado
         texto: p.texto,
         categoriaId: String(catId),
         categoriaName: catName,
@@ -310,27 +304,6 @@ export default function DocenteEncuestaView({ defaultAnio, defaultIdioma }: Prop
       (a, b) => a.categoriaOrder - b.categoriaOrder || a.pregunta.localeCompare(b.pregunta)
     );
   }, [preguntasGraficables, selectedIds, selectedCatIds]);
-
-  // ===== Promedio global (ponderado y simple) =====
-  const globalAvg = React.useMemo(() => {
-    if (!dataPct.length) return { pctWeighted: 0, pctSimple: 0, totalResp: 0 };
-    let sumW = 0;
-    let sumN = 0;
-    for (const it of dataPct) {
-      const n = Number((it as any).total ?? 0);
-      const p = Number((it as any).pct ?? 0);
-      if (n > 0) {
-        sumW += p * n;
-        sumN += n;
-      }
-    }
-    const pctWeighted = sumN > 0 ? +(sumW / sumN).toFixed(1) : 0;
-    const pctSimple = +(
-      dataPct.reduce((a, b) => a + Number((b as any).pct || 0), 0) / dataPct.length
-    ).toFixed(1);
-    const totalResp = dataPct.reduce((a, b) => a + Number((b as any).total || 0), 0);
-    return { pctWeighted, pctSimple, totalResp };
-  }, [dataPct]);
 
   // ======= SERIE (línea) =======
   const preguntasOrden = React.useMemo(() => {
@@ -503,12 +476,6 @@ export default function DocenteEncuestaView({ defaultAnio, defaultIdioma }: Prop
             {!showAll && reporte?.ciclo && <Badge variant="secondary">Ciclo: {reporte.ciclo.codigo}</Badge>}
             {!showAll && !!reporte?.total_participantes && (
               <Badge variant="outline">Participantes: {reporte.total_participantes}</Badge>
-            )}
-            {/* 👇 NUEVO: Promedio global (ponderado) */}
-            {!showAll && (dataPct.length > 0) && (
-              <Badge variant="default" className="bg-[#7c0040]">
-                Promedio global: {globalAvg.pctWeighted}%
-              </Badge>
             )}
             {showAll && serie?.docente?.nombre && (
               <Badge variant="secondary">Docente: {serie.docente.nombre}</Badge>
@@ -717,35 +684,6 @@ export default function DocenteEncuestaView({ defaultAnio, defaultIdioma }: Prop
         {/* Mensajes */}
         {!showAll && error && <div className="mt-2 text-sm text-amber-600">{error}</div>}
         {showAll && serieError && <div className="mt-2 text-sm text-amber-600">{serieError}</div>}
-
-       {/* ====== KPIs estilo pills (compactas alineadas a la izquierda) ====== */}
-        {!showAll && (
-          <div className="flex flex-wrap items-center gap-2 my-3">
-            {/* Promedio global */}
-            <div className="inline-flex items-center gap-2 rounded-full bg-[#7c0040]/10 border border-[#7c0040]/30 px-3 py-1.5 text-sm">
-              <Target className="h-4 w-4 text-[#7c0040] shrink-0" />
-              <span className="text-xs text-muted-foreground">Promedio global:</span>
-              <span className="font-semibold text-[#7c0040]">
-                {dataPct.length ? `${globalAvg.pctWeighted}%` : "—"}
-              </span>
-            </div>
-
-            {/* Preguntas graficadas */}
-            <div className="inline-flex items-center gap-2 rounded-full bg-[#7c0040]/10 border border-[#7c0040]/30 px-3 py-1.5 text-sm">
-              <BarChartIcon className="h-4 w-4 text-[#7c0040] shrink-0" />
-              <span className="text-xs text-muted-foreground">Preguntas graficadas:</span>
-              <span className="font-semibold text-[#7c0040]">{dataPct.length}</span>
-            </div>
-
-            {/* Respuestas usadas */}
-            <div className="inline-flex items-center gap-2 rounded-full bg-[#7c0040]/10 border border-[#7c0040]/30 px-3 py-1.5 text-sm">
-              <Users className="h-4 w-4 text-[#7c0040] shrink-0" />
-              <span className="text-xs text-muted-foreground">Respuestas usadas:</span>
-              <span className="font-semibold text-[#7c0040]">{globalAvg.totalResp}</span>
-            </div>
-          </div>
-        )}
-
 
         {/* ====== Gráfica ====== */}
         <div className="mt-2 h-[560px] md:h-[640px] w-full">

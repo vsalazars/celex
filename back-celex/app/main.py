@@ -38,6 +38,7 @@ from .routers import coordinacion_dashboard
 from app.routers import coordinacion_perfil
 from app.routers import docente_perfil
 from app.routers import auth_password_reset
+from app.routers import docente_overview 
 
 
 
@@ -84,6 +85,8 @@ app.include_router(coordinacion_dashboard.router)
 app.include_router(coordinacion_perfil.router)
 app.include_router(docente_perfil.router)
 app.include_router(auth_password_reset.router)
+app.include_router(docente_overview.router)
+
 
 
 

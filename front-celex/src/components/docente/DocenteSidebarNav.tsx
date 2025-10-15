@@ -59,7 +59,7 @@ export default function DocenteSidebarNav({
       <div className="mb-6">
         <div className="flex items-center gap-2 text-sm text-neutral-500">
           <User className="h-4 w-4" />
-          <span>Panel Docente</span>
+          <span>Panel del Docente</span>
         </div>
         <h1 className="mt-1 text-xl font-semibold">Dashboard</h1>
       </div>

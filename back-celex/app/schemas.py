@@ -1005,3 +1005,9 @@ class ResetPasswordIn(BaseModel):
         if self.new_password != self.confirm_new_password:
             raise ValueError("La confirmación no coincide")
         return self
+
+class DocenteOverviewOut(BaseModel):
+    grupos_activos: int
+    alumnos_total: int
+    satisfaccion_promedio: float
+    ultimo_grupo: Optional[str] = None

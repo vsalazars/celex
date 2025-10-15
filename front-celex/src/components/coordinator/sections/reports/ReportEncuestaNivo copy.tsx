@@ -369,7 +369,7 @@ export default function ReportEncuestaPorcentaje({
       <CardContent className="p-4 md:p-6">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-medium">Resultados de la encuesta — % Promedio</h3>
+            <h3 className="font-medium">Resultados de la encuesta</h3>
             {reporte?.ciclo && <Badge variant="secondary">Ciclo: {reporte.ciclo.codigo}</Badge>}
             {anio && <Badge variant="secondary">Año: {anio}</Badge>}
             {idioma && <Badge variant="secondary">Idioma: {idioma}</Badge>}

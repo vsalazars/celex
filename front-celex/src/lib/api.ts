@@ -1759,3 +1759,19 @@ export async function resetPassword(payload: ResetPasswordIn): Promise<void> {
   const url = buildURL("/auth/password/reset");
   await apiFetch<void>(url, { method: "POST", json: payload }); // no auth
 }
+
+
+
+/* ==================== Docente — Overview ==================== */
+
+export type DocenteOverviewOut = {
+  grupos_activos: number;
+  alumnos_total: number;
+  satisfaccion_promedio: number; // 0..10
+  ultimo_grupo?: string | null;
+};
+
+export async function getDocenteOverview(): Promise<DocenteOverviewOut> {
+  const url = buildURL("/docente/overview");
+  return apiFetch<DocenteOverviewOut>(url, { auth: true });
+}

@@ -10,7 +10,7 @@ function getInitials(name: string) {
 }
 
 export default function UserInfo() {
-  const [name, setName]   = useState<string>("");
+  const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
 
   useEffect(() => {
@@ -23,12 +23,23 @@ export default function UserInfo() {
   return (
     <div className="rounded-xl border bg-white/60 p-3 dark:bg-neutral-900/60">
       <div className="flex items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-full border text-xs font-semibold">
+        {/* Avatar circular con iniciales */}
+        <div
+          className="h-10 w-10 shrink-0 grid place-items-center rounded-full bg-[#7c0040] text-xs font-semibold text-white leading-none select-none"
+        >
           {getInitials(name || "CE")}
         </div>
+
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium">{name || "Docente"}</div>
-          <div className="truncate text-xs text-neutral-500">{email || "—"}</div>
+          {/* Nombre en varias líneas si es necesario */}
+          <div className="text-sm font-medium text-[#7c0040] dark:text-white break-words whitespace-normal">
+            {name || "Docente"}
+          </div>
+
+          {/* Correo siempre en una línea */}
+          <div className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+            {email || "—"}
+          </div>
         </div>
       </div>
     </div>

@@ -382,8 +382,8 @@ export default function ReportEncuestaPorcentaje({
       <CardContent className="p-4 md:p-6">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-medium">Resultados de la encuesta — % Promedio</h3>
-            {reporte?.ciclo && <Badge variant="secondary">Ciclo: {reporte.ciclo.codigo}</Badge>}
+            <h3 className="font-medium">Resultados de la encuesta</h3>
+            {reporte?.ciclo && <Badge variant="secondary">Curso: {reporte.ciclo.codigo}</Badge>}
             {docenteNombre && <Badge variant="secondary">Docente: {docenteNombre}</Badge>}
             {anio && <Badge variant="secondary">Año: {anio}</Badge>}
             {idioma && <Badge variant="secondary">Idioma: {idioma}</Badge>}
@@ -408,9 +408,8 @@ export default function ReportEncuestaPorcentaje({
         <Separator className="my-3" />
 
         <div ref={ref}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>CELEX — Encuesta (Promedio en %)</h2>
           <div className="meta mb-3">
-            {reporte?.ciclo ? `Ciclo: ${reporte.ciclo.codigo}` : "Sin ciclo seleccionado"}
+            {reporte?.ciclo ? `Curso: ${reporte.ciclo.codigo}` : "Sin ciclo seleccionado"}
             {docenteNombre ? ` — Docente: ${docenteNombre}` : ""}
           </div>
 

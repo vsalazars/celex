@@ -339,7 +339,7 @@ export default function ReportAlumnos({ filters }: { filters: ReportFiltersState
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-medium">Alumnos inscritos</h3>
-            {reporte?.ciclo && <Badge variant="secondary">Ciclo: {reporte.ciclo.codigo}</Badge>}
+            {reporte?.ciclo && <Badge variant="secondary">Curso: {reporte.ciclo.codigo}</Badge>}
             {anio && <Badge variant="secondary">Año: {anio}</Badge>}
             {idioma && <Badge variant="secondary">Idioma: {idioma}</Badge>}
           </div>
