@@ -3,7 +3,7 @@ export default function AppFooter() {
     <footer className="border-t">
       <div className="mx-auto flex max-w-screen-2xl flex-col items-center justify-between gap-3 px-4 sm:px-6 md:px-8 py-6 sm:py-8 text-[11.5px] sm:text-xs text-neutral-500 md:flex-row">
         <span className="text-center md:text-left">
-          © {new Date().getFullYear()} CELEX · CECyT 15 "Diódoro Antúnez Echegaray"
+          © {new Date().getFullYear()} CELEX · Escuela Superior de Ingeniería y Arquitectura Unidad Zacatenco
         </span>
         <div className="flex items-center gap-4">
           <a href="#" className="hover:text-neutral-700">Términos</a>

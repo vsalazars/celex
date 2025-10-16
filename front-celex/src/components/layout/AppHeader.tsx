@@ -76,7 +76,7 @@ export default function AppHeader() {
                 activeMobile ? "text-white/90" : "text-neutral-800",
               ].join(" ")}
             >
-              CECyT 15 “Diódoro Antúnez Echegaray”
+              Escuela Superior de Ingeniería y Arquitectura Unidad Zacatenco
             </p>
             <p
               className={[
