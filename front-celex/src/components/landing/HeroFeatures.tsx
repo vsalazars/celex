@@ -254,6 +254,21 @@ function IconDropdown({
   value?: string;
   onChange: (v: string | undefined) => void;
 }) {
+  // 👇 Mapea solo si es el dropdown de "Idioma"
+  const pretty = (s?: string) => {
+    if (!s) return s ?? "";
+    if (label !== "Idioma") return s;
+    const k = String(s).toLowerCase().trim();
+    const M: Record<string, string> = {
+      ingles: "Inglés",
+      frances: "Francés",
+      aleman: "Alemán",
+      italiano: "Italiano",
+      portugues: "Portugués",
+    };
+    return M[k] ?? s;
+  };
+
   return (
     <TooltipProvider>
       <Tooltip delayDuration={200}>
@@ -265,16 +280,24 @@ function IconDropdown({
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
+
+          {/* Tooltip con display bonito */}
           <TooltipContent side="bottom" sideOffset={8}>
-            {label}{value ? `: ${value}` : ""}
+            {label}{value ? `: ${pretty(value)}` : ""}
           </TooltipContent>
+
           <DropdownMenuContent align="end" className="rounded-xl">
             <DropdownMenuLabel className="text-xs">{label}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onChange(undefined)}>Todos</DropdownMenuItem>
+
+            {/* Items con display bonito, pero enviando el valor crudo al onClick */}
             {items.map((opt) => (
-              <DropdownMenuItem key={opt} onClick={() => onChange(opt)} className="capitalize">
-                {opt}
+              <DropdownMenuItem
+                key={opt}
+                onClick={() => onChange(opt)}
+              >
+                {pretty(opt)}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -283,6 +306,7 @@ function IconDropdown({
     </TooltipProvider>
   );
 }
+
 
 type TabKey = "cursos" | "examenes";
 
@@ -340,7 +364,8 @@ export default function HeroFeatures() {
   // ===== Tokens seleccionados (chips) =====
   const selectedTokens = useMemo(() => {
     const tokens: { key: FilterKey; label: string }[] = [];
-    if (idioma) tokens.push({ key: "idioma", label: `Idioma: ${idioma}` });
+    if (idioma) tokens.push({ key: "idioma", label: `Idioma: ${idiomaLabel(idioma)}` });
+
     if (tab === "cursos") {
       if (modalidad) tokens.push({ key: "modalidad", label: `Modalidad: ${modalidad}` });
       if (turno) tokens.push({ key: "turno", label: `Turno: ${turno}` });
@@ -479,6 +504,18 @@ export default function HeroFeatures() {
       </>
     );
   }, [tab, totalCursos, totalExams]);
+
+  function idiomaLabel(raw?: string | null) {
+  const k = String(raw ?? "").toLowerCase().trim();
+  const M: Record<string, string> = {
+    ingles: "Inglés",
+    frances: "Francés",
+    aleman: "Alemán",
+    italiano: "Italiano",
+    portugues: "Portugués",
+  };
+  return M[k] ?? String(raw ?? "");
+}
 
   // ===== UI =====
   return (
@@ -643,12 +680,13 @@ export default function HeroFeatures() {
                           <div className="flex flex-wrap items-center gap-2">
                             {c.idioma ? (
                               <Badge
-                                className="rounded-full px-3 py-1 text-[14px] sm:text-[15px] font-medium capitalize bg-[#7c0040] text-white border-[#7c0040]"
-                                title={c.idioma}
+                                className="rounded-full px-3 py-1 text-[14px] sm:text-[15px] font-medium bg-[#7c0040] text-white border-[#7c0040]"
+                                title={idiomaLabel(c.idioma)}
                               >
-                                {c.idioma}
+                                {idiomaLabel(c.idioma)}
                               </Badge>
                             ) : null}
+
 
                             {c.nivel ? (
                               <Badge
@@ -787,7 +825,10 @@ export default function HeroFeatures() {
                         </div>
 
                         <div className="mt-2 flex flex-wrap gap-2 text-sm">
-                          <Badge variant="secondary" className="capitalize text-sm px-3 py-1">{(e as any).idioma || "idioma"}</Badge>
+                          <Badge variant="secondary" className="text-sm px-3 py-1">
+                            {idiomaLabel((e as any).idioma) || "Idioma"}
+                          </Badge>
+
                           {(e as any).sede ? (
                             <Badge variant="outline" className="capitalize">{(e as any).sede}</Badge>
                           ) : null}

@@ -49,6 +49,7 @@ class KpisOut(BaseModel):
     aprobados_80_count: int
     reprobados_count: int
     aprobados_80_pct: float
+    alumnos_exencion: int = 0
     # 👉 agrega estos (opcionales)
     top_idioma: str | None = None
     top_idioma_grupos: int | None = 0
@@ -297,6 +298,26 @@ def kpis_coordinacion(
 
     alumnos_externos = max(int(alumnos_total) - int(alumnos_ipn), 0)
 
+
+    # ===== Alumnos con exención de pago
+    alumnos_exencion = 0
+    try:
+        from ..models import Inscripcion, InscripcionTipo  # type: ignore
+
+        estados_activos = ["registrada", "preinscrita", "confirmada"]
+
+        alumnos_exencion = (
+            db.query(func.count(func.distinct(Inscripcion.alumno_id)))
+            .filter(Inscripcion.ciclo_id.in_(ciclos_ids_sq))
+            .filter(Inscripcion.tipo == InscripcionTipo.exencion)
+            .filter(Inscripcion.status.in_(estados_activos) if hasattr(Inscripcion, "status") else literal(True))
+            .scalar()
+            or 0
+        )
+    except Exception:
+        alumnos_exencion = 0
+
+
     # ===== Pagos: suma de importes validados
     pagos_verificados_pct = 0.0
     pagos_monto_total = 0.0
@@ -431,6 +452,7 @@ def kpis_coordinacion(
         alumnos_matriculados=int(alumnos_total),
         alumnos_ipn=int(alumnos_ipn),
         alumnos_externos=int(alumnos_externos),
+        alumnos_exencion=int(alumnos_exencion),  # 👈 AQUI
         pagos_verificados_pct=pagos_verificados_pct,
         pagos_monto_total=pagos_monto_total,
         promedio_global_pct=prom_global,

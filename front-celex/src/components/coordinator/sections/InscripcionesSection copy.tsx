@@ -77,11 +77,6 @@ type HistItem = {
   calificacion?: number | null;
 };
 
-/* ================================================
-   FIX: Helpers y componente Pill a nivel módulo
-   (antes estaban dentro de useMemo(columns))
-================================================ */
-
 /** Icono de orden */
 function SortIcon({ column }: { column: any }) {
   const s = column.getIsSorted();
@@ -99,51 +94,49 @@ function Pill({ children }: { children: ReactNode }) {
   );
 }
 
-  /** Quita prefijos tipo "Idioma." / "Nivel." y se queda con el último segmento */
-  function normalizeTaxonomy(value?: string | null): string {
-    if (!value) return "";
-    const t = String(value).trim();
-    // si trae puntos, nos quedamos con el último segmento
-    const last = t.includes(".") ? t.split(".").pop()! : t;
-    return last;
-  }
+/** Quita prefijos tipo "Idioma." / "Nivel." y se queda con el último segmento */
+function normalizeTaxonomy(value?: string | null): string {
+  if (!value) return "";
+  const t = String(value).trim();
+  const last = t.includes(".") ? t.split(".").pop()! : t;
+  return last;
+}
 
-  function titleCaseEs(s?: string | null): string {
-    if (!s) return "";
-    const t = String(s).replaceAll("_", " ").toLowerCase();
-    const mapAcentos: Record<string, string> = {
-      ingles: "Inglés",
-      frances: "Francés",
-      aleman: "Alemán",
-      japones: "Japonés",
-      chino: "Chino",
-      portugues: "Portugués",
-      italiano: "Italiano",
-    };
-    if (mapAcentos[t]) return mapAcentos[t];
-    return t.replace(/\b\w/g, (m) => m.toUpperCase());
-  }
+function titleCaseEs(s?: string | null): string {
+  if (!s) return "";
+  const t = String(s).replaceAll("_", " ").toLowerCase();
+  const mapAcentos: Record<string, string> = {
+    ingles: "Inglés",
+    frances: "Francés",
+    aleman: "Alemán",
+    japones: "Japonés",
+    chino: "Chino",
+    portugues: "Portugués",
+    italiano: "Italiano",
+  };
+  if (mapAcentos[t]) return mapAcentos[t];
+  return t.replace(/\b\w/g, (m) => m.toUpperCase());
+}
 
-  function labelIdioma(idioma?: string | null): string {
-    const raw = normalizeTaxonomy(idioma); // p.ej. "Idioma.Ingles" -> "Ingles"
-    return titleCaseEs(raw || "");
-  }
+function labelIdioma(idioma?: string | null): string {
+  const raw = normalizeTaxonomy(idioma);
+  return titleCaseEs(raw || "");
+}
 
-  function labelNivel(nivel?: string | null): string {
-    if (!nivel) return "";
-    const raw = normalizeTaxonomy(nivel); // p.ej. "Nivel.I2" -> "I2"
-    const n = String(raw).trim().toUpperCase(); // "I2"
-    const letra = n[0];
-    const num = n.slice(1);
-    const nivelMap: Record<string, string> = { B: "Básico", I: "Intermedio", A: "Avanzado" };
-    if (nivelMap[letra] && /^\d+$/.test(num)) return `${nivelMap[letra]} ${Number(num)}`;
-    const lower = n.toLowerCase();
-    if (lower.includes("basico") || lower.includes("básico")) return "Básico";
-    if (lower.includes("intermedio")) return "Intermedio";
-    if (lower.includes("avanzado")) return "Avanzado";
-    return titleCaseEs(n);
-  }
-
+function labelNivel(nivel?: string | null): string {
+  if (!nivel) return "";
+  const raw = normalizeTaxonomy(nivel);
+  const n = String(raw).trim().toUpperCase();
+  const letra = n[0];
+  const num = n.slice(1);
+  const nivelMap: Record<string, string> = { B: "Básico", I: "Intermedio", A: "Avanzado" };
+  if (nivelMap[letra] && /^\d+$/.test(num)) return `${nivelMap[letra]} ${Number(num)}`;
+  const lower = n.toLowerCase();
+  if (lower.includes("basico") || lower.includes("básico")) return "Básico";
+  if (lower.includes("intermedio")) return "Intermedio";
+  if (lower.includes("avanzado")) return "Avanzado";
+  return titleCaseEs(n);
+}
 
 function labelModalidad(modalidad?: string | null): string {
   if (!modalidad) return "";
@@ -210,6 +203,123 @@ export default function InscripcionesSection() {
 
   const hoyIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
+  /* =========================================================
+     PENDIENTES: SOLO "preinscrita" con backend robusto
+  ========================================================= */
+  const [pendingByCiclo, setPendingByCiclo] = useState<Record<number, number>>({});
+  const [pendingLoading, setPendingLoading] = useState(false);
+
+  // Normaliza posibles formatos de respuesta
+  function normalizeResp(resp: any): { items: any[]; count: number | null } {
+    if (!resp) return { items: [], count: null };
+    // casos con contador explícito
+    const count =
+      typeof resp.total === "number" ? resp.total :
+      typeof resp.count === "number" ? resp.count :
+      typeof resp.total_count === "number" ? resp.total_count :
+      null;
+
+    // posibles llaves de items
+    const items =
+      Array.isArray(resp) ? resp :
+      Array.isArray(resp.items) ? resp.items :
+      Array.isArray(resp.results) ? resp.results :
+      Array.isArray(resp.data) ? resp.data :
+      [];
+
+    return { items, count };
+  }
+
+  // Cuenta cuántas "preinscrita" hay en una respuesta (si ignoran el status, filtro aquí)
+  function countPreinscritasFromItems(items: any[]): number {
+    return items.reduce((acc, it) => {
+      const s = String(it?.status ?? it?.estado ?? "").toLowerCase();
+      return acc + (s === "preinscrita" ? 1 : 0);
+    }, 0);
+  }
+
+  // Intenta obtener el count real con page_size=1; si no hay count, cae a pedir más items
+  async function getPreinscritasCount(ciclo: CicloDTO): Promise<number> {
+    // 1) intento "barato": pedir solo el conteo
+    try {
+      const resp1 = await listInscripcionesCoord({
+        ciclo_id: ciclo.id,
+        status: "preinscrita",
+        page: 1,
+        page_size: 1,
+      } as any);
+
+      const n1 = normalizeResp(resp1);
+      if (typeof n1.count === "number") return n1.count;
+
+      // Si no hay count, pero vienen items y parecen filtrados…
+      if (n1.items.length === 1) {
+        // podría estar ya filtrado, asumimos hay al menos 1
+        return 1;
+      }
+    } catch {
+      // seguimos al plan B
+    }
+
+    // 2) plan B: pedir un page_size grande y contar manualmente (si el backend ignora "status")
+    try {
+      const resp2 = await listInscripcionesCoord({
+        ciclo_id: ciclo.id,
+        // OJO: dejamos status para el caso en que sí lo respete
+        status: "preinscrita",
+        page: 1,
+        page_size: 500,
+        limit: 500, // por si el backend espera "limit"
+      } as any);
+
+      const n2 = normalizeResp(resp2);
+      const items = n2.items;
+
+      // Si el backend respeta el filtro, el length ya es el conteo.
+      // Si no, filtramos localmente.
+      const byItems = items.length ? countPreinscritasFromItems(items) : 0;
+
+      // Si vino un "count" además, úsalo. Si no, usa el conteo manual.
+      if (typeof n2.count === "number") return n2.count;
+      return byItems;
+    } catch {
+      return 0;
+    }
+  }
+
+  async function fetchPendientesPorCiclo(ciclosInput: CicloDTO[]) {
+    if (!ciclosInput?.length) {
+      setPendingByCiclo({});
+      return;
+    }
+    setPendingLoading(true);
+    const tmp: Record<number, number> = {};
+    try {
+      for (const c of ciclosInput) {
+        const n = await getPreinscritasCount(c);
+        tmp[c.id] = n;
+      }
+      setPendingByCiclo(tmp);
+    } finally {
+      setPendingLoading(false);
+    }
+  }
+
+  /* ================== filtros/memos ================== */
+  const ciclosFiltrados = useMemo(() => {
+    if (year === "todos") return ciclos;
+    return ciclos.filter((c) => {
+      const from = c.curso?.from;
+      if (!from) return false;
+      return new Date(from).getFullYear() === year;
+    });
+  }, [ciclos, year]);
+
+  const ciclosConPendientes = useMemo(() => {
+    const source = year === "todos" ? ciclos : ciclosFiltrados;
+    return source.filter((c) => (pendingByCiclo[c.id] ?? 0) > 0);
+  }, [year, ciclos, ciclosFiltrados, pendingByCiclo]);
+
   function openReject(ins: InscripcionDTO) {
     const nombre = `${ins.alumno?.first_name ?? ""} ${ins.alumno?.last_name ?? ""}`.trim();
     setRejectOpen(true);
@@ -269,23 +379,34 @@ export default function InscripcionesSection() {
   async function fetchCiclos() {
     try {
       const resp = await listCiclos({ page: 1, page_size: 100 });
-      setCiclos(resp.items || []);
-      if (!cicloId && resp.items?.length) setCicloId(resp.items[0].id);
+      const items = resp?.items ?? [];
+      setCiclos(items || []);
+      if (!cicloId && items?.length) setCicloId(items[0].id);
+      if (items?.length) {
+        void fetchPendientesPorCiclo(items);
+      } else {
+        setPendingByCiclo({});
+      }
     } catch (err: any) {
       toast.error(typeof err?.message === "string" ? err.message : "Error al cargar ciclos");
     }
   }
+
   async function fetchInscripciones() {
     if (!cicloId) return;
     setLoading(true);
     try {
-      const params: { status?: string; ciclo_id: number; limit?: number } = {
+      const params: { status?: string; ciclo_id: number; limit?: number; page?: number; page_size?: number } = {
         ciclo_id: cicloId,
         limit: 60,
+        page: 1,
+        page_size: 60,
       };
       if (status !== "todas") params.status = status;
 
-      const data = await listInscripcionesCoord(params);
+      const dataRaw = await listInscripcionesCoord(params as any);
+      const { items } = normalizeResp(dataRaw);
+      const data: InscripcionDTO[] = items.length ? items : (Array.isArray(dataRaw) ? (dataRaw as InscripcionDTO[]) : []);
       data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setRows(data);
     } catch (err: any) {
@@ -311,6 +432,13 @@ export default function InscripcionesSection() {
       toast.success(`Inscripción ${action === "APPROVE" ? "aprobada" : "rechazada"} correctamente`);
       setPreview((p) => (p.ins?.id === id ? { ...p, open: false } : p));
       setRows((prev) => prev.filter((r) => r.id !== id));
+
+      // refrescar contador del ciclo afectado (preinscritas)
+      const ciclo = (preview.ins?.ciclo?.id ?? cicloId) as number | null;
+      if (ciclo) {
+        const found = ciclos.find((c) => c.id === ciclo);
+        if (found) void fetchPendientesPorCiclo([found]);
+      }
     } catch (err: any) {
       toast.error(typeof err?.message === "string" ? err.message : "Error al validar");
     } finally {
@@ -321,7 +449,7 @@ export default function InscripcionesSection() {
   async function fetchHistorialAlumno(alumnoId: number) {
     setHistLoading(true);
     try {
-      const res = await getHistorialAlumno(alumnoId, {}); // puedes pasar filtros { anio, idioma, estado }
+      const res = await getHistorialAlumno(alumnoId, {});
       setHistItems(res?.items ?? []);
     } catch (e: any) {
       toast.error(typeof e?.message === "string" ? e.message : "No se pudo cargar el historial");
@@ -366,7 +494,6 @@ export default function InscripcionesSection() {
     // ======= HISTORIAL DEL ALUMNO =======
     setHistItems([]);
     setHistLoading(false);
-    // setHistOpen(true); // si quieres abrirlo automático
     if ((ins as any).alumno_id) {
       void fetchHistorialAlumno((ins as any).alumno_id);
     }
@@ -408,25 +535,18 @@ export default function InscripcionesSection() {
   }
 
   function closePreview() {
-    // Revoca URL del archivo
     if (preview.url) {
       try { URL.revokeObjectURL(preview.url); } catch {}
     }
-
-    // Reset visor
     setPreview({ open: false, ins: null, tipo: null, url: null, mime: null, loading: false, isPdf: false });
     setIsFull(false);
     setZoom(1);
     setRotation(0);
     setFit("contain");
-
-    // Reset edición de pago
     setEditReferencia("");
     setEditImporteStr("");
     setEditFecha("");
     setSavingPago(false);
-
-    // Reset rechazo + historial
     setRejectOpen(false);
     setHistOpen(false);
     setHistItems([]);
@@ -461,9 +581,16 @@ export default function InscripcionesSection() {
     }
   }
 
-  // ====== effects ======
+  /* ================== effects ================== */
   useEffect(() => { fetchCiclos(); /* eslint-disable-next-line */ }, []);
   useEffect(() => { if (cicloId) fetchInscripciones(); /* eslint-disable-next-line */ }, [cicloId, status]);
+
+  // Recalcular preinscritas visibles si cambia el año o el set de ciclos
+  useEffect(() => {
+    const target = year === "todos" ? ciclos : ciclosFiltrados;
+    if (target.length) void fetchPendientesPorCiclo(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, ciclos.length]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -474,7 +601,7 @@ export default function InscripcionesSection() {
         e.preventDefault(); setZoom((z) => Math.min(5, Number((z + 0.25).toFixed(2))));
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "-") {
-        e.preventDefault(); setZoom((z) => Math.max(0.25, Number((z - 0.25).toFixed(2))));
+        e.preventDefault(); setZoom((z) => Math.max(0.25, Number((z - 0.25).toFixed(2)))) ;
       }
       if ((e.ctrlKey || e.metaKey) && key === "0") {
         e.preventDefault(); setZoom(1);
@@ -487,7 +614,7 @@ export default function InscripcionesSection() {
     return () => window.removeEventListener("keydown", onKey);
   }, [preview.open, preview.isPdf]);
 
-  // ====== memos ======
+  /* ================== memos ================== */
   const years = useMemo(() => {
     const set = new Set<number>();
     ciclos.forEach((c) => {
@@ -496,15 +623,6 @@ export default function InscripcionesSection() {
     });
     return Array.from(set).sort((a, b) => b - a);
   }, [ciclos]);
-
-  const ciclosFiltrados = useMemo(() => {
-    if (year === "todos") return ciclos;
-    return ciclos.filter((c) => {
-      const from = c.curso?.from;
-      if (!from) return false;
-      return new Date(from).getFullYear() === year;
-    });
-  }, [ciclos, year]);
 
   const filteredRows = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -517,7 +635,6 @@ export default function InscripcionesSection() {
     });
   }, [rows, q]);
 
-  // ====== ENCABEZADOS (quitamos ID y Fecha; agregamos Tipo) ======
   const headers = useMemo(
     () => ["Alumno", "Tipo", "Estado", "Trámite", "Comprobantes"],
     []
@@ -563,7 +680,6 @@ export default function InscripcionesSection() {
     },
   };
 
-  // helper para mostrar tipo de alumno
   function renderTipoAlumno(r: InscripcionDTO) {
     const boleta =
       (r as any)?.alumno?.boleta ??
@@ -584,7 +700,6 @@ export default function InscripcionesSection() {
     return <span className="text-sm">Externo</span>;
   }
 
-  // ====== flag para mostrar acciones solo en comprobante o exención ======
   const canValidate =
     !!preview.ins && (preview.tipo === "comprobante" || preview.tipo === "exencion");
 
@@ -741,7 +856,7 @@ export default function InscripcionesSection() {
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <CardHeader className="flex flex-col gap-3">
           <div className="space-y-1">
             <CardTitle>Validar inscripciones</CardTitle>
             <p className="text-sm text-muted-foreground">
@@ -749,7 +864,62 @@ export default function InscripcionesSection() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 w-full lg:w-auto">
+          {/* Fila arriba de filtros → “Validaciones pendientes:” SOLO ciclos con preinscritas */}
+          <div className="w-full">
+            <div className="text-[11px] uppercase text-muted-foreground mb-1">Validaciones pendientes:</div>
+            <div className="flex items-center gap-2 overflow-x-auto py-1 pr-1" style={{ scrollbarGutter: "stable" as any }}>
+              {pendingLoading && (
+                <span className="inline-flex items-center text-xs text-muted-foreground">
+                  <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Cargando…
+                </span>
+              )}
+              {!pendingLoading && ciclosConPendientes.length === 0 ? (
+                <span className="text-xs text-muted-foreground">Sin pendientes</span>
+              ) : (
+                ciclosConPendientes.map((c) => {
+                  const count = pendingByCiclo[c.id] ?? 0;
+                  return (
+                    <Badge
+                      key={c.id}
+                      variant="outline"
+                      onClick={() => setCicloId(c.id)}
+                      className={`cursor-pointer select-none rounded-full px-3 py-1 text-[11px] tabular-nums ${
+                        count > 0
+                          ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+                          : "border-slate-200 bg-slate-50 text-slate-700"
+                      }`}
+                      title={`${c.codigo}: ${count} preinscritas (clic para ver)`}
+                    >
+                      {c.codigo}
+                      <span className={`ml-2 inline-flex items-center justify-center rounded-full min-w-[1.5rem] h-6 px-2 ${
+                        count > 0
+                          ? "bg-amber-100 text-amber-900"
+                          : "bg-slate-100 text-slate-700"
+                      }`}>
+                        {count}
+                      </span>
+                    </Badge>
+                  );
+                })
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-1 h-7"
+                onClick={() => {
+                  const target = year === "todos" ? ciclos : ciclosFiltrados;
+                  void fetchPendientesPorCiclo(target);
+                }}
+                title="Recalcular"
+              >
+                <IconReload className="w-3.5 h-3.5 mr-1" />
+                Actualizar
+              </Button>
+            </div>
+          </div>
+
+          {/* Filtros */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 w-full">
             {/* Año */}
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">Año</label>
@@ -825,7 +995,7 @@ export default function InscripcionesSection() {
             </div>
           ) : filteredRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {cicloId ? "No hay inscripciones para este grupo y filtros." : "Selecciona un curso para comenzar."}
+              {cicloId ? "No hay inscripciones para este curso y filtros." : "Selecciona un curso para comenzar."}
             </p>
           ) : (
             <>
@@ -929,7 +1099,7 @@ export default function InscripcionesSection() {
         </CardContent>
       </Card>
 
-      {/* ====== VISOR (un solo modal ancho y estable) ====== */}
+      {/* ====== VISOR ====== */}
       <Dialog open={preview.open} onOpenChange={(o) => (o ? null : closePreview())}>
         <DialogContent
           className="p-0 overflow-hidden sm:max-w-none max-w-none w-[98vw] xl:w-[1800px] h-[90vh] [&>button.absolute.right-4.top-4]:hidden"
@@ -946,7 +1116,7 @@ export default function InscripcionesSection() {
                   {preview.ins ? ` · ${preview.ins.alumno?.first_name || ""} ${preview.ins.alumno?.last_name || ""}` : ""}
                 </DialogTitle>
 
-                {/* Editor de pago inline (solo cuando es pago y estás viendo comprobante) */}
+                {/* Editor de pago inline */}
                 {preview.ins?.tipo === "pago" && preview.tipo === "comprobante" && (
                   <div className="flex flex-wrap items-center gap-2 mr-2 mt-1">
                     <div className="flex items-center gap-2">
@@ -995,12 +1165,10 @@ export default function InscripcionesSection() {
                 )}
               </DialogHeader>
 
-              {/* === Acciones + Controles + Cerrar (en la toolbar) === */}
+              {/* Acciones + Controles */}
               <div className="flex flex-wrap items-center gap-2">
                 {canValidate && (
                   <>
-                    
-                    {/* ← NUEVO: botón para abrir/cerrar el panel de historial */}
                     <Button
                       size="sm"
                       onClick={() => setHistOpen((v) => !v)}
@@ -1012,7 +1180,6 @@ export default function InscripcionesSection() {
                     >
                       Historial
                     </Button>
-
 
                     <Button
                       size="sm"
@@ -1042,8 +1209,6 @@ export default function InscripcionesSection() {
                     >
                       Rechazar
                     </Button>
-
-                    
 
                     <div className="h-6 w-px bg-border mx-1" />
                   </>
@@ -1152,7 +1317,7 @@ export default function InscripcionesSection() {
                 )}
               </div>
 
-              {/* Panel de rechazo (solo cuando canValidate) */}
+              {/* Panel de rechazo */}
               {canValidate && rejectOpen && preview.ins && (
                 <div
                   className="w-full md:w-[420px] min-w-[320px] border-t md:border-t-0 md:border-l bg-white shrink-0 overflow-y-scroll"
@@ -1241,14 +1406,12 @@ export default function InscripcionesSection() {
                 </div>
               )}
 
-              {/* ===== Panel de HISTORIAL ===== */}
+              {/* Panel de HISTORIAL */}
               {histOpen && (
                 <div
-                  className="w-full md:w-[380px] min-w-[300px] border-t md:border-t-0 md:border-l bg-white shrink-0 overflow-y-auto mt-4 max-h-[80vh]"
+                  className="w/full md:w-[380px] min-w-[300px] border-t md:border-t-0 md:border-l bg-white shrink-0 overflow-y-auto mt-4 max-h-[80vh]"
                   style={{ scrollbarGutter: "stable both-edges" as any }}
                 >
-
-                  {/* Header pegajoso */}
                   <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 flex items-center justify-between">
                     <div className="text-sm font-medium">
                       Historial del alumno
@@ -1264,7 +1427,6 @@ export default function InscripcionesSection() {
                     </Button>
                   </div>
 
-                  {/* Contenido scrollable */}
                   <div className="p-4 space-y-3">
                     {histLoading ? (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1277,7 +1439,6 @@ export default function InscripcionesSection() {
                       <div className="space-y-3">
                         {histItems.map((h) => (
                           <div key={`${h.inscripcion_id}`} className="rounded-xl border p-3">
-                            {/* Encabezado: código + pills de idioma/nivel */}
                             <div className="flex items-start justify-between gap-2">
                               <div className="text-sm font-medium">{h.ciclo_codigo}</div>
                               <div className="flex flex-wrap gap-1">
@@ -1286,14 +1447,12 @@ export default function InscripcionesSection() {
                               </div>
                             </div>
 
-                            {/* Docente */}
                             {h.docente_nombre ? (
                               <div className="text-xs text-muted-foreground mt-1">
                                 Docente: {h.docente_nombre}
                               </div>
                             ) : null}
 
-                            {/* Fechas */}
                             <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                               <div className="rounded-md bg-slate-50 p-2">
                                 <div className="text-[10px] uppercase text-muted-foreground">Inicio</div>
@@ -1305,11 +1464,10 @@ export default function InscripcionesSection() {
                               </div>
                             </div>
 
-                            {/* Modalidad / Turno en pills + Calificación */}
                             <div className="mt-2 flex items-center justify-between">
                               <div className="flex flex-wrap gap-1">
-                                {/*{h.modalidad ? <Pill>{labelModalidad(h.modalidad)}</Pill> : null}
-                                {h.turno     ? <Pill>{labelTurno(h.turno)}</Pill>     : null}*/}
+                                {/* {h.modalidad ? <Pill>{labelModalidad(h.modalidad)}</Pill> : null}
+                                {h.turno     ? <Pill>{labelTurno(h.turno)}</Pill>     : null} */}
                               </div>
                               <div className="text-sm">
                                 {typeof h.calificacion === "number" ? (
@@ -1328,7 +1486,6 @@ export default function InscripcionesSection() {
                                 ) : (
                                   <Badge variant="outline" className="text-muted-foreground">Sin calificación</Badge>
                                 )}
-
                               </div>
                             </div>
                           </div>
@@ -1352,7 +1509,6 @@ export default function InscripcionesSection() {
           </div>
         </DialogContent>
       </Dialog>
-
     </>
   );
 }

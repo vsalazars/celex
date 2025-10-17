@@ -730,6 +730,11 @@ export default function OverviewSectionConLinea({
                           <XCircle className="h-3.5 w-3.5 mr-1" />
                           {kpis.reprobados_count}
                         </span>
+
+                        {/* 👇 nueva */}
+                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold border border-amber-300/60 bg-amber-50/60 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300">
+                          Exención de pago: {kpis.alumnos_exencion}
+                        </span>
                       </div>
                     </div>
                   )

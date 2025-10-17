@@ -734,7 +734,7 @@ export default function GroupsSection() {
             }}
           >
             <PlusCircle className="h-4 w-4" />
-            Crear nuevo ciclo
+            Crear nuevo grupo
           </Button>
 
         </div>
@@ -1110,7 +1110,7 @@ export default function GroupsSection() {
         >
           <DialogHeader className="sticky top-0 z-10 bg-white/70 backdrop-blur px-6 py-4 border-b">
             <DialogTitle className="text-lg font-semibold">
-              {mode === "create" ? "Crear nuevo ciclo" : `Editar ciclo: ${selected?.codigo}`}
+              {mode === "create" ? "Crear nuevo grupo" : `Editar grupo: ${selected?.codigo}`}
             </DialogTitle>
             <DialogDescription className="text-neutral-600">
               Fechas en formato <b>periodo</b> y horario por días.
