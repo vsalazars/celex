@@ -231,61 +231,48 @@ export default function InscripcionesSection() {
   }
 
   // Cuenta cuántas "preinscrita" hay en una respuesta (si ignoran el status, filtro aquí)
-  function countPreinscritasFromItems(items: any[]): number {
-    return items.reduce((acc, it) => {
-      const s = String(it?.status ?? it?.estado ?? "").toLowerCase();
-      return acc + (s === "preinscrita" ? 1 : 0);
-    }, 0);
-  }
+ function isPendingForValidation(it: any): boolean {
+  const s = String(it?.status ?? it?.estado ?? "").toLowerCase();
+  const tipo = String(it?.tipo ?? "").toLowerCase();
+  // Pendiente si:
+  // - está preinscrita (pago o lo que sea), o
+  // - es exención y sigue registrada
+  return s === "preinscrita" || (tipo === "exencion" && s === "registrada");
+}
+
+function countPendientes(items: any[]): number {
+  return items.reduce((acc, it) => acc + (isPendingForValidation(it) ? 1 : 0), 0);
+}
+
 
   // Intenta obtener el count real con page_size=1; si no hay count, cae a pedir más items
-  async function getPreinscritasCount(ciclo: CicloDTO): Promise<number> {
-    // 1) intento "barato": pedir solo el conteo
+ async function getPreinscritasCount(ciclo: CicloDTO): Promise<number> {
+  try {
+    // Intento 1: pedir count de preinscritas
+    const resp1 = await listInscripcionesCoord({ ciclo_id: ciclo.id, status: "preinscrita", page: 1, page_size: 1 } as any);
+    const n1 = normalizeResp(resp1);
+    const base = typeof n1.count === "number" ? n1.count : (n1.items.length ? 1 : 0);
+
+    // Intento 1b: además pedir un bloque grande sin status para capturar exenciones registradas
+    const resp1b = await listInscripcionesCoord({ ciclo_id: ciclo.id, page: 1, page_size: 500 } as any);
+    const n1b = normalizeResp(resp1b);
+    const extra = n1b.items.filter((it) => isPendingForValidation(it)).length;
+
+    // OJO: base ya incluye las preinscritas. Para evitar doble conteo, restamos las preinscritas que ya vengan también en n1b si hiciera overlap.
+    const yaContadas = n1b.items.filter((it) => String(it?.status ?? "").toLowerCase() === "preinscrita").length;
+    return base + Math.max(0, extra - yaContadas);
+  } catch {
+    // Plan B: una sola llamada grande y conteo local
     try {
-      const resp1 = await listInscripcionesCoord({
-        ciclo_id: ciclo.id,
-        status: "preinscrita",
-        page: 1,
-        page_size: 1,
-      } as any);
-
-      const n1 = normalizeResp(resp1);
-      if (typeof n1.count === "number") return n1.count;
-
-      // Si no hay count, pero vienen items y parecen filtrados…
-      if (n1.items.length === 1) {
-        // podría estar ya filtrado, asumimos hay al menos 1
-        return 1;
-      }
-    } catch {
-      // seguimos al plan B
-    }
-
-    // 2) plan B: pedir un page_size grande y contar manualmente (si el backend ignora "status")
-    try {
-      const resp2 = await listInscripcionesCoord({
-        ciclo_id: ciclo.id,
-        // OJO: dejamos status para el caso en que sí lo respete
-        status: "preinscrita",
-        page: 1,
-        page_size: 500,
-        limit: 500, // por si el backend espera "limit"
-      } as any);
-
+      const resp2 = await listInscripcionesCoord({ ciclo_id: ciclo.id, page: 1, page_size: 500 } as any);
       const n2 = normalizeResp(resp2);
-      const items = n2.items;
-
-      // Si el backend respeta el filtro, el length ya es el conteo.
-      // Si no, filtramos localmente.
-      const byItems = items.length ? countPreinscritasFromItems(items) : 0;
-
-      // Si vino un "count" además, úsalo. Si no, usa el conteo manual.
-      if (typeof n2.count === "number") return n2.count;
-      return byItems;
+      return countPendientes(n2.items);
     } catch {
       return 0;
     }
   }
+}
+
 
   async function fetchPendientesPorCiclo(ciclosInput: CicloDTO[]) {
     if (!ciclosInput?.length) {
@@ -392,29 +379,43 @@ export default function InscripcionesSection() {
     }
   }
 
-  async function fetchInscripciones() {
-    if (!cicloId) return;
-    setLoading(true);
-    try {
-      const params: { status?: string; ciclo_id: number; limit?: number; page?: number; page_size?: number } = {
-        ciclo_id: cicloId,
-        limit: 60,
-        page: 1,
-        page_size: 60,
-      };
-      if (status !== "todas") params.status = status;
+ async function fetchInscripciones() {
+  if (!cicloId) return;
+  setLoading(true);
+  try {
+    const baseParams: any = { ciclo_id: cicloId, limit: 200, page: 1, page_size: 200 };
 
-      const dataRaw = await listInscripcionesCoord(params as any);
-      const { items } = normalizeResp(dataRaw);
-      const data: InscripcionDTO[] = items.length ? items : (Array.isArray(dataRaw) ? (dataRaw as InscripcionDTO[]) : []);
-      data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setRows(data);
-    } catch (err: any) {
-      toast.error(typeof err?.message === "string" ? err.message : "Error al cargar inscripciones");
-    } finally {
-      setLoading(false);
+    // 1) Trae las que pidió el usuario (tal cual)
+    const params = { ...baseParams };
+    if (status !== "todas") params.status = status;
+    const dataRaw = await listInscripcionesCoord(params);
+    const { items } = normalizeResp(dataRaw);
+    let data: InscripcionDTO[] = items.length ? items : (Array.isArray(dataRaw) ? (dataRaw as InscripcionDTO[]) : []);
+
+    // 2) Si el usuario pidió "preinscrita", agrega exenciones que sigan "registrada"
+    if (status === "preinscrita") {
+      const respExtra = await listInscripcionesCoord({ ...baseParams, status: "registrada" });
+      const { items: extraItems } = normalizeResp(respExtra);
+      const exencionesRegistradas = extraItems.filter((it: any) =>
+        String(it?.tipo ?? "").toLowerCase() === "exencion" &&
+        String(it?.status ?? "").toLowerCase() === "registrada"
+      );
+      // Une sin duplicar
+      const seen = new Set(data.map((d) => d.id));
+      for (const x of exencionesRegistradas) {
+        if (!seen.has(x.id)) data.push(x);
+      }
     }
+
+    data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    setRows(data);
+  } catch (err: any) {
+    toast.error(typeof err?.message === "string" ? err.message : "Error al cargar inscripciones");
+  } finally {
+    setLoading(false);
   }
+}
+
 
   // ====== validar ======
   async function handleValidate(
@@ -703,6 +704,22 @@ export default function InscripcionesSection() {
   const canValidate =
     !!preview.ins && (preview.tipo === "comprobante" || preview.tipo === "exencion");
 
+  // 1) Agrega este helper arriba de la definición de columnas
+type StatusKey = Exclude<StatusFiltro, "todas">;
+
+function getDisplayStatus(r: InscripcionDTO): StatusKey {
+  const s = String((r as any).status ?? "registrada").toLowerCase();
+  const tipo = String((r as any).tipo ?? "").toLowerCase();
+
+  // Homologación SOLO visual: exención en "registrada" se muestra como "preinscrita".
+  if (s === "registrada" && tipo === "exencion") return "preinscrita";
+
+  // Asegura retorno válido
+  const allowed: StatusKey[] = ["registrada", "preinscrita", "confirmada", "rechazada", "cancelada"];
+  return (allowed.includes(s as StatusKey) ? s : "registrada") as StatusKey;
+}
+
+
   /* =========================
      TanStack: ColumnDef & table
   ==========================*/
@@ -764,7 +781,7 @@ export default function InscripcionesSection() {
         cell: ({ row }) => renderTipoAlumno(row.original),
         sortingFn: "alphanumeric",
       },
-      {
+       {
         id: "estado",
         header: ({ column }) => (
           <button
@@ -775,16 +792,23 @@ export default function InscripcionesSection() {
             Estado <SortIcon column={column} />
           </button>
         ),
-        accessorFn: (r) => statusOrder[(r.status as string) ?? "registrada"] ?? 99,
+        // ⬇️ usar el status "visual" para ordenar también
+        accessorFn: (r) => statusOrder[getDisplayStatus(r)] ?? 99,
         cell: ({ row }) => {
           const r = row.original;
-          const s = (r.status as Exclude<StatusFiltro, "todas">) ?? "registrada";
-          const cfg = STATUS_STYLES[s] ?? STATUS_STYLES.registrada;
+          const display = getDisplayStatus(r);                      // ← status visual
+          const cfg = STATUS_STYLES[display] ?? STATUS_STYLES.registrada;
+
+          // Tip extra: si fue homologado, añade un title explicativo
+          const homologado = display === "preinscrita"
+            && String((r as any).status ?? "").toLowerCase() === "registrada"
+            && String((r as any).tipo ?? "").toLowerCase() === "exencion";
+
           return (
             <Badge
               variant="outline"
               className={`capitalize px-2 py-0.5 text-[12px] font-medium ${cfg.className}`}
-              title={cfg.label}
+              title={homologado ? "Preinscrita (exención homologada desde 'registrada')" : cfg.label}
             >
               {cfg.label}
             </Badge>
@@ -792,6 +816,7 @@ export default function InscripcionesSection() {
         },
         sortingFn: "basic",
       },
+    
       {
         id: "tramite",
         header: ({ column }) => (

@@ -246,32 +246,41 @@ function countPendientes(items: any[]): number {
 
 
   // Intenta obtener el count real con page_size=1; si no hay count, cae a pedir más items
- async function getPreinscritasCount(ciclo: CicloDTO): Promise<number> {
-  try {
-    // Intento 1: pedir count de preinscritas
-    const resp1 = await listInscripcionesCoord({ ciclo_id: ciclo.id, status: "preinscrita", page: 1, page_size: 1 } as any);
-    const n1 = normalizeResp(resp1);
-    const base = typeof n1.count === "number" ? n1.count : (n1.items.length ? 1 : 0);
+async function getPreinscritasCount(ciclo: CicloDTO): Promise<number> {
+  const LIMIT = 200;
 
-    // Intento 1b: además pedir un bloque grande sin status para capturar exenciones registradas
-    const resp1b = await listInscripcionesCoord({ ciclo_id: ciclo.id, page: 1, page_size: 500 } as any);
-    const n1b = normalizeResp(resp1b);
-    const extra = n1b.items.filter((it) => isPendingForValidation(it)).length;
-
-    // OJO: base ya incluye las preinscritas. Para evitar doble conteo, restamos las preinscritas que ya vengan también en n1b si hiciera overlap.
-    const yaContadas = n1b.items.filter((it) => String(it?.status ?? "").toLowerCase() === "preinscrita").length;
-    return base + Math.max(0, extra - yaContadas);
-  } catch {
-    // Plan B: una sola llamada grande y conteo local
-    try {
-      const resp2 = await listInscripcionesCoord({ ciclo_id: ciclo.id, page: 1, page_size: 500 } as any);
-      const n2 = normalizeResp(resp2);
-      return countPendientes(n2.items);
-    } catch {
-      return 0;
-    }
+  async function fetchBatch(skip: number) {
+    // ⚠️ Usa skip/limit correctos
+    const resp = await listInscripcionesCoord({
+      ciclo_id: ciclo.id,
+      skip,
+      limit: LIMIT,
+    } as any);
+    const { items } = normalizeResp(resp);
+    return Array.isArray(items) ? items : (Array.isArray(resp) ? resp : []);
   }
+
+  let skip = 0;
+  let total = 0;
+
+  // Paginamos todo el ciclo y contamos localmente:
+  // pendiente = preinscrita  OR  (tipo exencion && status registrada)
+  // (igual que tu helper isPendingForValidation)
+  // Nota: usamos tu countPendientes(items)
+  // y detenemos cuando el batch < LIMIT
+  // para no depender de un count del backend.
+  // ——
+  while (true) {
+    const batch = await fetchBatch(skip);
+    if (!batch.length) break;
+    total += countPendientes(batch);
+    if (batch.length < LIMIT) break;
+    skip += LIMIT;
+  }
+
+  return total;
 }
+
 
 
   async function fetchPendientesPorCiclo(ciclosInput: CicloDTO[]) {
@@ -383,14 +392,18 @@ function countPendientes(items: any[]): number {
   if (!cicloId) return;
   setLoading(true);
   try {
-    const baseParams: any = { ciclo_id: cicloId, limit: 200, page: 1, page_size: 200 };
+    // ✅ usa skip/limit, no page/page_size
+    const baseParams: any = { ciclo_id: cicloId, skip: 0, limit: 200 };
 
     // 1) Trae las que pidió el usuario (tal cual)
     const params = { ...baseParams };
     if (status !== "todas") params.status = status;
+
     const dataRaw = await listInscripcionesCoord(params);
     const { items } = normalizeResp(dataRaw);
-    let data: InscripcionDTO[] = items.length ? items : (Array.isArray(dataRaw) ? (dataRaw as InscripcionDTO[]) : []);
+    let data: InscripcionDTO[] = items.length
+      ? items
+      : (Array.isArray(dataRaw) ? (dataRaw as InscripcionDTO[]) : []);
 
     // 2) Si el usuario pidió "preinscrita", agrega exenciones que sigan "registrada"
     if (status === "preinscrita") {
@@ -400,11 +413,8 @@ function countPendientes(items: any[]): number {
         String(it?.tipo ?? "").toLowerCase() === "exencion" &&
         String(it?.status ?? "").toLowerCase() === "registrada"
       );
-      // Une sin duplicar
       const seen = new Set(data.map((d) => d.id));
-      for (const x of exencionesRegistradas) {
-        if (!seen.has(x.id)) data.push(x);
-      }
+      for (const x of exencionesRegistradas) if (!seen.has(x.id)) data.push(x);
     }
 
     data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -415,6 +425,7 @@ function countPendientes(items: any[]): number {
     setLoading(false);
   }
 }
+
 
 
   // ====== validar ======
