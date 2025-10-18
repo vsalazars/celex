@@ -244,6 +244,21 @@ function countPendientes(items: any[]): number {
   return items.reduce((acc, it) => acc + (isPendingForValidation(it) ? 1 : 0), 0);
 }
 
+function wasPendingBefore(ins?: InscripcionDTO | null): boolean {
+  if (!ins) return false;
+  return isPendingForValidation(ins);
+}
+
+function adjustPending(cicloId: number, delta: number) {
+  setPendingByCiclo((prev) => {
+    const curr = prev[cicloId] ?? 0;
+    const next = Math.max(0, curr + delta);
+    if (next === curr) return prev; // sin cambios, evita re-render
+    return { ...prev, [cicloId]: next };
+  });
+}
+
+
 
   // Intenta obtener el count real con page_size=1; si no hay count, cae a pedir más items
 async function getPreinscritasCount(ciclo: CicloDTO): Promise<number> {
@@ -427,36 +442,64 @@ async function getPreinscritasCount(ciclo: CicloDTO): Promise<number> {
 }
 
 
+ // ====== validar ======
+async function handleValidate(
+  id: number,
+  action: "APPROVE" | "REJECT",
+  motivo?: string
+) {
+  setValidating(id);
 
-  // ====== validar ======
-  async function handleValidate(
-    id: number,
-    action: "APPROVE" | "REJECT",
-    motivo?: string
-  ) {
-    setValidating(id);
-    try {
-      await validateInscripcionCoord(
-        id,
-        action,
-        action === "REJECT" ? motivo : undefined
-      );
-      toast.success(`Inscripción ${action === "APPROVE" ? "aprobada" : "rechazada"} correctamente`);
-      setPreview((p) => (p.ins?.id === id ? { ...p, open: false } : p));
-      setRows((prev) => prev.filter((r) => r.id !== id));
+  // Tomamos snapshot antes de cambiar nada
+  const cicloAfectado = (preview.ins?.ciclo?.id ?? cicloId) as number | null;
+  const eraPendiente  = wasPendingBefore(preview.ins); // usa tu helper basado en isPendingForValidation
 
-      // refrescar contador del ciclo afectado (preinscritas)
-      const ciclo = (preview.ins?.ciclo?.id ?? cicloId) as number | null;
-      if (ciclo) {
-        const found = ciclos.find((c) => c.id === ciclo);
-        if (found) void fetchPendientesPorCiclo([found]);
-      }
-    } catch (err: any) {
-      toast.error(typeof err?.message === "string" ? err.message : "Error al validar");
-    } finally {
-      setValidating(null);
+  try {
+    // 1) Ejecuta la acción en backend
+    await validateInscripcionCoord(
+      id,
+      action,
+      action === "REJECT" ? motivo : undefined
+    );
+
+    // 2) Feedback
+    toast.success(
+      `Inscripción ${action === "APPROVE" ? "aprobada" : "rechazada"} correctamente`
+    );
+
+    // 3) Cierra el visor si corresponde
+    setPreview((p) => (p.ins?.id === id ? { ...p, open: false } : p));
+
+    // 4) Remueve la fila de la tabla al instante
+    setRows((prev) => prev.filter((r) => r.id !== id));
+
+    // 5) ✅ Actualización OPTIMISTA del contador de la píldora del ciclo
+    if (cicloAfectado && eraPendiente) {
+      adjustPending(cicloAfectado, -1); // decrementa 1 localmente
     }
+
+    // 6) 🔄 Reconciliación silenciosa con el conteo real del ciclo
+    if (cicloAfectado) {
+      const found = ciclos.find((c) => c.id === cicloAfectado);
+      if (found) {
+        // Fire & forget: si falla, no afecta la UX (ya hicimos el ajuste optimista)
+        getPreinscritasCount(found)
+          .then((n) =>
+            setPendingByCiclo((prev) => ({ ...prev, [found.id]: n }))
+          )
+          .catch(() => {});
+      }
+    }
+  } catch (err: any) {
+    // Si falla la validación, no tocamos el contador optimista
+    toast.error(
+      typeof err?.message === "string" ? err.message : "Error al validar"
+    );
+  } finally {
+    setValidating(null);
   }
+}
+
 
   async function fetchHistorialAlumno(alumnoId: number) {
     setHistLoading(true);
