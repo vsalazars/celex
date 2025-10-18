@@ -29,6 +29,7 @@ import {
   Rocket,
   CheckCircle, 
   XCircle,
+  ShieldCheck,  
  } from "lucide-react";
 
 import {
@@ -295,6 +296,19 @@ function cleanIdiomaLabel(raw?: string) {
     .trim();
   return s ? s[0].toUpperCase() + s.slice(1) : s; // Mayúscula inicial
 }
+
+/* ===== Pct helpers ===== */
+function pctOf(part?: number | null, total?: number | null) {
+  const p = Number(part ?? 0);
+  const t = Number(total ?? 0);
+  if (!Number.isFinite(p) || !Number.isFinite(t) || t <= 0) return 0;
+  return (p / t) * 100;
+}
+
+function fmtPct(part?: number | null, total?: number | null, digits = 1) {
+  return `${pctOf(part, total).toFixed(digits)}%`;
+}
+
 
 
 /* ===================== COMPONENTE PRINCIPAL ===================== */
@@ -691,60 +705,83 @@ export default function OverviewSectionConLinea({
                 className="h-full"
               />,
 
-              <PrismTile
-                key="k3"
-                label="Alumnos"
-                value={kpis ? String(kpis.alumnos_matriculados) : "—"}
-                hint={
-                  kpis && (
-                    <div className="flex flex-col gap-1.5 pb-0.5">
-                      {/* Línea 1: IPN / Externos */}
-                      <div className="flex flex-wrap gap-1">
-                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-600/10 text-purple-700 dark:text-purple-300 border border-purple-200/60">
-                          IPN: {kpis.alumnos_ipn}
-                        </span>
-                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-600/10 text-purple-700 dark:text-purple-300 border border-purple-200/60">
-                          Externos: {kpis.alumnos_externos}
-                        </span>
-                      </div>
+             <PrismTile
+  key="k3"
+  label="Alumnos"
+  value={kpis ? String(kpis.alumnos_matriculados) : "—"}
+  hint={
+    kpis && (
+      <div className="flex flex-col gap-1.5 mb-2">
+        {/* Línea 1: IPN / Externos */}
+        <div className="flex flex-wrap gap-1 mb-0.5">
+          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-600/10 text-purple-700 dark:text-purple-300 border border-purple-200/60">
+            IPN: {kpis.alumnos_ipn}
+          </span>
+          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-600/10 text-purple-700 dark:text-purple-300 border border-purple-200/60">
+            Externos: {kpis.alumnos_externos}
+          </span>
+        </div>
 
-                      {/* Línea 2: título en pequeño */}
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-0">
-                        Aprobados y reprobados
-                      </div>
+        {/* Línea 2: título */}
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0">
+          Aprobados/Reprobados/Exención
+        </div>
 
-                      {/* Línea 3: Aprobados / Reprobados (compacto con iconos y ligero padding abajo) */}
-                      <div className="flex flex-wrap items-center gap-1 pb-[2px]">
-                        <span
-                          title="Alumnos con promedio_final ≥ 80"
-                          className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold border border-emerald-200/60 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300"
-                        >
-                          <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                          {kpis.aprobados_80_count}
-                        </span>
+        {/* Línea 3: pills compactos */}
+        {(() => {
+          const total = Number(kpis.alumnos_matriculados ?? 0);
+          const aprob = Number(kpis.aprobados_80_count ?? 0);
+          const reprob = Number(kpis.reprobados_count ?? 0);
+          const exenc = Number(kpis.alumnos_exencion ?? 0);
 
-                        <span
-                          title="Alumnos con promedio_final < 80"
-                          className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold border border-red-200/60 bg-red-50/60 dark:bg-red-950/20 text-red-700 dark:text-red-300"
-                        >
-                          <XCircle className="h-3.5 w-3.5 mr-1" />
-                          {kpis.reprobados_count}
-                        </span>
+          const base =
+            "inline-flex items-center justify-center h-6 rounded-full px-2 text-[10px] font-semibold whitespace-nowrap tabular-nums w-full";
 
-                        {/* 👇 nueva */}
-                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold border border-amber-300/60 bg-amber-50/60 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300">
-                          Exención de pago: {kpis.alumnos_exencion}
-                        </span>
-                      </div>
-                    </div>
-                  )
+          return (
+            <div className="grid grid-cols-3 gap-1">
+              <span
+                title={`Aprobados: ${aprob} de ${total}`}
+                className={
+                  base +
+                  " border border-emerald-200/60 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300"
                 }
+              >
+                <CheckCircle className="h-3 w-3 mr-1 shrink-0" />
+                {fmtPct(aprob, total)}
+              </span>
 
-                icon={<GraduationCap />}
-                tone="premium"
-                //featured
-                className="h-full"
-              />,
+              <span
+                title={`Reprobados: ${reprob} de ${total}`}
+                className={
+                  base +
+                  " border border-red-200/60 bg-red-50/60 dark:bg-red-950/20 text-red-700 dark:text-red-300"
+                }
+              >
+                <XCircle className="h-3 w-3 mr-1 shrink-0" />
+                {fmtPct(reprob, total)}
+              </span>
+
+              <span
+                title={`Exención: ${exenc} de ${total}`}
+                className={
+                  base +
+                  " border border-amber-300/60 bg-amber-50/60 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300"
+                }
+              >
+                <ShieldCheck className="h-3 w-3 mr-1 shrink-0" />
+                {fmtPct(exenc, total)}
+              </span>
+            </div>
+          );
+        })()}
+      </div>
+    )
+  }
+  icon={<GraduationCap />}
+  tone="premium"
+  className="h-full"
+/>,
+
               
               <PrismTile
                 key="k2"
