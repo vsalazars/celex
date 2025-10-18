@@ -45,8 +45,8 @@ export default function CoordinatorSidebarNav({
     { key: "students",      label: "Alumnos",        icon: <Users className="h-4 w-4" /> },
     { key: "inscripciones", label: "Inscripciones",  icon: <ClipboardCheck className="h-4 w-4" /> },
     { key: "placement",     label: "Colocación",     icon: <FileSearch className="h-4 w-4" /> },
-    { key: "encuesta",      label: "Encuesta",       icon: <ListChecks className="h-4 w-4" /> },
     { key: "reports",       label: "Reportes",       icon: <BarChart3 className="h-4 w-4" /> },
+    { key: "encuesta",      label: "Encuesta",       icon: <ListChecks className="h-4 w-4" /> },
     { key: "settings",      label: "Configuración",  icon: <Settings2 className="h-4 w-4" /> },
     { key: "security",      label: "Seguridad",      icon: <Shield className="h-4 w-4" /> },
   ];

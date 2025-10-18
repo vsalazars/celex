@@ -58,6 +58,17 @@ export type EncuestaComentario = {
   alumno?: { id?: string | number; nombre?: string | null; email?: string | null } | null;
 };
 
+/* ===== Helper: intenta leer el nombre del docente desde varias formas comunes del payload ===== */
+function getDocenteNombreFromReporte(rep: any): string | null {
+  if (!rep) return null;
+  if (rep?.docente?.nombre) return String(rep.docente.nombre);
+  if (rep?.docente_nombre) return String(rep.docente_nombre);
+  if (rep?.grupo?.docente?.nombre) return String(rep.grupo.docente.nombre);
+  if (Array.isArray(rep?.grupos) && rep.grupos[0]?.docente?.nombre) return String(rep.grupos[0].docente.nombre);
+  if (rep?.curso?.docente?.nombre) return String(rep.curso.docente.nombre);
+  return null;
+}
+
 export default function ReportEncuestaPorcentaje({
   filters,
   initialData = null,
@@ -77,6 +88,8 @@ export default function ReportEncuestaPorcentaje({
   const [commentsError, setCommentsError] = useState<string | null>(null);
   const [comments, setComments] = useState<EncuestaComentario[]>([]);
   const [commentsQuery, setCommentsQuery] = useState("");
+
+  const docenteNombre = useMemo(() => getDocenteNombreFromReporte(reporte), [reporte]);
 
   async function consultar() {
     if (!cicloId) {
@@ -107,52 +120,51 @@ export default function ReportEncuestaPorcentaje({
 
   /* ===== Cargar comentarios del ciclo cuando se abre el sheet ===== */
   async function cargarComentarios() {
-  if (!cicloId) return;
-  setCommentsLoading(true);
-  setCommentsError(null);
-  try {
-    const resp = await getEncuestaComentarios({
-      cicloId,
-      includeGeneral: true,    // ← incluye SurveyResponse.comments si existe
-      onlyCommentLike: false,  // ← NO restringe por “coment/sugerenc/observaci”
-      // q: commentsQuery,      // opcional si deseas filtrar en el servidor
-    });
-    const raw = Array.isArray(resp?.items) ? resp.items : [];
+    if (!cicloId) return;
+    setCommentsLoading(true);
+    setCommentsError(null);
+    try {
+      const resp = await getEncuestaComentarios({
+        cicloId,
+        includeGeneral: true,    // incluye SurveyResponse.comments si existe
+        onlyCommentLike: false,  // NO restringe por “coment/sugerenc/observaci”
+        // q: commentsQuery,     // opcional si deseas filtrar en el servidor
+      });
+      const raw = Array.isArray(resp?.items) ? resp.items : [];
 
-    // ...tu normalización actual puede quedarse igual (ya vendrá “planchado”)
-    // (lo que ya tienes abajo sigue funcionando sin cambios)
-    const norm = raw
-      .map((r, idx) => {
-        const texto = String(r?.texto ?? "").trim();
-        if (!texto) return null;
-        const base = `ans|${r?.id ?? idx}|${r?.pregunta_id ?? "x"}|${texto}`;
-        let h=0; for (let i=0; i<base.length; i++) h = (h*31 + base.charCodeAt(i))|0;
-        const uid = `cm-${r?.id ?? idx}-${r?.pregunta_id ?? "q"}-${Math.abs(h).toString(36)}`;
-        return {
-          id: uid,
-          pregunta_id: r?.pregunta_id ?? null,
-          pregunta_texto: r?.pregunta_texto ?? null,
-          texto,
-          created_at: r?.created_at ?? null,
-          alumno: { nombre: r?.alumno?.nombre ?? null, email: r?.alumno?.email ?? null },
-        } as EncuestaComentario;
-      })
-      .filter(Boolean) as EncuestaComentario[];
+      const norm = raw
+        .map((r, idx) => {
+          const texto = String(r?.texto ?? "").trim();
+          if (!texto) return null;
+          const base = `ans|${r?.id ?? idx}|${r?.pregunta_id ?? "x"}|${texto}`;
+          let h = 0;
+          for (let i = 0; i < base.length; i++) h = (h * 31 + base.charCodeAt(i)) | 0;
+          const uid = `cm-${r?.id ?? idx}-${r?.pregunta_id ?? "q"}-${Math.abs(h).toString(36)}`;
+          return {
+            id: uid,
+            pregunta_id: r?.pregunta_id ?? null,
+            pregunta_texto: r?.pregunta_texto ?? null,
+            texto,
+            created_at: r?.created_at ?? null,
+            alumno: { nombre: r?.alumno?.nombre ?? null, email: r?.alumno?.email ?? null },
+          } as EncuestaComentario;
+        })
+        .filter(Boolean) as EncuestaComentario[];
 
-    // de-dup + orden descendente por fecha (igual que ya tenías)
-    const seen = new Set<string>();
-    const unique: EncuestaComentario[] = [];
-    for (const it of norm) if (!seen.has(it.id)) { seen.add(it.id); unique.push(it); }
-    unique.sort((a, b) => (new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()));
+      // de-dup + orden descendente por fecha
+      const seen = new Set<string>();
+      const unique: EncuestaComentario[] = [];
+      for (const it of norm) if (!seen.has(it.id)) { seen.add(it.id); unique.push(it); }
+      unique.sort((a, b) => (new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()));
 
-    setComments(unique);
-  } catch (e: any) {
-    setComments([]);
-    setCommentsError(e?.message || "No se pudieron cargar los comentarios");
-  } finally {
-    setCommentsLoading(false);
+      setComments(unique);
+    } catch (e: any) {
+      setComments([]);
+      setCommentsError(e?.message || "No se pudieron cargar los comentarios");
+    } finally {
+      setCommentsLoading(false);
+    }
   }
-}
 
   useEffect(() => {
     if (commentsOpen) cargarComentarios();
@@ -321,6 +333,7 @@ export default function ReportEncuestaPorcentaje({
     if (!reporte?.preguntas?.length) return;
     const rows = dataPct.map((r) => ({
       ciclo: reporte.ciclo?.codigo ?? "",
+      docente: docenteNombre ?? "", // ← nuevo
       pregunta: r.pregunta,
       texto: r.texto,
       categoria: r.categoriaName,
@@ -370,7 +383,8 @@ export default function ReportEncuestaPorcentaje({
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-medium">Resultados de la encuesta</h3>
-            {reporte?.ciclo && <Badge variant="secondary">Ciclo: {reporte.ciclo.codigo}</Badge>}
+            {reporte?.ciclo && <Badge variant="secondary">Curso: {reporte.ciclo.codigo}</Badge>}
+            {docenteNombre && <Badge variant="secondary">Docente: {docenteNombre}</Badge>}
             {anio && <Badge variant="secondary">Año: {anio}</Badge>}
             {idioma && <Badge variant="secondary">Idioma: {idioma}</Badge>}
             {!!reporte?.total_participantes && (
@@ -394,9 +408,9 @@ export default function ReportEncuestaPorcentaje({
         <Separator className="my-3" />
 
         <div ref={ref}>
-          
           <div className="meta mb-3">
-            {reporte?.ciclo ? `Ciclo: ${reporte.ciclo.codigo}` : "Sin ciclo seleccionado"}
+            {reporte?.ciclo ? `Curso: ${reporte.ciclo.codigo}` : "Sin ciclo seleccionado"}
+            {docenteNombre ? ` — Docente: ${docenteNombre}` : ""}
           </div>
 
           {/* Selección de preguntas */}
@@ -657,7 +671,11 @@ export default function ReportEncuestaPorcentaje({
 
       {/* ====== SHEET DERECHA: COMENTARIOS (solo lista) ====== */}
       <Sheet open={commentsOpen} onOpenChange={setCommentsOpen}>
-        <SheetContent side="right" className="!max-w-none !w-[50vw] lg:!w-[720px] !px-8 !py-6">
+        <SheetContent
+          side="right"
+          className="!max-w-none !w-[60vw] md:!w-[900px] lg:!w-[1100px] !px-8 !py-6"
+          style={{ width: "min(1100px, 95vw)" }}
+        >
           <SheetHeader>
             <SheetTitle className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-2">
@@ -668,6 +686,11 @@ export default function ReportEncuestaPorcentaje({
                 {reporte?.ciclo?.codigo && (
                   <Badge variant="secondary" className="whitespace-nowrap">
                     Ciclo: {reporte.ciclo.codigo}
+                  </Badge>
+                )}
+                {docenteNombre && (
+                  <Badge variant="secondary" className="whitespace-nowrap">
+                    Docente: {docenteNombre}
                   </Badge>
                 )}
                 <Button
