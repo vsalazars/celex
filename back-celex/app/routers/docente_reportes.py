@@ -605,3 +605,154 @@ def serie_por_pregunta_docente(
         docente=DocenteMini(id=current.id, nombre=nombre),
         series=series
     )
+
+
+# ===========================================================
+# F) KPI GLOBAL (docente-safe): promedio_global_pct (0..100)
+#     - Soporta filtros: cicloId | (anio, idioma)
+#     - Normaliza: likert_1_5 (/5), scale_0_10 (/10), yes_no (%Sí)
+#     - Pondera por cantidad de respuestas de cada tipo
+#     - scope:
+#         * institucion → benchmark general (NO restringe por docente)
+#         * docente     → solo ciclos del docente actual
+# ===========================================================
+class KpiGlobalOut(BaseModel):
+    promedio_global_pct: float | None = None
+
+
+@router.get("/encuestas/kpi-global", response_model=KpiGlobalOut)
+def kpi_global_docente(
+    cicloId: int | None = Query(
+        None,
+        description="Si se envía, calcula el promedio global del ciclo completo (todos los cursos de ese ciclo)",
+    ),
+    anio: int | None = Query(None, description="Ej. 2025"),
+    idioma: str | None = Query(None, description="ingles|frances|aleman|..."),
+    scope: str = Query(
+        "institucion",
+        pattern="^(institucion|docente)$",
+        description="institucion=benchmark general; docente=solo ciclos del docente",
+    ),
+    db: Session = Depends(get_db),
+    current: User = Depends(require_teacher_or_admin),
+):
+    # ---------- Universo de ciclos ----------
+    ciclos_q = db.query(Ciclo.id, Ciclo.codigo, Ciclo.idioma)
+
+    # Solo restringimos por docente cuando scope='docente'
+    if scope == "docente":
+        ciclos_q = ciclos_q.filter(Ciclo.docente_id == current.id)
+
+    if cicloId is not None:
+        ciclos_q = ciclos_q.filter(Ciclo.id == cicloId)
+    else:
+        if anio is not None:
+            ciclos_q = ciclos_q.filter(Ciclo.codigo.ilike(f"{anio}-%"))
+        if idioma:
+            # igualamos en lower para evitar problemas de mayúsculas
+            ciclos_q = ciclos_q.filter(func.lower(func.coalesce(Ciclo.idioma, "")) == func.lower(idioma))
+
+    ciclos = ciclos_q.all()
+    if not ciclos:
+        return KpiGlobalOut(promedio_global_pct=None)
+
+    ciclo_ids = [c.id for c in ciclos]
+
+    # ---------- Agregados por TIPO ----------
+
+    # 1) Numéricos 1..5  → a porcentaje
+    r15 = (
+        db.query(
+            func.sum(SurveyAnswer.value_int).label("suma"),
+            func.count(SurveyAnswer.value_int).label("n"),
+        )
+        .join(SurveyResponse, SurveyResponse.id == SurveyAnswer.response_id)
+        .join(SurveyQuestion, SurveyQuestion.id == SurveyAnswer.question_id)
+        .filter(
+            SurveyResponse.ciclo_id.in_(ciclo_ids),
+            SurveyAnswer.value_int.isnot(None),
+            SurveyQuestion.active.is_(True),
+            SurveyQuestion.type == "likert_1_5",
+        )
+        .first()
+    )
+    suma15 = float(getattr(r15, "suma", 0) or 0)
+    n15 = int(getattr(r15, "n", 0) or 0)
+    pct15: float | None = None
+    if n15 > 0:
+        prom15 = suma15 / n15
+        pct15 = round((prom15 / 5.0) * 100.0, 1)
+
+    # 2) Numéricos 0..10 → a porcentaje
+    r10 = (
+        db.query(
+            func.sum(SurveyAnswer.value_int).label("suma"),
+            func.count(SurveyAnswer.value_int).label("n"),
+        )
+        .join(SurveyResponse, SurveyResponse.id == SurveyAnswer.response_id)
+        .join(SurveyQuestion, SurveyQuestion.id == SurveyAnswer.question_id)
+        .filter(
+            SurveyResponse.ciclo_id.in_(ciclo_ids),
+            SurveyAnswer.value_int.isnot(None),
+            SurveyQuestion.active.is_(True),
+            SurveyQuestion.type == "scale_0_10",
+        )
+        .first()
+    )
+    suma10 = float(getattr(r10, "suma", 0) or 0)
+    n10 = int(getattr(r10, "n", 0) or 0)
+    pct10: float | None = None
+    if n10 > 0:
+        prom10 = suma10 / n10
+        pct10 = round((prom10 / 10.0) * 100.0, 1)
+
+    # 3) Booleanas (yes_no) → % de True (Sí)
+    rbool = (
+        db.query(
+            SurveyAnswer.value_bool.label("val"),
+            func.count(SurveyAnswer.id).label("n"),
+        )
+        .join(SurveyResponse, SurveyResponse.id == SurveyAnswer.response_id)
+        .join(SurveyQuestion, SurveyQuestion.id == SurveyAnswer.question_id)
+        .filter(
+            SurveyResponse.ciclo_id.in_(ciclo_ids),
+            SurveyAnswer.value_bool.isnot(None),
+            SurveyQuestion.active.is_(True),
+            SurveyQuestion.type == "yes_no",
+        )
+        .group_by(SurveyAnswer.value_bool)
+        .all()
+    )
+    t_bool = 0
+    f_bool = 0
+    for row in rbool:
+        if bool(row.val):
+            t_bool += int(row.n or 0)
+        else:
+            f_bool += int(row.n or 0)
+    n_bool = t_bool + f_bool
+    pct_bool: float | None = None
+    if n_bool > 0:
+        pct_bool = round((t_bool / n_bool) * 100.0, 1)
+
+    # ---------- Mezcla ponderada ----------
+    total_weight = 0
+    acc = 0.0
+
+    if pct15 is not None and n15 > 0:
+        total_weight += n15
+        acc += pct15 * n15
+
+    if pct10 is not None and n10 > 0:
+        total_weight += n10
+        acc += pct10 * n10
+
+    if pct_bool is not None and n_bool > 0:
+        total_weight += n_bool
+        acc += pct_bool * n_bool
+
+    if total_weight <= 0:
+        return KpiGlobalOut(promedio_global_pct=None)
+
+    pct_global = round(acc / total_weight, 1)
+    return KpiGlobalOut(promedio_global_pct=pct_global)

@@ -1776,3 +1776,27 @@ export async function getDocenteOverview(): Promise<DocenteOverviewOut> {
   const url = buildURL("/docente/overview");
   return apiFetch<DocenteOverviewOut>(url, { auth: true });
 }
+
+
+/* ==================== Docente — KPI Global (docente-safe) ==================== */
+
+export type DocKpiGlobalOut = {
+  /** 0..100, o null si no hay datos */
+  promedio_global_pct: number | null;
+};
+
+
+export async function getDocenteKpiGlobal(params?: {
+  cicloId?: string | number;
+  anio?: number;
+  idioma?: string;
+  scope?: "institucion" | "docente";
+}): Promise<DocKpiGlobalOut> {
+  const url = buildURL("/docente/encuestas/kpi-global", {
+    cicloId: params?.cicloId != null ? String(params.cicloId) : undefined,
+    anio: params?.anio,
+    idioma: params?.idioma,
+    scope: params?.scope ?? "institucion", // ⬅️ por defecto usa benchmark institucional
+  });
+  return apiFetch<DocKpiGlobalOut>(url, { auth: true });
+}
