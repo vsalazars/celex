@@ -637,13 +637,29 @@ export default function ReportPagos({ filters }: { filters: ReportFiltersState }
             <div className="text-xs text-muted-foreground">
               Página <strong>{table.getState().pagination.pageIndex + 1}</strong> de <strong>{table.getPageCount()}</strong> · Filas: <strong>{table.getFilteredRowModel().rows.length}</strong>
             </div>
+
             <div className="flex items-center gap-2">
+              {/* tamaño de página */}
+              <select
+                className="h-8 rounded-md border bg-background px-2 text-xs"
+                value={table.getState().pagination.pageSize}
+                onChange={(e) => table.setPageSize(Number(e.target.value))}
+                aria-label="Registros por página"
+              >
+                {[10, 20, 50, 100].map((n) => (
+                  <option key={n} value={n}>
+                    {n} / página
+                  </option>
+                ))}
+              </select>
+
               <Button size="sm" variant="outline" onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()}>«</Button>
               <Button size="sm" variant="outline" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Anterior</Button>
               <Button size="sm" variant="outline" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Siguiente</Button>
               <Button size="sm" variant="outline" onClick={() => table.setPageIndex(table.getPageCount() - 1)} disabled={!table.getCanNextPage()}>»</Button>
             </div>
           </div>
+
         </div>
 
         {/* Errores */}
