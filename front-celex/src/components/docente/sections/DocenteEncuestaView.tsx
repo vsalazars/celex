@@ -293,6 +293,58 @@ const RefPillLabel: React.FC<{ viewBox?: any; text: string; color: string }> = (
   );
 };
 
+/* === NUEVO: Píldora FUERA del plot (a la derecha del área interna) para líneas horizontales === */
+const RefRightPillLabel: React.FC<{ viewBox?: any; text: string; color: string; row?: number }> = ({
+  viewBox,
+  text,
+  color,
+  row = 0,
+}) => {
+  const vb = viewBox || {};
+  const innerLeft  = vb.x ?? 0;
+  const innerTop   = vb.y ?? 0;       // y (top) de la línea horizontal
+  const innerWidth = vb.width ?? 0;
+
+  const OUT_GAP = 10;                 // separación del borde derecho del plot
+  const padX = 8, padY = 4, fontSize = 11;
+  const approxChar = 7;
+  const pillW = text.length * approxChar + padX * 2;
+  const pillH = fontSize + padY * 2;
+  const rowStep = pillH + 4;
+
+  // Anclamos justo FUERA del área interna (derecha)
+  const x = innerLeft + innerWidth + OUT_GAP;
+  // Centrado vertical sobre la línea; si hay "fila", desplazamos un poco
+  const y = innerTop - pillH / 2 + row * rowStep;
+
+  return (
+    <g pointerEvents="none">
+      <rect
+        x={x}
+        y={y}
+        rx={pillH / 2}
+        ry={pillH / 2}
+        width={pillW}
+        height={pillH}
+        fill={color}
+        opacity={0.95}
+        stroke="white"
+        strokeWidth={1.5}
+      />
+      <text
+        x={x + pillW / 2}
+        y={y + pillH / 2 + fontSize / 3 - 1}
+        textAnchor="middle"
+        fontSize={fontSize}
+        fill="white"
+        className="tabular-nums"
+        fontWeight={600}
+      >
+        {text}
+      </text>
+    </g>
+  );
+};
 
 export default function DocenteEncuestaView({ defaultAnio, defaultIdioma }: Props) {
   /* ====== Estado base ====== */
@@ -909,7 +961,6 @@ const refLinesClose = React.useMemo(() => {
 
                 <div className="flex flex-wrap gap-2">
                   {(() => {
-                    // Suma ponderada total (pct * total) de TODAS las preguntas visibles
                     const grandWeighted = dataPct.reduce((acc, it) => {
                       const pct = Number(it.pct) || 0;
                       const w   = Number((it as any).total) || 0;
@@ -923,10 +974,8 @@ const refLinesClose = React.useMemo(() => {
                         ? { background: color, color: DARK_TEXT, border: `1px solid ${color}` }
                         : { background: "hsl(var(--muted))", color: DARK_TEXT, border: `1px solid ${color}` };
 
-                      // Preguntas visibles de ESTA categoría
                       const catItems = dataPct.filter((it) => it.categoriaId === String(c.id));
 
-                      // Promedio ponderado de la categoría (0..100)
                       let catAvgPct = 0;
                       let catW = 0;
                       for (const it of catItems) {
@@ -937,7 +986,6 @@ const refLinesClose = React.useMemo(() => {
                       }
                       catAvgPct = catW > 0 ? +(catAvgPct / catW).toFixed(1) : 0;
 
-                      // Participación dentro del total visible (para tooltip informativo)
                       const catWeighted = catItems.reduce((acc, it) => {
                         const pct = Number(it.pct) || 0;
                         const w   = Number((it as any).total) || 0;
@@ -945,7 +993,6 @@ const refLinesClose = React.useMemo(() => {
                       }, 0);
                       const catShare = grandWeighted > 0 ? +((catWeighted / grandWeighted) * 100).toFixed(1) : 0;
 
-                      // Color del circulito de estado segun umbral
                       const pctColor = catAvgPct >= THRESHOLD ? GREEN : RED;
 
                       return (
@@ -957,15 +1004,11 @@ const refLinesClose = React.useMemo(() => {
                           style={style}
                           title={`${c.name} — Promedio: ${catAvgPct}% · Participación: ${catShare}%`}
                         >
-                          {/* color base de la categoría */}
                           <span
                             className="inline-block h-2.5 w-2.5 rounded-sm"
                             style={{ background: color }}
                           />
-                          {/* nombre */}
                           {c.name}
-
-                          {/* pill con promedio y círculo verde/rojo */}
                           <span
                             className="ml-1 inline-flex items-center justify-center rounded-full px-2 h-5 text-[11px] font-semibold"
                             style={{
@@ -1080,7 +1123,6 @@ const refLinesClose = React.useMemo(() => {
                           viewBox={props?.viewBox}
                           text={`Global: ${globalAllPct.toFixed(1)}%`}
                           color={globalAllPct >= THRESHOLD ? GREEN : RED} // o IPN
-                          // si están cerca y Global queda a la izquierda de Curso, baja a fila 1
                           row={refLinesClose && globalAllPct <= (cursoAvgPct ?? -1) ? 1 : 0}
                         />
                       ),
@@ -1103,7 +1145,6 @@ const refLinesClose = React.useMemo(() => {
                           viewBox={props?.viewBox}
                           text={`Curso: ${cursoAvgPct.toFixed(1)}%`}
                           color={cursoAvgPct >= THRESHOLD ? GREEN : RED} // o IPN
-                          // si están cerca y Curso queda a la izquierda de Global, baja a fila 1
                           row={refLinesClose && cursoAvgPct < (globalAllPct ?? -1) ? 1 : 0}
                         />
                       ),
@@ -1184,7 +1225,8 @@ const refLinesClose = React.useMemo(() => {
                 </div>
 
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={lineMatrix} margin={{ top: 56, right: 240, bottom: 48, left: 64 }}>
+                  {/* margen derecho ↑ para alojar las píldoras externas */}
+                  <LineChart data={lineMatrix} margin={{ top: 56, right: 260, bottom: 48, left: 64 }}>
                     <CartesianGrid strokeDasharray="4 4" />
                     <XAxis
                       dataKey="x"
@@ -1236,7 +1278,7 @@ const refLinesClose = React.useMemo(() => {
                       />
                     ))}
 
-                    {/* ===== Líneas de referencia + PÍLDORAS (LABELS RESTAURADAS) ===== */}
+                    {/* ===== Líneas de referencia con PÍLDORAS FUERA del plot ===== */}
                     {typeof globalAllPct === "number" && (
                       <ReferenceLine
                         y={globalAllPct}
@@ -1247,10 +1289,11 @@ const refLinesClose = React.useMemo(() => {
                         isFront
                         label={{
                           content: (props: any) => (
-                            <RefPillLabel
+                            <RefRightPillLabel
                               viewBox={props?.viewBox}
                               text={`Global: ${globalAllPct}%`}
                               color={globalAllPct >= THRESHOLD ? GREEN : RED}
+                              row={0}
                             />
                           ),
                         }}
@@ -1266,18 +1309,21 @@ const refLinesClose = React.useMemo(() => {
                         isFront
                         label={{
                           content: (props: any) => (
-                            <RefPillLabel
+                            <RefRightPillLabel
                               viewBox={props?.viewBox}
                               text={`Docente: ${docenteAvgSerie}%`}
                               color={docenteAvgSerie >= THRESHOLD ? GREEN : RED}
+                              /* si algún día quisieras anti-colisión vertical con más líneas, usa row=1 */
+                              row={0}
                             />
                           ),
                         }}
                       />
                     )}
 
-                    {/* Chapitas extra al borde derecho calculadas por scale (si las quieres, déjalas; si prefieres solo las de arriba, quita este bloque) */}
-                    <Customized
+                    {/* (Opcional) Chapitas calculadas por scale — si prefieres solo las de fuera, puedes quitar este bloque.
+                        Lo dejo intacto por si lo sigues usando en otro contexto. */}
+                    {/* <Customized
                       component={
                         <RightRefPills
                           yValues={[
@@ -1290,7 +1336,7 @@ const refLinesClose = React.useMemo(() => {
                           ]}
                         />
                       }
-                    />
+                    /> */}
                   </LineChart>
                 </ResponsiveContainer>
               </>
@@ -1361,7 +1407,6 @@ const refLinesClose = React.useMemo(() => {
                 className="pl-8 h-9 focus-visible:ring-2"
                 style={
                   {
-                    // ring guinda al enfocar (shadcn)
                     boxShadow:
                       "0 0 0 0 var(--tw-ring-offset-shadow), 0 0 0 2px #7c0022",
                   } as React.CSSProperties
@@ -1398,25 +1443,21 @@ const refLinesClose = React.useMemo(() => {
                     className="group rounded-lg border p-4 hover:bg-slate-50/70 transition-colors relative"
                     style={{ borderColor: "#e2e8f0" }}
                   >
-                    {/* Acento lateral guinda al hover */}
                     <span
                       className="pointer-events-none absolute left-0 top-0 h-full w-1 rounded-l-md opacity-0 group-hover:opacity-100 transition-opacity"
                       style={{ background: "#7c0022" }}
                     />
 
-                    {/* Meta de la pregunta si existe */}
                     {c.pregunta_texto && (
                       <div className="text-[11px] text-muted-foreground mb-1">
                         {c.pregunta_texto}
                       </div>
                     )}
 
-                    {/* Testimonial suave con comillas guinda */}
                     <div
                       className="relative mt-1 rounded-md border px-3 py-2"
                       style={{ background: "#7c002210", borderColor: "#f1f5f9" }}
                     >
-                      {/* Ícono comillas */}
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
@@ -1432,7 +1473,6 @@ const refLinesClose = React.useMemo(() => {
                       </blockquote>
                     </div>
 
-                    {/* Footer: anónimo + fecha/hora */}
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       {c.created_at && (
                         <span>

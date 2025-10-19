@@ -336,7 +336,66 @@ export default function ReportDesempenoDocente({
     );
   }
 
+  // === Píldora FUERA del plot (a la derecha del área interna)
+  function RefRightPillLabel({
+    viewBox,
+    text,
+    color,
+    row = 0,               // fila para anti-colisión opcional
+  }: {
+    viewBox?: any;
+    text: string;
+    color: string;
+    row?: number;
+  }) {
+    const vb = viewBox || {};
+    const innerLeft  = vb.x ?? 0;
+    const innerTop   = vb.y ?? 0;       // y top de la línea
+    const innerWidth = vb.width ?? 0;
+    const OUT_GAP = 8;                  // separación del borde derecho del plot
+
+    const padX = 8, padY = 4, fontSize = 11;
+    const pillW = text.length * 7 + padX * 2;
+    const pillH = fontSize + padY * 2;
+    const rowStep = pillH + 4;
+
+    // Ancla a la DERECHA del plot: empieza justo fuera del área interna
+    const x = innerLeft + innerWidth + OUT_GAP;
+    // Centrada respecto a la y de la línea; si hay filas, hacer pequeños offsets verticales
+    const y = (innerTop ?? 0) - pillH / 2 + row * rowStep;
+
+    return (
+      <g pointerEvents="none">
+        <rect
+          x={x}
+          y={y}
+          rx={pillH / 2}
+          ry={pillH / 2}
+          width={pillW}
+          height={pillH}
+          fill={color}
+          opacity={0.95}
+          stroke="white"
+          strokeWidth={1.5}
+        />
+        <text
+          x={x + pillW / 2}
+          y={y + pillH / 2 + fontSize / 3 - 1}
+          textAnchor="middle"
+          fontSize={fontSize}
+          fill="white"
+          className="tabular-nums"
+          fontWeight={600}
+        >
+          {text}
+        </text>
+      </g>
+    );
+  }
+
   /* ===== Label personalizado para ReferenceLine (píldora que no se corta) ===== */
+  // (Se mantiene por compatibilidad; ya no la usamos para estas dos referencias,
+  // pero NO se elimina para no romper nada que la importe/espere)
   function RefPillLabel({
     viewBox,
     text,
@@ -352,7 +411,6 @@ export default function ReportDesempenoDocente({
     const innerLeft = vb.x ?? 0;
     const innerTop = vb.y ?? 0;
     const innerWidth = vb.width ?? 0;
-    const innerHeight = vb.height ?? 0;
 
     const centerY = innerTop; // Recharts nos da y en top de la línea
     const padX = 8;
@@ -403,6 +461,12 @@ export default function ReportDesempenoDocente({
       </g>
     );
   }
+
+  // --- Anti-colisión entre "Global" y "Docente" cuando están muy cerca (en eje Y)
+  const refsClose = useMemo(() => {
+    if (typeof globalTodosPct !== "number" || typeof docenteAvgPct !== "number") return false;
+    return Math.abs(globalTodosPct - docenteAvgPct) < 4; // umbral de cercanía
+  }, [globalTodosPct, docenteAvgPct]);
 
   /* ===== Render ===== */
   return (
@@ -557,7 +621,7 @@ export default function ReportDesempenoDocente({
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={rows}
-                  margin={{ top: 24, right: 96, bottom: 72, left: 56 }} // ➜ margen derecho ↑ para que nunca se corten
+                  margin={{ top: 24, right: 220, bottom: 72, left: 56 }} // margen derecho ↑ para alojar las píldoras
                 >
                   <CartesianGrid strokeDasharray="4 4" />
                   <XAxis
@@ -589,7 +653,7 @@ export default function ReportDesempenoDocente({
                     />
                   </YAxis>
 
-                  {/* Benchmark: Satisfacción global (todos) con pill custom */}
+                  {/* Benchmark: Satisfacción global (todos) con pill FUERA del plot */}
                   {typeof globalTodosPct === "number" && (
                     <ReferenceLine
                       y={globalTodosPct}
@@ -599,17 +663,18 @@ export default function ReportDesempenoDocente({
                       ifOverflow="extendDomain"
                       label={{
                         content: (props: any) => (
-                          <RefPillLabel
+                          <RefRightPillLabel
                             viewBox={props?.viewBox}
                             text={`Global ${globalTodosPct}%`}
                             color={OK(globalTodosPct) ? GREEN : RED}
+                            row={0}
                           />
                         ),
                       }}
                     />
                   )}
 
-                  {/* Promedio docente (visible) con pill custom */}
+                  {/* Promedio docente con pill FUERA del plot (fila 1 si están muy cerca) */}
                   {typeof docenteAvgPct === "number" && (
                     <ReferenceLine
                       y={docenteAvgPct}
@@ -618,10 +683,11 @@ export default function ReportDesempenoDocente({
                       ifOverflow="extendDomain"
                       label={{
                         content: (props: any) => (
-                          <RefPillLabel
+                          <RefRightPillLabel
                             viewBox={props?.viewBox}
                             text={`Docente ${docenteAvgPct}%`}
                             color={OK(docenteAvgPct) ? GREEN : RED}
+                            row={refsClose ? 1 : 0}
                           />
                         ),
                       }}

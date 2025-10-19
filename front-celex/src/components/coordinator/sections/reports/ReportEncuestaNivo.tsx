@@ -117,15 +117,15 @@ type CatStat = {
   name: string;
   color: string;
   checked: boolean;
-  avgPct: number | null;  // promedio de la categoría (0..100) — para el punto verde/rojo
-  sharePct: number;       // participación normalizada que suma 100% entre visibles
+  avgPct: number | null;  // promedio de la categoría (0..100)
+  sharePct: number;       // participación normalizada (suma 100% ENTRE las categorías seleccionadas)
   totalResps: number;     // Σ respuestas de las preguntas de la categoría
 };
 
 /**
  * - avgPct: (Σ pct*total) / (Σ total)
- * - sharePct (suma 100%): normaliza por “score” => wSum = Σ(pct*total); share = wSum_i / Σ(wSum_checked)
- * - closeTo100: ajusta la última categoría para cerrar a 100.0 (redondeo)
+ * - sharePct (suma 100% sobre seleccionadas): wSum = Σ(pct*total); share = wSum_i / Σ(wSum_checked)
+ * - closeTo100: ajusta la última categoría seleccionada para cerrar a 100.0 (solo entre seleccionadas)
  */
 function buildCategoryStats(
   categorias: Array<{ id: string; name: string }>,
@@ -134,7 +134,6 @@ function buildCategoryStats(
   selectedCatIds: string[],
   closeTo100: boolean
 ): CatStat[] {
-  // Acumuladores
   const perCat: Record<string, { name: string; color: string; checked: boolean; wSum: number; tSum: number }> = {};
   for (const c of categorias) {
     perCat[String(c.id)] = {
@@ -146,7 +145,6 @@ function buildCategoryStats(
     };
   }
 
-  // Sumar por categoría usando SOLO preguntas visibles
   for (const row of dataPct) {
     const catId = String(row.categoriaId);
     if (!perCat[catId]) continue;
@@ -156,11 +154,9 @@ function buildCategoryStats(
     perCat[catId].tSum += t;
   }
 
-  // Denominador para participación (solo categorías checked)
   const checkedCats = Object.values(perCat).filter((c) => c.checked);
   const denomScore = checkedCats.reduce((acc, it) => acc + it.wSum, 0);
 
-  // Construye stats
   const stats: CatStat[] = Object.entries(perCat).map(([id, it]) => {
     const hasData = it.tSum > 0;
     const avg = hasData ? round1(it.wSum / it.tSum) : null;
@@ -179,7 +175,7 @@ function buildCategoryStats(
     };
   });
 
-  // Cierra a 100.0 entre las categorías visibles con datos
+  // Ajuste de cierre a 100 SOLO entre seleccionadas
   if (closeTo100) {
     const visibles = stats.filter((s) => s.checked);
     if (visibles.length > 0) {
@@ -193,8 +189,8 @@ function buildCategoryStats(
     }
   }
 
-  // Solo devolvemos las categorías visibles (para pills)
-  return stats.filter((s) => s.checked && (s.totalResps > 0 || s.sharePct > 0));
+  // 👇 **NO** filtramos por `checked`: devolvemos TODAS las categorías
+  return stats;
 }
 
 /* =================== Componente =================== */
@@ -459,9 +455,8 @@ export default function ReportEncuestaPorcentaje({
   const selectAllCats = () => setSelectedCatIds(allCatIds);
   const selectNoCats = () => setSelectedCatIds([]);
 
-  /* =================== CATEGORÍAS (suma 100%) =================== */
+  /* =================== CATEGORÍAS (suma 100% entre seleccionadas) =================== */
   const catStats = useMemo(() => {
-    // insumo: dataPct ya está filtrado por preguntas y categorías seleccionadas
     return buildCategoryStats(
       categorias.map((c) => ({ id: c.id, name: c.name })),
       dataPct.map((it) => ({
@@ -472,13 +467,17 @@ export default function ReportEncuestaPorcentaje({
       })),
       categoriaColorMap,
       selectedCatIds,
-      true // closeTo100: ajustar la última visible para cerrar 100.0
+      true // closeTo100
     );
   }, [categorias, dataPct, categoriaColorMap, selectedCatIds]);
 
-  // suma visible (debug opcional)
   const catShareSum = useMemo(
-    () => round1(catStats.reduce((a, b) => a + (b.checked ? b.sharePct : 0), 0)),
+    () =>
+      round1(
+        catStats
+          .filter((s) => s.checked)
+          .reduce((a, b) => a + b.sharePct, 0)
+      ),
     [catStats]
   );
 
@@ -555,7 +554,7 @@ export default function ReportEncuestaPorcentaje({
             </div>
           )}
 
-          {/* Selección de categorías + PILLS (suma 100%) */}
+          {/* Selección de categorías + PILLS (suma 100% entre seleccionadas) */}
           {categorias.length > 0 && (
             <div className="mb-3 space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -571,15 +570,24 @@ export default function ReportEncuestaPorcentaje({
                 <span className="text-sm text-muted-foreground">
                   {selectedCatIds.length}/{allCatIds.length} categorías
                 </span>
-                
               </div>
 
               <div className="flex flex-wrap gap-2">
                 {catStats.map((s) => {
-                  const style: React.CSSProperties =
-                    { background: s.color, color: DARK_TEXT, border: `1px solid ${s.color}` };
+                  // ✅ Mantener visibles SIEMPRE; estilizar según selección
+                  const styleChecked: React.CSSProperties = {
+                    background: s.color,
+                    color: DARK_TEXT,
+                    border: `1px solid ${s.color}`,
+                  };
+                  const styleUnchecked: React.CSSProperties = {
+                    background: "transparent",
+                    color: DARK_TEXT,
+                    border: `1px solid ${s.color}`,
+                    opacity: 0.75,
+                  };
+                  const style = s.checked ? styleChecked : styleUnchecked;
 
-                  // punto verde/rojo/NA según PROMEDIO de la categoría
                   const st: Status = statusFromPct(s.avgPct, THRESHOLD);
                   const dotColor = st === "na" ? "#94a3b8" : st === "ok" ? GREEN : RED;
 
@@ -592,27 +600,29 @@ export default function ReportEncuestaPorcentaje({
                       style={style}
                       title={
                         s.avgPct == null
-                          ? `${s.name} — Sin respuestas · Participación: ${s.sharePct}%`
-                          : `${s.name} — Promedio: ${fmtPctOrDash(s.avgPct)} · Participación: ${s.sharePct}%`
+                          ? `${s.name} — Sin respuestas · Participación: ${s.checked ? s.sharePct.toFixed(1) : "0.0"}%`
+                          : `${s.name} — Promedio: ${fmtPctOrDash(s.avgPct)} · Participación: ${s.checked ? s.sharePct.toFixed(1) : "0.0"}%`
                       }
-                      aria-label={`${s.name}, participación ${s.sharePct}% (promedio ${fmtPctOrDash(s.avgPct)})`}
+                      aria-label={`${s.name}, ${s.checked ? "seleccionada" : "no seleccionada"}, participación ${s.checked ? s.sharePct.toFixed(1) : "0.0"}%`}
                     >
                       {/* color base */}
                       <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
                       {/* nombre */}
                       {s.name}
-                      {/* pill con participación (esta suma 100%) + estado por promedio */}
+                      {/* pill con participación (0% si está deseleccionada) + estado por promedio */}
                       <span
                         className="ml-1 inline-flex items-center justify-center rounded-full px-2 h-5 text-[11px] font-semibold tabular-nums"
                         style={{ background: "#0f172a", color: "#fff", border: "1px solid rgba(0,0,0,0.05)" }}
                       >
                         <span className="inline-block h-2 w-2 rounded-full mr-1" style={{ background: dotColor }} />
-                        {s.sharePct.toFixed(1)}%
+                        {(s.checked ? s.sharePct : 0).toFixed(1)}%
                       </span>
                     </button>
                   );
                 })}
               </div>
+              {/* (opcional) Debug de suma visible */}
+              {/* <div className="text-xs text-muted-foreground">Suma visible: {catShareSum}%</div> */}
             </div>
           )}
 
@@ -1144,16 +1154,13 @@ export default function ReportEncuestaPorcentaje({
                 <ScrollArea className="h-[70vh] pr-4">
                   <ul className="space-y-3">
                     {list.map((c) => {
-                      
-                      
                       let nombreRaw = c.alumno?.nombre ?? "Anónimo";
                       let nombre = nombreRaw;
                       if (nombreRaw.includes(",")) {
                         const [ap, nom] = nombreRaw.split(",").map(s => s.trim());
-                        nombre = `${nom} ${ap}`; // quita coma y reordena
+                        nombre = `${nom} ${ap}`;
                       }
 
-                      
                       const email = c.alumno?.email ?? "";
                       const d = c.created_at ? new Date(c.created_at) : null;
                       const fecha = d ? d.toLocaleDateString("es-MX") : "";
@@ -1167,25 +1174,19 @@ export default function ReportEncuestaPorcentaje({
                           className="group rounded-lg border p-4 hover:bg-slate-50/70 transition-colors relative"
                           style={{ borderColor: "#e2e8f0" }}
                         >
-                          {/* Acento lateral guinda al hover */}
                           <span
                             className="pointer-events-none absolute left-0 top-0 h-full w-1 rounded-l-md opacity-0 group-hover:opacity-100 transition-opacity"
                             style={{ background: "#7c0022" }}
                           />
-
-                          {/* Meta de la pregunta (si existe) */}
                           {c.pregunta_texto && (
                             <div className="text-[11px] text-muted-foreground mb-1">
                               {c.pregunta_texto}
                             </div>
                           )}
-
-                          {/* Testimonial con comillas guinda */}
                           <div
                             className="relative mt-1 rounded-md border px-3 py-2"
                             style={{ background: "#7c002210", borderColor: "#f1f5f9" }}
                           >
-                            {/* Ícono comillas */}
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 24 24"
@@ -1201,7 +1202,6 @@ export default function ReportEncuestaPorcentaje({
                             </blockquote>
                           </div>
 
-                          {/* Footer: anónimo + fecha/hora */}
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                             <div className="min-w-0">
                               <span className="font-medium text-slate-700">{nombre}</span>
