@@ -1479,6 +1479,7 @@ export type CoordKpisOut = {
   aprobados_80_pct: number;
   // 👇 NUEVOS
   alumnos_exencion: number; // 👈 nuevo
+  total_evaluados: number;  // 👈 NUEVO
   top_idioma?: string | null
   top_idioma_grupos?: number
   docente_mejor_id?: number | string | null

@@ -706,82 +706,87 @@ export default function OverviewSectionConLinea({
               />,
 
              <PrismTile
-  key="k3"
-  label="Alumnos"
-  value={kpis ? String(kpis.alumnos_matriculados) : "—"}
-  hint={
-    kpis && (
-      <div className="flex flex-col gap-1.5 mb-2">
-        {/* Línea 1: IPN / Externos */}
-        <div className="flex flex-wrap gap-1 mb-0.5">
-          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-600/10 text-purple-700 dark:text-purple-300 border border-purple-200/60">
-            IPN: {kpis.alumnos_ipn}
-          </span>
-          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-600/10 text-purple-700 dark:text-purple-300 border border-purple-200/60">
-            Externos: {kpis.alumnos_externos}
-          </span>
-        </div>
+                key="k3"
+                label="Alumnos"
+                value={kpis ? String(kpis.alumnos_matriculados) : "—"}
+                hint={
+                  kpis && (
+                    <div className="flex flex-col gap-1.5 mb-2">
+                      {/* Línea 1: IPN / Externos */}
+                      <div className="flex flex-wrap gap-1 mb-0.5">
+                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-600/10 text-purple-700 dark:text-purple-300 border border-purple-200/60">
+                          IPN: {kpis.alumnos_ipn}
+                        </span>
+                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-600/10 text-purple-700 dark:text-purple-300 border border-purple-200/60">
+                          Externos: {kpis.alumnos_externos}
+                        </span>
+                      </div>
 
-        {/* Línea 2: título */}
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0">
-          Aprobados/Reprobados/Exención
-        </div>
+                      {/* Línea 2: título (aclara el denominador) */}
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0">
+                        aprobados▪️reprobados▪️exenciones
+                      </div>
 
-        {/* Línea 3: pills compactos */}
-        {(() => {
-          const total = Number(kpis.alumnos_matriculados ?? 0);
-          const aprob = Number(kpis.aprobados_80_count ?? 0);
-          const reprob = Number(kpis.reprobados_count ?? 0);
-          const exenc = Number(kpis.alumnos_exencion ?? 0);
 
-          const base =
-            "inline-flex items-center justify-center h-6 rounded-full px-2 text-[10px] font-semibold whitespace-nowrap tabular-nums w-full";
+                      {/* Línea 3: pills compactos */}
+                      {(() => {
+                        const totalEval = Number(kpis.total_evaluados ?? 0);
+                        const aprob = Number(kpis.aprobados_80_count ?? 0);
+                        const reprob = Number(kpis.reprobados_count ?? 0);
+                        const totalMat = Number(kpis.alumnos_matriculados ?? 0);
+                        const exenc = Number(kpis.alumnos_exencion ?? 0);
 
-          return (
-            <div className="grid grid-cols-3 gap-1">
-              <span
-                title={`Aprobados: ${aprob} de ${total}`}
-                className={
-                  base +
-                  " border border-emerald-200/60 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300"
+                        const pct = (num: number, den: number) =>
+                          den > 0 ? `${((num / den) * 100).toFixed(1)}%` : "—";
+
+                        const base =
+                          "inline-flex items-center justify-center h-6 rounded-full px-2 text-[10px] font-semibold whitespace-nowrap tabular-nums w-full";
+
+                        return (
+                          <div className="grid grid-cols-3 gap-1">
+                            <span
+                              title={`Aprobados: ${aprob} de ${totalEval} evaluados`}
+                              className={
+                                base +
+                                " border border-emerald-200/60 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300"
+                              }
+                            >
+                              <CheckCircle className="h-3 w-3 mr-1 shrink-0" />
+                              {pct(aprob, totalEval)}
+                            </span>
+
+                            <span
+                              title={`Reprobados: ${reprob} de ${totalEval} evaluados`}
+                              className={
+                                base +
+                                " border border-red-200/60 bg-red-50/60 dark:bg-red-950/20 text-red-700 dark:text-red-300"
+                              }
+                            >
+                              <XCircle className="h-3 w-3 mr-1 shrink-0" />
+                              {pct(reprob, totalEval)}
+                            </span>
+
+                            <span
+                              title={`Exención de pago: ${exenc} de ${totalMat} matriculados`}
+                              className={
+                                base +
+                                " border border-amber-300/60 bg-amber-50/60 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300"
+                              }
+                            >
+                              <ShieldCheck className="h-3 w-3 mr-1 shrink-0" />
+                              {/* Exención sigue sobre matriculados */}
+                              {pct(exenc, totalMat)}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )
                 }
-              >
-                <CheckCircle className="h-3 w-3 mr-1 shrink-0" />
-                {fmtPct(aprob, total)}
-              </span>
-
-              <span
-                title={`Reprobados: ${reprob} de ${total}`}
-                className={
-                  base +
-                  " border border-red-200/60 bg-red-50/60 dark:bg-red-950/20 text-red-700 dark:text-red-300"
-                }
-              >
-                <XCircle className="h-3 w-3 mr-1 shrink-0" />
-                {fmtPct(reprob, total)}
-              </span>
-
-              <span
-                title={`Exención: ${exenc} de ${total}`}
-                className={
-                  base +
-                  " border border-amber-300/60 bg-amber-50/60 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300"
-                }
-              >
-                <ShieldCheck className="h-3 w-3 mr-1 shrink-0" />
-                {fmtPct(exenc, total)}
-              </span>
-            </div>
-          );
-        })()}
-      </div>
-    )
-  }
-  icon={<GraduationCap />}
-  tone="premium"
-  className="h-full"
-/>,
-
+                icon={<GraduationCap />}
+                tone="premium"
+                className="h-full"
+              />,
               
               <PrismTile
                 key="k2"

@@ -50,6 +50,7 @@ class KpisOut(BaseModel):
     reprobados_count: int
     aprobados_80_pct: float
     alumnos_exencion: int = 0
+    total_evaluados: int = 0
     # 👉 agrega estos (opcionales)
     top_idioma: str | None = None
     top_idioma_grupos: int | None = 0
@@ -452,11 +453,12 @@ def kpis_coordinacion(
         alumnos_matriculados=int(alumnos_total),
         alumnos_ipn=int(alumnos_ipn),
         alumnos_externos=int(alumnos_externos),
-        alumnos_exencion=int(alumnos_exencion),  # 👈 AQUI
+        alumnos_exencion=int(alumnos_exencion),
         pagos_verificados_pct=pagos_verificados_pct,
         pagos_monto_total=pagos_monto_total,
         promedio_global_pct=prom_global,
         aprobados_80_count=int(aprobados_80),
+        total_evaluados=int(total_eval),
         reprobados_count=int(reprobados),
         aprobados_80_pct=aprobados_80_pct,
         # Enriquecidos:
