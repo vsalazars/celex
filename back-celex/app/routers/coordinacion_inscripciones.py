@@ -254,7 +254,7 @@ class UpdatePagoIn(BaseModel):
     importe_centavos: conint(strict=True, gt=0, le=1_000_000_000) = Field(
         description="Importe en centavos (ej. $123.45 -> 12345)"
     )
-    fecha_pago: date
+    fecha_pago: datetime
 
 @router.patch(
     "/{inscripcion_id}/pago",

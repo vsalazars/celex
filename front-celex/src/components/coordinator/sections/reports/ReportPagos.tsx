@@ -136,6 +136,17 @@ function formatFechaHora24(value?: string | number | Date): string {
   return `${dd}/${mon}/${yyyy} ${hh}:${mm}`;
 }
 
+// ---- Fechas: dd/Mes/yyyy (sin hora) ----
+function formatFechaCorta(value?: string | number | Date): string {
+  const d = normalizeToLocalDate(value);
+  if (!d) return "—";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mon = MONTH_ABBR[d.getMonth()];
+  const yyyy = d.getFullYear();
+  return `${dd}/${mon}/${yyyy}`;
+}
+
+
 function readFechaValidacion(row: any) {
   // Prioriza validated_at; si no, fecha_validacion; si no, cae a fecha_pago
   const v = row.validated_at || row.fecha_validacion || row.fecha_pago;
@@ -143,7 +154,7 @@ function readFechaValidacion(row: any) {
 }
 function readFechaPago(row: any) {
   const v = row.fecha_pago;
-  return v ? formatFechaHora24(v) : "—";
+  return v ? formatFechaCorta(v) : "—";
 }
 
 // ---- Badge por estado ----
@@ -324,7 +335,7 @@ export default function ReportPagos({ filters }: { filters: ReportFiltersState }
         email: r.email ?? "",
         tipo: (r as any).tipo ?? "",
         status: (r.status ?? r.estado ?? "").toString().toLowerCase(),
-        fecha_pago: r.fecha_pago ?? "",
+        fecha_pago: r.fecha_pago ? new Date(r.fecha_pago).toISOString().slice(0, 10) : "",
         referencia: r.referencia ?? "",
         importe_centavos: r.importe_centavos ?? Math.round((r.importe ?? 0) * 100),
         validated_at: r.validated_at ?? r.fecha_validacion ?? "",

@@ -8,42 +8,28 @@ type DocenteMini = { id?: number | string; nombre?: string } | null;
 type CicloPayload = {
   id?: number | string;
   codigo?: string;
-
-  // Enums (pueden venir como "Enum.valor" o solo "valor")
   idioma?: string | null;
   modalidad?: string | null;
   turno?: string | null;
   nivel?: string | null;
-
-  // Horario
-  dias?: string[] | null;        // ['lunes','miercoles']
-  hora_inicio?: string | null;   // "HH:MM[:SS]" (SQL Time)
-  hora_fin?: string | null;      // "HH:MM[:SS]"
-
-  // Fechas de curso
-  curso_inicio?: string | null;  // ISO "YYYY-MM-DD"
-  curso_fin?: string | null;     // ISO "YYYY-MM-DD"
-
-  // Extra del modelo
-  modalidad_asistencia?: string | null; // Enum
+  dias?: string[] | null;
+  hora_inicio?: string | null;
+  hora_fin?: string | null;
+  curso_inicio?: string | null;
+  curso_fin?: string | null;
+  modalidad_asistencia?: string | null;
   aula?: string | null;
-
-  // Docente
   docente?: DocenteMini;
   docente_nombre?: string | null;
 };
 
-type Filtros = {
-  anio?: number | string | null;
-  idioma?: string | null;
-};
-
+type Filtros = { anio?: number | string | null; idioma?: string | null };
 type Resumen = {
   total: number;
   validado: number;
   pendiente: number;
   rechazado: number;
-  sumaValidadoMXN: number; // en MXN
+  sumaValidadoMXN: number;
 };
 
 // ---------- Helpers ----------
@@ -54,7 +40,6 @@ function headPrettyEnum(raw?: string | null, dict?: Record<string, string>) {
   if (dict && dict[key]) return dict[key];
   return token.charAt(0).toUpperCase() + token.slice(1);
 }
-
 const M_IDIOMA: Record<string, string> = {
   ingles: "Inglés",
   frances: "Francés",
@@ -62,30 +47,18 @@ const M_IDIOMA: Record<string, string> = {
   italiano: "Italiano",
   portugues: "Portugués",
 };
-
 const M_MODALIDAD: Record<string, string> = {
   intensivo: "Intensivo",
   sabatino: "Sabatino",
   regular: "Regular",
 };
-
 const M_TURNO: Record<string, string> = {
   matutino: "Matutino",
   vespertino: "Vespertino",
   nocturno: "Nocturno",
 };
-
-const M_NIVEL: Record<string, string> = {
-  basico: "Básico",
-  intermedio: "Intermedio",
-  avanzado: "Avanzado",
-};
-
-const M_ASISTENCIA: Record<string, string> = {
-  presencial: "Presencial",
-  en_linea: "En línea",
-  mixta: "Mixta",
-};
+const M_NIVEL: Record<string, string> = { basico: "Básico", intermedio: "Intermedio", avanzado: "Avanzado" };
+const M_ASISTENCIA: Record<string, string> = { presencial: "Presencial", en_linea: "En línea", mixta: "Mixta" };
 
 function formatISODateToDMY(iso?: string | null) {
   if (!iso) return "—";
@@ -97,24 +70,17 @@ function formatISODateToDMY(iso?: string | null) {
   const yyyy = d.getFullYear();
   return `${dd}/${m}/${yyyy}`;
 }
-
 function formatSqlTime(t?: string | null) {
   if (!t) return null;
   const m = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(t.trim());
   if (!m) return t;
   return `${m[1]}:${m[2]}`;
 }
-
 function joinDias(dias?: string[] | null) {
   if (!Array.isArray(dias) || !dias.length) return null;
   return dias.map((d) => (d ? d.charAt(0).toUpperCase() + d.slice(1) : d)).join(", ");
 }
-
-function orDash(v?: any) {
-  if (v === null || v === undefined || v === "") return "—";
-  return String(v);
-}
-
+function orDash(v?: any) { return (v === null || v === undefined || v === "") ? "—" : String(v); }
 function nowEmitido() {
   const d = new Date();
   const dd = String(d.getDate()).padStart(2, "0");
@@ -124,6 +90,21 @@ function nowEmitido() {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${dd}/${m}/${yyyy} ${hh}:${mm}`;
+}
+
+// Etiqueta:valor – bloque con ellipsis y SIN wrap
+function Meta({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-baseline gap-1 min-w-0 max-w-full">
+      <span className="font-medium shrink-0 whitespace-nowrap">{label}:</span>
+      <span
+        className="block min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
+        title={typeof value === "string" ? value : undefined}
+      >
+        {value}
+      </span>
+    </span>
+  );
 }
 
 // ---------- Componente ----------
@@ -140,7 +121,6 @@ export default function PdfHeader({
 }) {
   const idioma = headPrettyEnum(ciclo?.idioma ?? (filtros?.idioma ?? ""), M_IDIOMA);
   const modalidad = headPrettyEnum(ciclo?.modalidad ?? null, M_MODALIDAD);
-  const turno = headPrettyEnum(ciclo?.turno ?? null, M_TURNO);
   const nivel = headPrettyEnum(ciclo?.nivel ?? null, M_NIVEL);
   const modAsistencia = headPrettyEnum(ciclo?.modalidad_asistencia ?? null, M_ASISTENCIA);
   const aula = ciclo?.aula || null;
@@ -149,48 +129,65 @@ export default function PdfHeader({
   const diasTxt = joinDias(ciclo?.dias);
   const hi = formatSqlTime(ciclo?.hora_inicio);
   const hf = formatSqlTime(ciclo?.hora_fin);
-  const horario =
-    (diasTxt ? diasTxt : "") +
-    (hi || hf ? `${diasTxt ? " · " : ""}${orDash(hi)} – ${orDash(hf)}` : "");
-  const docenteNombre =
-    (ciclo?.docente && ciclo?.docente?.nombre) ||
-    (ciclo?.docente_nombre ?? "—");
+  const horario = (diasTxt ? diasTxt : "") + (hi || hf ? `${diasTxt ? " · " : ""}${orDash(hi)} – ${orDash(hf)}` : "");
+  const docenteNombre = (ciclo?.docente && ciclo?.docente?.nombre) || (ciclo?.docente_nombre ?? "—");
 
   return (
     <div className="pdf-header px-4 pt-4 pb-2 text-[11px] text-black">
-      {/* Título + emisión (línea única, compacto) */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      {/* Título + emisión */}
+      <div className="flex items-center justify-between gap-2">
         <h2 className="pdf-title text-[15px] font-semibold leading-tight">{title}</h2>
-        <div className="pdf-subtitle text-[10px]">
-          <strong>Fecha de emisión:</strong> {nowEmitido()}
-        </div>
+        <div className="pdf-subtitle text-[10px]"><strong>Fecha de emisión:</strong> {nowEmitido()}</div>
       </div>
 
-      {/* Meta compacta en una sola rejilla (etiqueta: valor) */}
-      <div className="pdf-meta-grid mt-2">
-        <div><span className="pdf-meta-label">Ciclo:</span> <span className="pdf-meta-value">{orDash(ciclo?.codigo)}</span></div>
-        <div><span className="pdf-meta-label">Idioma:</span> <span className="pdf-meta-value">{idioma}</span></div>
-        <div><span className="pdf-meta-label">Modalidad:</span> <span className="pdf-meta-value">{modalidad}</span></div>
-        <div><span className="pdf-meta-label">Turno:</span> <span className="pdf-meta-value">{turno}</span></div>
-        <div><span className="pdf-meta-label">Nivel:</span> <span className="pdf-meta-value">{nivel}</span></div>
-        <div><span className="pdf-meta-label">Curso (inicio–fin):</span> <span className="pdf-meta-value">{cursoRango}</span></div>
-        <div className="col-span-2">
-          <span className="pdf-meta-label">Horario:</span>{" "}
-          <span className="pdf-meta-value">{horario || "—"}</span>
-        </div>
-        <div><span className="pdf-meta-label">Asistencia:</span> <span className="pdf-meta-value">{modAsistencia}</span></div>
-        <div><span className="pdf-meta-label">Aula:</span> <span className="pdf-meta-value">{orDash(aula)}</span></div>
-        <div className="col-span-2">
-          <span className="pdf-meta-label">Docente:</span>{" "}
-          <span className="pdf-meta-value">{docenteNombre || "—"}</span>
-        </div>
-      </div>
+      {/* ===== TABLA estable (una sola línea por celda) ===== */}
+      <table className="w-full table-fixed mt-2 text-[11px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+        <tbody>
+          {/* Fila 1: sin Aula */}
+          <tr className="align-baseline">
+            <td className="pr-3 whitespace-nowrap" style={{ width: "30%" }}>
+              <Meta label="Curso" value={orDash(ciclo?.codigo)} />
+            </td>
+            <td className="pr-3 whitespace-nowrap" style={{ width: "14%" }}>
+              <Meta label="Idioma" value={idioma} />
+            </td>
+            <td className="pr-3 whitespace-nowrap" style={{ width: "14%" }}>
+              <Meta label="Nivel" value={nivel} />
+            </td>
+            <td className="pr-3 whitespace-nowrap" style={{ width: "21%" }}>
+              <Meta label="Modalidad" value={modalidad} />
+            </td>
+            <td className="pr-0 whitespace-nowrap" style={{ width: "21%" }}>
+              <Meta label="Asistencia" value={modAsistencia} />
+            </td>
+          </tr>
 
-      {/* Resumen como chips compactos */}
+          {/* Fila 2: Curso (inicio–fin) · Aula · Horario */}
+          <tr className="align-baseline">
+            <td className="pr-3 whitespace-nowrap" style={{ width: "36%" }}>
+              <Meta label="Periodo" value={cursoRango} />
+            </td>
+            <td className="pr-3 whitespace-nowrap" style={{ width: "8%" }}>
+              <Meta label="Aula" value={orDash(aula)} />
+            </td>
+            <td className="pr-0 whitespace-nowrap" style={{ width: "56%" }} colSpan={3}>
+              <Meta label="Horario" value={horario || "—"} />
+            </td>
+          </tr>
+
+          {/* Fila 3: Docente */}
+          <tr className="align-baseline">
+            <td className="pr-0 whitespace-nowrap" style={{ width: "100%" }} colSpan={5}>
+              <Meta label="Docente" value={docenteNombre || "—"} />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
       {resumen && (
         <>
           <Separator className="my-2" />
-          <div className="pdf-chips-wrap">
+          <div className="pdf-chips-wrap flex flex-wrap gap-2">
             <span className="pdf-chip"><strong>Total:</strong> {resumen.total}</span>
             <span className="pdf-chip"><strong>Validados:</strong> {resumen.validado}</span>
             <span className="pdf-chip"><strong>Pendientes:</strong> {resumen.pendiente}</span>
