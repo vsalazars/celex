@@ -411,6 +411,7 @@ export default function ReportPagos({ filters }: { filters: ReportFiltersState }
                 <th className="border-b text-left py-2 pr-3">Referencia</th>
                 <th className="border-b text-left py-2 pr-3">Importe</th>
                 <th className="border-b text-left py-2 pr-3">Alumno</th>
+                <th className="border-b text-left py-2 pr-3">Estado</th>
                 <th className="border-b text-left py-2 pr-3">Tipo</th>
               </tr>
             </thead>
@@ -421,6 +422,7 @@ export default function ReportPagos({ filters }: { filters: ReportFiltersState }
                   <td className="py-1.5 pr-3 break-all">{r.referencia}</td>
                   <td className="py-1.5 pr-3 tabular-nums">{formatMoney(r.importe)}</td>
                   <td className="py-1.5 pr-3">{r.alumno}</td>
+                  <td className="py-1.5 pr-3">{r.estado}</td>
                   <td className="py-1.5 pr-3 capitalize">{r.tipo}</td>
                 </tr>
               ))}
