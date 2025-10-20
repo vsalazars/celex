@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createRoot } from "react-dom/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,10 @@ import {
 import { ReportFiltersState } from "./useReportFilters";
 import { downloadCSV, exportNodeToPDF } from "./utils/export";
 import { getReportePagos, type ReportReportePagos } from "@/lib/api";
+import PrintStyles from "@/components/print/PrintStyles";
+import PdfHeader from "@/components/print/PdfHeader";
+import { PagosTablePDF } from "@/components/print/PagosTablePDF";
+
 
 // ---- Utils dinero ----
 function formatMoney(mxn: number) {
@@ -331,7 +336,99 @@ export default function ReportPagos({ filters }: { filters: ReportFiltersState }
     downloadCSV(filename, rows);
   };
 
-  const pdf = () => exportNodeToPDF(ref.current, "Pagos por ciclo");
+  // ===== NUEVO: PDF con plantilla imprimible =====
+  const pdfPrintable = async () => {
+    if (!reporte) return;
+
+    // 1) Crear contenedor oculto
+    const mount = document.createElement("div");
+    mount.setAttribute("id", "print-root");
+    // Evita parpadeo y saca del flujo
+    Object.assign(mount.style, {
+      position: "fixed",
+      inset: "0",
+      width: "0",
+      height: "0",
+      overflow: "hidden",
+      pointerEvents: "none",
+      zIndex: "-1",
+    });
+    document.body.appendChild(mount);
+
+    // 2) Preparar datos y metadatos
+    const titulo = `Pagos — ${reporte?.ciclo?.codigo || "s/ciclo"}`;
+    const meta = [
+      { label: "Ciclo", value: reporte?.ciclo?.codigo ?? "—" },
+      { label: "Año", value: filters.anio ?? "—" },
+      { label: "Idioma", value: filters.idioma ?? "—" },
+      { label: "Generado", value: formatFechaHora24(new Date()) },
+      { label: "Total", value: String(resumen.total) },
+      { label: "Validados", value: String(resumen.validado) },
+      { label: "Pendientes", value: String(resumen.pendiente) },
+      { label: "Rechazados", value: String(resumen.rechazado) },
+      { label: "Suma validado", value: formatMoney(resumen.sumaValidadoMXN) },
+    ];
+
+    // 3) Tomar TODAS las filas filtradas (no solo la página actual)
+    // Nota: usamos sortedRows (ya ordenadas por apellidos) y no la paginación UI
+    const printableRows = (sortedRows || []).map(buildRowUI);
+
+    // 4) Renderizar plantilla de impresión
+    const root = createRoot(mount);
+    root.render(
+      <div className="print-a4 bg-white text-black">
+        <PrintStyles />
+        {/* Ajusta las props de PdfHeader si tu implementación usa otras */}
+        <PdfHeader
+          title={titulo}
+          ciclo={reporte.ciclo as any}
+          filtros={{ anio, idioma }}
+          resumen={{
+            total: resumen.total,
+            validado: resumen.validado,
+            pendiente: resumen.pendiente,
+            rechazado: resumen.rechazado,
+            // Ojo: aquí espera MXN, no centavos
+            sumaValidadoMXN: resumen.sumaValidadoMXN,
+          }}
+        />        
+        <div className="px-6 pb-8">
+          <table className="w-full border-collapse text-[11px]">
+            <thead>
+              <tr>
+                <th className="border-b text-left py-2 pr-3">Fecha pago</th>
+                <th className="border-b text-left py-2 pr-3">Referencia</th>
+                <th className="border-b text-left py-2 pr-3">Importe</th>
+                <th className="border-b text-left py-2 pr-3">Alumno</th>
+                <th className="border-b text-left py-2 pr-3">Tipo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printableRows.map((r) => (
+                <tr key={String(r.id)} className="align-top">
+                  <td className="py-1.5 pr-3 whitespace-nowrap">{r.fechaPago ?? "—"}</td>
+                  <td className="py-1.5 pr-3 break-all">{r.referencia}</td>
+                  <td className="py-1.5 pr-3 tabular-nums">{formatMoney(r.importe)}</td>
+                  <td className="py-1.5 pr-3">{r.alumno}</td>
+                  <td className="py-1.5 pr-3 capitalize">{r.tipo}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+
+    // 5) Esperar al siguiente frame para que se pinten fuentes/estilos
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // 6) Exportar ese nodo
+    await exportNodeToPDF(mount, titulo); // tu utilidad existente
+
+    // 7) Limpiar
+    root.unmount();
+    mount.remove();
+  };
 
   const header = useMemo(() => `Pagos — ${reporte?.ciclo?.codigo || "s/ciclo"}`, [reporte?.ciclo?.codigo]);
 
@@ -486,6 +583,9 @@ export default function ReportPagos({ filters }: { filters: ReportFiltersState }
   return (
     <Card className="shadow-sm">
       <CardContent className="p-4 md:p-6 space-y-4">
+        {/* Estilos de impresión disponibles en la página */}
+        <PrintStyles />
+
         {/* Header + meta */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-base font-semibold">{header}</h3>
@@ -521,7 +621,7 @@ export default function ReportPagos({ filters }: { filters: ReportFiltersState }
             <Button size="sm" variant="outline" onClick={csv} disabled={!data.length}>
               <Download className="h-4 w-4 mr-2" /> CSV
             </Button>
-            <Button size="sm" variant="outline" onClick={() => exportNodeToPDF(ref.current, header)} disabled={!data.length}>
+            <Button size="sm" variant="outline" onClick={pdfPrintable} disabled={!data.length || !reporte}>
               <Printer className="h-4 w-4 mr-2" /> PDF
             </Button>
             <Button size="sm" variant="secondary" onClick={() => setReloadTick((t) => t + 1)} disabled={!cicloId}>

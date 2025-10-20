@@ -208,7 +208,7 @@ def reporte_pagos(
             Inscripcion.importe_centavos.label("importe_centavos"),
             Inscripcion.fecha_pago.label("fecha_pago"),
             Inscripcion.validated_by_id.label("validated_by_id"),
-            Inscripcion.validated_at.label("validated_at"),  # 👈 agrega esto
+            Inscripcion.validated_at.label("validated_at"),
             Inscripcion.rechazo_motivo.label("rechazo_motivo"),
         )
         .join(User, User.id == Inscripcion.alumno_id)
@@ -216,7 +216,6 @@ def reporte_pagos(
         .order_by(apellidos_ord.asc(), nombres_ord.asc(), Inscripcion.id.asc())
         .all()
     )
-
 
     def coerce_tipo(v) -> str:
         val = getattr(v, "value", v)
@@ -258,20 +257,78 @@ def reporte_pagos(
                 tipo=tipo,
                 status=status,
                 importe_centavos=importe,
-                fecha_pago=to_iso(r.fecha_pago),       # 👈 ahora con hora
-                validated_at=to_iso(r.validated_at),   # 👈 ahora con hora
+                fecha_pago=to_iso(r.fecha_pago),
+                validated_at=to_iso(r.validated_at),
             )
         )
 
+    # ==== Docente (si existe) ====
+    docente_payload = None
+    if getattr(ciclo, "docente_id", None):
+        first = func.coalesce(func.trim(User.first_name), "")
+        last  = func.coalesce(func.trim(User.last_name), "")
+        nombre_doc = (
+            db.query(func.trim(func.concat(first, literal(" "), last)))
+            .filter(User.id == ciclo.docente_id)
+            .scalar()
+        ) or ""
+        docente_payload = {"id": ciclo.docente_id, "nombre": nombre_doc}
+
+    # Helpers de serialización locales (no afectan a otros endpoints)
+    def enum_str(e):
+        if e is None:
+            return None
+        try:
+            return e.value if hasattr(e, "value") else str(e)
+        except Exception:
+            return str(e)
+
+    def ser_date(d):
+        try:
+            return d.isoformat() if d else None  # YYYY-MM-DD
+        except Exception:
+            return None
+
+    def ser_time(t):
+        try:
+            return t.strftime("%H:%M") if t else None
+        except Exception:
+            return None
+
+    # Año desde el código (prefijo YYYY-)
+    anio = None
+    try:
+        pref = str(getattr(ciclo, "codigo", "")).split("-", 1)[0]
+        anio = int(pref)
+    except Exception:
+        pass
+
+    # ==== Ciclo enriquecido (solo campos que SÍ existen) ====
+    ciclo_payload = {
+        "id": ciclo.id,
+        "codigo": ciclo.codigo,
+        "anio": anio,
+        "idioma": enum_str(getattr(ciclo, "idioma", None)),
+        "modalidad": enum_str(getattr(ciclo, "modalidad", None)),
+        "turno": enum_str(getattr(ciclo, "turno", None)),
+        "nivel": enum_str(getattr(ciclo, "nivel", None)),
+        "dias": list(getattr(ciclo, "dias", []) or []),
+        "hora_inicio": ser_time(getattr(ciclo, "hora_inicio", None)),
+        "hora_fin": ser_time(getattr(ciclo, "hora_fin", None)),
+        "curso_inicio": ser_date(getattr(ciclo, "curso_inicio", None)),
+        "curso_fin": ser_date(getattr(ciclo, "curso_fin", None)),
+        "modalidad_asistencia": enum_str(getattr(ciclo, "modalidad_asistencia", None)),
+        "aula": getattr(ciclo, "aula", None),
+        "docente": docente_payload,
+    }
+
     return ReportePagos(
-        ciclo={"id": ciclo.id, "codigo": ciclo.codigo},
+        ciclo=ciclo_payload,
         grupo=None,
         total_registros=len(out_rows),
         total_validado_centavos=total_validado,
         rows=out_rows,
     )
-
-
 
 
 # ==============================
@@ -355,8 +412,7 @@ def reporte_encuesta(
         ) or ""
         docente_payload = DocenteMini(id=ciclo.docente_id, nombre=nombre)
 
-    
-    
+       
     # Participantes (cantidad de responses del ciclo)
     total_participantes = (
         db.query(func.count(SurveyResponse.id))
@@ -1231,3 +1287,4 @@ def placement_registros_admin(
         total=len(items),
         items=items,
     )
+
