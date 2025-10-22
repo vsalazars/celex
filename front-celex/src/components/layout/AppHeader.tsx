@@ -76,7 +76,7 @@ export default function AppHeader() {
                 activeMobile ? "text-white/90" : "text-neutral-800",
               ].join(" ")}
             >
-              Escuela Superior de Ingeniería y Arquitectura Unidad Zacatenco
+              Centro de Estudios Científicos y Tecnológicos No. 4 "Lázaro Cárdenas"
             </p>
             <p
               className={[

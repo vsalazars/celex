@@ -200,7 +200,7 @@ export default function LoginSheet({
                         CELEX
                       </span>
                       <span className="block text-xl sm:text-base text-neutral-700 mt-0.5">
-                        “Diódoro Antúnez”
+                        “CECyT 4 Lázaro Cárdenas”
                       </span>
                     </SheetTitle>
                     <SheetDescription className="text-neutral-600">
