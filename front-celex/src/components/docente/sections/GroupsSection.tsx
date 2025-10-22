@@ -303,7 +303,7 @@ export default function GroupsSection() {
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Input
-            placeholder="Buscar por código o aula…"
+            placeholder="Buscar por código…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="max-w-xs"

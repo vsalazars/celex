@@ -447,7 +447,7 @@ const RefPillTopX: React.FC<{ viewBox?: any; text: string; color: string; row?: 
         if (data.length > 0) setSelected(data[0].id);
       } catch (e: any) {
         if (!alive) return;
-        setError(e?.message ?? "Error al cargar ciclos");
+        setError(e?.message ?? "Error al cargar cursos");
       } finally {
         if (alive) setLoadingCiclos(false);
       }
@@ -841,7 +841,7 @@ const refLinesClose = React.useMemo(() => {
         {!showAll && (
           <>
             <div className="mt-3 flex items-center gap-2">
-              <label className="text-sm font-medium">Ciclo</label>
+              <label className="text-sm font-medium">Curso</label>
               <select
                 className="border rounded-md px-3 py-2 text-sm"
                 disabled={loadingCiclos || ciclos.length === 0}
@@ -851,7 +851,7 @@ const refLinesClose = React.useMemo(() => {
                 {loadingCiclos ? (
                   <option>Cargando…</option>
                 ) : ciclos.length === 0 ? (
-                  <option value="">Sin ciclos</option>
+                  <option value="">Sin cursos</option>
                 ) : (
                   ciclos.map((c) => (
                     <option key={c.id} value={String(c.id)}>
@@ -1160,17 +1160,17 @@ const refLinesClose = React.useMemo(() => {
             loadingSerie ? (
               <div className="h-full flex items-center justify-center text-muted-foreground">
                 <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                Cargando serie por ciclos…
+                Cargando serie por cursos…
               </div>
             ) : !lineMatrix.length ? (
               <div className="h-full flex items-center justify-center text-muted-foreground">
-                No hay datos de ciclos para graficar.
+                No hay datos de cursos para graficar.
               </div>
             ) : (
               <>
                 {/* Controles de ciclos (toggle + promedio + botones globales) */}
                 <div className="flex items-center flex-wrap gap-2 mb-2">
-                  <span className="text-xs text-muted-foreground mr-2">Ciclos:</span>
+                  <span className="text-xs text-muted-foreground mr-2">Cursos:</span>
 
                   {ciclosOrden.map((ciclo) => {
                     const color = cicloColor.get(ciclo) || "#999";
@@ -1188,7 +1188,7 @@ const refLinesClose = React.useMemo(() => {
                         className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs transition ${
                           hidden ? "opacity-50" : "opacity-100"
                         }`}
-                        title={hidden ? "Mostrar ciclo" : "Ocultar ciclo"}
+                        title={hidden ? "Mostrar curso" : "Ocultar curso"}
                       >
                         <span
                           className="inline-block w-2.5 h-2.5 rounded-full"
