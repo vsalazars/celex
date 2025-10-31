@@ -108,6 +108,7 @@ def registros_por_examen(
     Lista alumnos inscritos a un examen de colocación.
     - Si scope=teacher: valida que el examen pertenezca al docente (o admin/coordinador).
     - Devuelve nombre, email, boleta y nivel_asignado (nivel_idioma en la BD).
+    - Regla solicitada: perfil docente NO ve registros que no estén VALIDADA.
     """
     exam = db.query(PlacementExam).filter(PlacementExam.id == exam_id).first()
     if not exam:
@@ -118,12 +119,20 @@ def registros_por_examen(
     ):
         raise HTTPException(status_code=403, detail="No autorizado para ver este examen")
 
-    regs = (
+    # Consulta base
+    q = (
         db.query(PlacementRegistro)
         .options(joinedload(PlacementRegistro.alumno))
         .filter(PlacementRegistro.exam_id == exam_id)
-        .order_by(PlacementRegistro.created_at.asc(), PlacementRegistro.id.asc())
-        .all()
+    )
+
+    # Si es el perfil docente (no coord/superuser) y scope=teacher, SOLO VALIDADA
+    if scope == "teacher" and me.role == UserRole.teacher:
+        q = q.filter(PlacementRegistro.status == PlacementRegistroStatus.VALIDADA)
+
+    regs = (
+        q.order_by(PlacementRegistro.created_at.asc(), PlacementRegistro.id.asc())
+         .all()
     )
 
     out: List[PlacementRegistroAlumnoOut] = []
@@ -157,6 +166,8 @@ def actualizar_nivel_por_registro(
     """
     Actualiza el nivel a cursar para un alumno (registro de examen).
     Valida que el examen pertenezca al docente (o que sea admin/coordinador).
+    Reglas adicionales:
+      - Solo permitir asignar nivel si el registro está en estado VALIDADA.
     """
     reg = db.query(PlacementRegistro).filter(PlacementRegistro.id == registro_id).first()
     if not reg:
@@ -168,6 +179,14 @@ def actualizar_nivel_por_registro(
 
     if (exam.docente_id != me.id) and (me.role not in (UserRole.superuser, UserRole.coordinator)):
         raise HTTPException(status_code=403, detail="No autorizado para modificar este registro")
+
+    # Bloquear si el registro NO está VALIDADA
+    current_status = getattr(reg.status, "name", None) or str(reg.status)
+    if str(current_status).upper() != "VALIDADA":
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se puede asignar nivel si el registro está en estado '{current_status}'. Debe estar VALIDADA.",
+        )
 
     reg.nivel_idioma = payload.nivel.strip().upper()
     db.add(reg)

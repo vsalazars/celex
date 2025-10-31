@@ -214,11 +214,76 @@ def _serialize_exam_with_disponibles(exam: PlacementExam, ocupados: int):
         "registros_ocupados": int(ocupados or 0),
     }
 
+# ==========================
+# Helpers (formularios de registro)
+# ==========================
+def _parse_importe(form) -> int:
+    """
+    Devuelve importe en centavos.
+    Acepta 'importe_pesos' (preferido) o 'importe_centavos'.
+    """
+    if "importe_pesos" in form and form.get("importe_pesos"):
+        raw = str(form.get("importe_pesos")).replace(",", ".")
+        try:
+            pesos = float(raw)
+        except Exception:
+            raise HTTPException(status_code=422, detail="Importe inválido (pesos)")
+        if pesos < 0:
+            raise HTTPException(status_code=422, detail="Importe inválido (pesos)")
+        if round(pesos, 2) != pesos:
+            raise HTTPException(status_code=422, detail="El importe solo admite 2 decimales")
+        return int(round(pesos * 100))
+    elif "importe_centavos" in form and form.get("importe_centavos"):
+        try:
+            c = int(form.get("importe_centavos"))
+        except Exception:
+            raise HTTPException(status_code=422, detail="Importe inválido (centavos)")
+        if c < 0:
+            raise HTTPException(status_code=422, detail="Importe inválido (centavos)")
+        return c
+    else:
+        raise HTTPException(status_code=422, detail="Importe requerido (importe_pesos)")
+
+def _parse_fecha_pago(fecha_pago_str: str) -> date:
+    try:
+        y, m, d = map(int, fecha_pago_str.split("-"))
+        from datetime import date as _date
+        return _date(y, m, d)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Fecha de pago inválida (YYYY-MM-DD)")
+
+async def _parse_registro_form_and_upload(request: Request):
+    """
+    Lee form-data estándar del registro y guarda el comprobante.
+    Retorna dict con campos listos para asignarse en el modelo.
+    """
+    form = await request.form()
+    referencia = (form.get("referencia") or "").strip()
+    fecha_pago_str = (form.get("fecha_pago") or "").strip()
+    if not referencia:
+        raise HTTPException(status_code=422, detail="Referencia requerida")
+    importe_centavos = _parse_importe(form)
+    fecha_pago = _parse_fecha_pago(fecha_pago_str)
+    file: UploadFile | None = form.get("comprobante")  # type: ignore
+    full_path, mime, size = await _save_upload(
+        file,
+        env_dir_key="PLACEMENT_PAGOS_UPLOAD_DIR",
+        default_dir="uploads/placement_pagos",
+        max_mb=5,
+    )
+    return {
+        "referencia": referencia,
+        "importe_centavos": importe_centavos,
+        "fecha_pago": fecha_pago,
+        "comprobante_path": full_path,
+        "comprobante_mime": mime,
+        "comprobante_size": size,
+        "_action": (form.get("_action") or "").strip().lower(),
+    }
 
 # ==========================
 # RUTAS PÚBLICAS / ALUMNO
 # ==========================
-# ⚠️ Sin response_model para no filtrar campos extra (cupo_disponible, insc_inicio/fin)
 @router.get("/public")
 def list_public(
     page: int = Query(1, ge=1),
@@ -365,63 +430,61 @@ async def create_registro(
     if ocupados >= cupo_total:
         raise HTTPException(status_code=409, detail="No hay lugares disponibles")
 
-    # 2) Leer form-data
-    form = await request.form()
-    referencia = (form.get("referencia") or "").strip()
-    fecha_pago_str = (form.get("fecha_pago") or "").strip()
+    # 2) Parseo estándar (incluye guardar comprobante)
+    parsed = await _parse_registro_form_and_upload(request)
+    referencia = parsed["referencia"]
+    importe_centavos = parsed["importe_centavos"]
+    fecha_pago = parsed["fecha_pago"]
+    full_path = parsed["comprobante_path"]
+    mime = parsed["comprobante_mime"]
+    size = parsed["comprobante_size"]
+    action = parsed.get("_action", "")
 
-    if not referencia:
-        raise HTTPException(status_code=422, detail="Referencia requerida")
-
-    # 3) Monto: aceptar 'importe_pesos' o 'importe_centavos'
-    importe_centavos: int | None = None
-    if "importe_pesos" in form and form.get("importe_pesos"):
-        raw = str(form.get("importe_pesos")).replace(",", ".")
-        try:
-            pesos = float(raw)
-        except Exception:
-            raise HTTPException(status_code=422, detail="Importe inválido (pesos)")
-        if pesos < 0:
-            raise HTTPException(status_code=422, detail="Importe inválido (pesos)")
-        if round(pesos, 2) != pesos:
-            raise HTTPException(status_code=422, detail="El importe solo admite 2 decimales")
-        importe_centavos = int(round(pesos * 100))
-    elif "importe_centavos" in form and form.get("importe_centavos"):
-        try:
-            importe_centavos = int(form.get("importe_centavos"))  # type: ignore[arg-type]
-        except Exception:
-            raise HTTPException(status_code=422, detail="Importe inválido (centavos)")
-        if importe_centavos < 0:
-            raise HTTPException(status_code=422, detail="Importe inválido (centavos)")
-    else:
-        raise HTTPException(status_code=422, detail="Importe requerido (importe_pesos)")
-
-    # 4) Fecha
-    try:
-        y, m, d = map(int, fecha_pago_str.split("-"))
-        from datetime import date as _date
-        fecha_pago = _date(y, m, d)
-    except Exception:
-        raise HTTPException(status_code=422, detail="Fecha de pago inválida (YYYY-MM-DD)")
-
-    # 5) Archivo
-    file: UploadFile | None = form.get("comprobante")  # type: ignore
-    full_path, mime, size = await _save_upload(
-        file,
-        env_dir_key="PLACEMENT_PAGOS_UPLOAD_DIR",
-        default_dir="uploads/placement_pagos",
-        max_mb=5,
-    )
-
-    # 6) Crear registro en BD (único por alumno+exam)
+    # 3) Unicidad alumno+examen con rehidratación para RECHAZADA y CANCELADA
     exists = (
         db.query(PlacementRegistro)
         .filter(PlacementRegistro.alumno_id == user.id, PlacementRegistro.exam_id == exam_id)
         .first()
     )
     if exists:
+        if getattr(exists, "status") in (PlacementRegistroStatus.RECHAZADA, PlacementRegistroStatus.CANCELADA):
+            # Si está cancelada o rechazada, permitimos "revivir" siempre; si quieres,
+            # puedes requerir action in {"reintentar","reinscribir"}.
+            # Reemplazar archivo previo
+            old_path = getattr(exists, "comprobante_path", None)
+            if old_path and os.path.exists(old_path):
+                try:
+                    os.remove(old_path)
+                except Exception:
+                    pass
+
+            exists.referencia = referencia
+            exists.importe_centavos = importe_centavos
+            exists.fecha_pago = fecha_pago
+            exists.comprobante_path = full_path
+            exists.comprobante_mime = mime
+            exists.comprobante_size = size
+            exists.status = PlacementRegistroStatus.PREINSCRITA
+
+            db.add(exists)
+            db.commit()
+            db.refresh(exists)
+
+            return {
+                "id": exists.id,
+                "exam_id": exists.exam_id,
+                "status": exists.status.value if hasattr(exists.status, "value") else str(exists.status),
+                "referencia": exists.referencia,
+                "importe_centavos": exists.importe_centavos,
+                "fecha_pago": exists.fecha_pago,
+                "comprobante": _comprobante_to_meta(exists.comprobante_path, exists.comprobante_mime, exists.comprobante_size),
+                "created_at": exists.created_at,
+            }
+
+        # Legacy: mantener 409 para no romper integraciones previas en otros estados
         raise HTTPException(status_code=409, detail="Ya existe un registro para este examen")
 
+    # 4) Crear registro nuevo
     reg = PlacementRegistro(
         exam_id=exam_id,
         alumno_id=user.id,
@@ -437,7 +500,7 @@ async def create_registro(
     db.commit()
     db.refresh(reg)
 
-    # 7) Respuesta
+    # 5) Respuesta
     return {
         "id": reg.id,
         "exam_id": reg.exam_id,
@@ -449,6 +512,193 @@ async def create_registro(
         "created_at": reg.created_at,
     }
 
+# ==========================
+# Reintento/Reinscripción explícitos (endpoints nuevos)
+# ==========================
+@router.post("/registros/{registro_id}/reintentar", response_model=PlacementRegistroOut)
+async def retry_registro(
+    registro_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_student),
+):
+    reg = db.get(PlacementRegistro, registro_id)  # type: ignore[attr-defined]
+    if not reg:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+    if reg.alumno_id != user.id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    if getattr(reg, "status") != PlacementRegistroStatus.RECHAZADA:
+        raise HTTPException(status_code=409, detail="Solo puedes reintentar registros rechazados")
+
+    exam = db.get(PlacementExam, reg.exam_id)  # type: ignore[attr-defined]
+    if not exam or not bool(exam.activo):
+        raise HTTPException(status_code=404, detail="Examen no disponible")
+
+    ocupados = _ocupados_for_exam(db, reg.exam_id)
+    cupo_total = int(getattr(exam, "cupo_total", 0) or 0)
+    if ocupados >= cupo_total:
+        raise HTTPException(status_code=409, detail="No hay lugares disponibles")
+
+    parsed = await _parse_registro_form_and_upload(request)
+
+    old_path = getattr(reg, "comprobante_path", None)
+    if old_path and os.path.exists(old_path):
+        try:
+            os.remove(old_path)
+        except Exception:
+            pass
+
+    reg.referencia = parsed["referencia"]
+    reg.importe_centavos = parsed["importe_centavos"]
+    reg.fecha_pago = parsed["fecha_pago"]
+    reg.comprobante_path = parsed["comprobante_path"]
+    reg.comprobante_mime = parsed["comprobante_mime"]
+    reg.comprobante_size = parsed["comprobante_size"]
+    reg.status = PlacementRegistroStatus.PREINSCRITA
+
+    db.add(reg)
+    db.commit()
+    db.refresh(reg)
+
+    return PlacementRegistroOut(
+        id=reg.id,
+        exam_id=reg.exam_id,
+        status=reg.status.value if hasattr(reg.status, "value") else str(reg.status),
+        referencia=reg.referencia,
+        importe_centavos=reg.importe_centavos,
+        fecha_pago=reg.fecha_pago,
+        comprobante=_comprobante_to_meta(reg.comprobante_path, reg.comprobante_mime, reg.comprobante_size),  # type: ignore[arg-type]
+        created_at=reg.created_at,
+    )
+
+
+@router.post("/registros/{registro_id}/reinscribir", response_model=PlacementRegistroOut)
+async def reinscribir_registro(
+    registro_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_student),
+):
+    """
+    Permite reinscribir un registro CANCELADO.
+    """
+    reg = db.get(PlacementRegistro, registro_id)  # type: ignore[attr-defined]
+    if not reg:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+    if reg.alumno_id != user.id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    if getattr(reg, "status") != PlacementRegistroStatus.CANCELADA:
+        raise HTTPException(status_code=409, detail="Solo puedes reinscribir registros cancelados")
+
+    exam = db.get(PlacementExam, reg.exam_id)  # type: ignore[attr-defined]
+    if not exam or not bool(exam.activo):
+        raise HTTPException(status_code=404, detail="Examen no disponible")
+
+    ocupados = _ocupados_for_exam(db, reg.exam_id)
+    cupo_total = int(getattr(exam, "cupo_total", 0) or 0)
+    if ocupados >= cupo_total:
+        raise HTTPException(status_code=409, detail="No hay lugares disponibles")
+
+    parsed = await _parse_registro_form_and_upload(request)
+
+    old_path = getattr(reg, "comprobante_path", None)
+    if old_path and os.path.exists(old_path):
+        try:
+            os.remove(old_path)
+        except Exception:
+            pass
+
+    reg.referencia = parsed["referencia"]
+    reg.importe_centavos = parsed["importe_centavos"]
+    reg.fecha_pago = parsed["fecha_pago"]
+    reg.comprobante_path = parsed["comprobante_path"]
+    reg.comprobante_mime = parsed["comprobante_mime"]
+    reg.comprobante_size = parsed["comprobante_size"]
+    reg.status = PlacementRegistroStatus.PREINSCRITA
+
+    db.add(reg)
+    db.commit()
+    db.refresh(reg)
+
+    return PlacementRegistroOut(
+        id=reg.id,
+        exam_id=reg.exam_id,
+        status=reg.status.value if hasattr(reg.status, "value") else str(reg.status),
+        referencia=reg.referencia,
+        importe_centavos=reg.importe_centavos,
+        fecha_pago=reg.fecha_pago,
+        comprobante=_comprobante_to_meta(reg.comprobante_path, reg.comprobante_mime, reg.comprobante_size),  # type: ignore[arg-type]
+        created_at=reg.created_at,
+    )
+
+
+@router.put("/registros/{registro_id}", response_model=PlacementRegistroOut)
+async def update_registro_action(
+    registro_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_student),
+):
+    """
+    Fallback: permite _action=reintentar o _action=reinscribir vía PUT con form-data.
+    """
+    reg = db.get(PlacementRegistro, registro_id)  # type: ignore[attr-defined]
+    if not reg:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+    if reg.alumno_id != user.id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    parsed = await _parse_registro_form_and_upload(request)
+    action = parsed.get("_action", "")
+
+    if action not in ("reintentar", "reinscribir"):
+        raise HTTPException(status_code=400, detail="Acción no soportada")
+
+    # Validaciones por estado esperado
+    if action == "reintentar" and getattr(reg, "status") != PlacementRegistroStatus.RECHAZADA:
+        raise HTTPException(status_code=409, detail="Solo puedes reintentar registros rechazados")
+    if action == "reinscribir" and getattr(reg, "status") != PlacementRegistroStatus.CANCELADA:
+        raise HTTPException(status_code=409, detail="Solo puedes reinscribir registros cancelados")
+
+    exam = db.get(PlacementExam, reg.exam_id)  # type: ignore[attr-defined]
+    if not exam or not bool(exam.activo):
+        raise HTTPException(status_code=404, detail="Examen no disponible")
+
+    ocupados = _ocupados_for_exam(db, reg.exam_id)
+    cupo_total = int(getattr(exam, "cupo_total", 0) or 0)
+    if ocupados >= cupo_total:
+        raise HTTPException(status_code=409, detail="No hay lugares disponibles")
+
+    # Reemplaza archivo previo
+    old_path = getattr(reg, "comprobante_path", None)
+    if old_path and os.path.exists(old_path):
+        try:
+            os.remove(old_path)
+        except Exception:
+            pass
+
+    reg.referencia = parsed["referencia"]
+    reg.importe_centavos = parsed["importe_centavos"]
+    reg.fecha_pago = parsed["fecha_pago"]
+    reg.comprobante_path = parsed["comprobante_path"]
+    reg.comprobante_mime = parsed["comprobante_mime"]
+    reg.comprobante_size = parsed["comprobante_size"]
+    reg.status = PlacementRegistroStatus.PREINSCRITA
+
+    db.add(reg)
+    db.commit()
+    db.refresh(reg)
+
+    return PlacementRegistroOut(
+        id=reg.id,
+        exam_id=reg.exam_id,
+        status=reg.status.value if hasattr(reg.status, "value") else str(reg.status),
+        referencia=reg.referencia,
+        importe_centavos=reg.importe_centavos,
+        fecha_pago=reg.fecha_pago,
+        comprobante=_comprobante_to_meta(reg.comprobante_path, reg.comprobante_mime, reg.comprobante_size),  # type: ignore[arg-type]
+        created_at=reg.created_at,
+    )
 
 # ==========================
 # Endpoints de administración/coordinación ligeros
@@ -467,7 +717,6 @@ def list_teachers(db: Session = Depends(get_db)):
     ]
 
 
-# ⚠️ Sin response_model para incluir cupo_disponible e insc_inicio/insc_fin
 @router.get("")
 def list_placement_exams(
     page: int = Query(1, ge=1),
@@ -475,8 +724,8 @@ def list_placement_exams(
     q: Optional[str] = None,
     idioma: Optional[str] = None,
     estado: Optional[str] = None,
-    fecha_from: Optional[str] = None,   # "YYYY-MM-DD" (opcional)
-    fecha_to: Optional[str] = None,     # "YYYY-MM-DD" (opcional)
+    fecha_from: Optional[str] = None,
+    fecha_to: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(PlacementExam)
@@ -503,7 +752,6 @@ def list_placement_exams(
         d_from = _parse_date_str(fecha_from) if fecha_from else None
         d_to   = _parse_date_str(fecha_to)   if fecha_to   else None
     except HTTPException as e:
-        # si viene mal formada, 422 con mensaje claro
         raise e
 
     if d_from and d_to:
@@ -538,7 +786,6 @@ def list_placement_exams(
     return {"items": items, "page": page, "pages": pages, "total": total}
 
 
-# ⚠️ Sin response_model para incluir cupo_disponible e insc_inicio/insc_fin
 @router.get("/{exam_id}")
 def get_placement_exam(exam_id: int, db: Session = Depends(get_db)):
     exam = db.get(PlacementExam, exam_id)  # type: ignore[attr-defined]
@@ -554,34 +801,28 @@ def create_placement_exam(
     payload: PlacementCreate,
     db: Session = Depends(get_db),
 ):
-    # model_dump en Pydantic v2; dict(exclude_none=True) si usas v1
     try:
         data = payload.model_dump(exclude_none=True)  # type: ignore[attr-defined]
     except Exception:
         data = payload.dict(exclude_none=True)
 
-    # ventana de inscripción
     d_inicio, d_fin = _normalize_insc_window(data)
     data["insc_inicio"] = d_inicio
     data["insc_fin"] = d_fin
 
-    # fecha y hora
     fecha_str: str = data.pop("fecha")
     hora_str:  str = data.pop("hora")
     data["fecha"] = _parse_date_str(fecha_str)
     data["hora"]  = _parse_time_str(hora_str)
 
-    # nombre por defecto = código
     if not data.get("nombre"):
         data["nombre"] = data["codigo"].strip()
 
-    # sanea strings
     for key in ("codigo", "idioma", "salon", "instrucciones", "modalidad",
                 "nivel_objetivo", "estado", "link_registro", "nombre"):
         if key in data and isinstance(data[key], str):
             data[key] = data[key].strip()
 
-    # activo por defecto
     if "activo" not in data or data["activo"] is None:
         data["activo"] = True
 
@@ -611,19 +852,16 @@ def update_placement_exam(
     except Exception:
         patch = payload.dict(exclude_unset=True)
 
-    # normaliza ventana si viene en el patch
     if any(k in patch for k in ("insc_inicio", "insc_fin", "insc_from", "insc_to", "inscripcion")):
         d_inicio, d_fin = _normalize_insc_window(dict(patch))
         patch["insc_inicio"] = d_inicio
         patch["insc_fin"] = d_fin
 
-    # parsea fecha/hora si vienen
     if "fecha" in patch and patch["fecha"] is not None:
         patch["fecha"] = _parse_date_str(patch["fecha"])
     if "hora" in patch and patch["hora"] is not None:
         patch["hora"] = _parse_time_str(patch["hora"])
 
-    # asigna solo atributos válidos del modelo
     valid_keys = set(c.name for c in PlacementExam.__table__.columns)
     for k, v in list(patch.items()):
         if k in valid_keys:

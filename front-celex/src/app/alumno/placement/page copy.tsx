@@ -453,6 +453,17 @@ function PlacementContent() {
     return badge;
   }
 
+  /* ======= Helpers de formato moviles ======= */
+  const fmtMoney = (n?: number | null) =>
+    typeof n === "number"
+      ? n.toLocaleString("es-MX", { style: "currency", currency: "MXN" })
+      : "—";
+
+  const fmtCentavos = (c?: number | null) =>
+    typeof c === "number"
+      ? (c / 100).toLocaleString("es-MX", { style: "currency", currency: "MXN" })
+      : "—";
+
   return (
     <>
       {/* ——— Barra de acciones: botón que abre el sheet ——— */}
@@ -461,107 +472,125 @@ function PlacementContent() {
           <SheetTrigger asChild>
             <Button 
               variant="default" 
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              className="h-10 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <GraduationCap className="h-4 w-4 mr-2" />
-              Inscribirte
+              <span className="hidden sm:inline">Inscribirte</span>
+              <span className="sm:hidden">Ver exámenes</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="right" className="w-full sm:max-w-4xl overflow-y-auto p-6">
-          <SheetHeader className="mb-4">
-            <SheetTitle>Exámenes disponibles</SheetTitle>
-            <SheetDescription>
-              Solo se muestran exámenes activos y con cupo disponible.
-            </SheetDescription>
-          </SheetHeader>
 
-          <div className="pb-6">
-            {loading ? (
-              <div className="flex items-center gap-2 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Cargando…
-              </div>
-            ) : error ? (
-              <p className="text-sm text-red-600 whitespace-pre-wrap">{error}</p>
-            ) : !hasData ? (
-              <p className="text-sm text-muted-foreground">
-                No hay exámenes activos por ahora.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Idioma</TableHead>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Hora</TableHead>
-                      <TableHead>Salón</TableHead>
-                      <TableHead>Cupo (disp/total)</TableHead>
-                      <TableHead>Costo</TableHead>
-                      <TableHead className="text-right">Acción</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+          <SheetContent
+            side="right"
+            className="w-full sm:max-w-4xl overflow-y-auto p-4 sm:p-6"
+          >
+            <SheetHeader className="mb-3 sm:mb-4">
+              <SheetTitle className="text-base sm:text-lg">Exámenes disponibles</SheetTitle>
+              <SheetDescription className="text-sm">
+                Solo se muestran exámenes activos y con cupo disponible.
+              </SheetDescription>
+            </SheetHeader>
+
+            <div className="pb-4 sm:pb-6">
+              {loading ? (
+                <div className="flex items-center gap-2 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Cargando…
+                </div>
+              ) : error ? (
+                <p className="text-sm text-red-600 whitespace-pre-wrap">{error}</p>
+              ) : !hasData ? (
+                <p className="text-sm text-muted-foreground">
+                  No hay exámenes activos por ahora.
+                </p>
+              ) : (
+                <>
+                  {/* Vista móvil: tarjetas */}
+                  <div className="sm:hidden space-y-3">
                     {exams.map((ex) => {
                       const sinCupo =
                         typeof ex.disponibles === "number" && ex.disponibles <= 0;
                       return (
-                        <TableRow key={ex.id}>
-                          <TableCell className="font-medium">
-                            {ex.codigo || ex.nombre || `#${ex.id}`}
-                          </TableCell>
-                          <TableCell>{ex.idioma ?? "—"}</TableCell>
-                          <TableCell>{ex.fecha ?? "—"}</TableCell>
-                          <TableCell>{ex.hora ?? "—"}</TableCell>
-                          <TableCell>{ex.salon ?? "—"}</TableCell>
-                          <TableCell>
-                            <CupoCell ex={ex} />
-                          </TableCell>
-                          <TableCell>
-                            {typeof ex.costo === "number"
-                              ? ex.costo.toLocaleString("es-MX", {
-                                  style: "currency",
-                                  currency: "MXN",
-                                })
-                              : "—"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              onClick={() => onOpenInscribir(ex)}
-                              disabled={sinCupo}
-                              className="h-8 rounded-full px-3.5 py-1.5 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
-                              title={sinCupo ? "Sin lugares disponibles" : "Inscribirme"}
-                            >
-                              <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                              <span className="hidden sm:inline">Inscribirme</span>
-                              <span className="sm:hidden">Inscribir</span>
-                            </Button>
-                          </TableCell>
-                        </TableRow>
+                        <MobileExamCard
+                          key={ex.id}
+                          ex={ex}
+                          onInscribir={() => onOpenInscribir(ex)}
+                          sinCupo={sinCupo}
+                        />
                       );
                     })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
-        </SheetContent>
+                  </div>
 
+                  {/* Vista desktop: tabla existente */}
+                  <div className="hidden sm:block overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Código</TableHead>
+                          <TableHead>Idioma</TableHead>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Hora</TableHead>
+                          <TableHead>Salón</TableHead>
+                          <TableHead>Cupo (disp/total)</TableHead>
+                          <TableHead>Costo</TableHead>
+                          <TableHead className="text-right">Acción</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {exams.map((ex) => {
+                          const sinCupo =
+                            typeof ex.disponibles === "number" && ex.disponibles <= 0;
+                          return (
+                            <TableRow key={ex.id}>
+                              <TableCell className="font-medium">
+                                {ex.codigo || ex.nombre || `#${ex.id}`}
+                              </TableCell>
+                              <TableCell className="capitalize">{ex.idioma ?? "—"}</TableCell>
+                              <TableCell>{ex.fecha ?? "—"}</TableCell>
+                              <TableCell>{ex.hora ?? "—"}</TableCell>
+                              <TableCell>{ex.salon ?? "—"}</TableCell>
+                              <TableCell>
+                                <CupoCell ex={ex} />
+                              </TableCell>
+                              <TableCell>{fmtMoney(ex.costo)}</TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => onOpenInscribir(ex)}
+                                  disabled={sinCupo}
+                                  className="h-8 rounded-full px-3.5 py-1.5 border-primary/30 text-primary hover:bg-primary/5 hover:border-primary/50 disabled:opacity-60 disabled:cursor-not-allowed"
+                                  title={sinCupo ? "Sin lugares disponibles" : "Inscribirme"}
+                                >
+                                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                                  <span className="hidden sm:inline">Inscribirme</span>
+                                  <span className="sm:hidden">Inscribir</span>
+                                </Button>
+
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              )}
+            </div>
+          </SheetContent>
         </Sheet>
       </div>
 
       {/* ——— Mis registros (contenido principal) ——— */}
       <TooltipProvider delayDuration={150}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Mis registros</CardTitle>
-            <CardDescription>
+        <Card className="rounded-2xl">
+          <CardHeader className="px-4 sm:px-6">
+            <CardTitle className="text-base sm:text-lg">Mis registros</CardTitle>
+            <CardDescription className="text-sm">
               Consulta el estado, descarga tu comprobante o cancela tu registro.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 sm:px-6 pb-4 sm:pb-6">
             {loadingRegs ? (
               <div className="flex items-center gap-2 text-sm">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -576,85 +605,94 @@ function PlacementContent() {
                 Aún no tienes registros.
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Examen</TableHead>
-                      <TableHead>Fecha pago</TableHead>
-                      <TableHead>Referencia</TableHead>
-                      <TableHead>Importe</TableHead>
-                      <TableHead>Nivel asignado</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {regs.map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell className="font-medium">
-                          {r.exam?.codigo ?? `#${r.exam_id}`}
-                        </TableCell>
-                        <TableCell>{r.fecha_pago ?? "—"}</TableCell>
-                        <TableCell>{r.referencia ?? "—"}</TableCell>
-                        <TableCell>
-                          {typeof r.importe_centavos === "number"
-                            ? (r.importe_centavos / 100).toLocaleString("es-MX", {
-                                style: "currency",
-                                currency: "MXN",
-                              })
-                            : "—"}
-                        </TableCell>
+              <>
+                {/* Vista móvil: tarjetas */}
+                <div className="sm:hidden space-y-3">
+                  {regs.map((r) => (
+                    <MobileRegCard
+                      key={r.id}
+                      r={r}
+                      onCancel={() => handleCancel(r.id)}
+                      onDownload={() => handleDownload(r.id)}
+                    />
+                  ))}
+                </div>
 
-                        {/* ===== Celda de nivel asignado (azules por nivel) ===== */}
-                       <TableCell>
-                          {(() => {
-                            const nivelKey = getNivelAsignado(r); // "INTRO" | "B3" | "A6" | "—"
-                            const label = nivelLabel(nivelKey);
-                            return label === "—" ? (
-                              <span className={nivelClass("—")}>—</span>
-                            ) : (
-                              <span className={nivelClass(nivelKey)} title="Asignado por el docente">
-                                {label}
-                              </span>
-                            );
-                          })()}
-                        </TableCell>
-
-
-                        <TableCell>
-                          <StatusCell registro={r} />
-                        </TableCell>
-
-                        <TableCell className="text-right space-x-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => handleDownload(r.id)}
-                            disabled={!r.comprobante}
-                            title={!r.comprobante ? "Sin comprobante" : ""}
-                          >
-                            Descargar
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleCancel(r.id)}
-                            disabled={r.status !== "preinscrita"}
-                            title={
-                              r.status !== "preinscrita"
-                                ? "Solo puedes cancelar mientras está preinscrita"
-                                : ""
-                            }
-                          >
-                            Cancelar
-                          </Button>
-                        </TableCell>
+                {/* Vista desktop: tabla existente */}
+                <div className="hidden sm:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Examen</TableHead>
+                        <TableHead>Fecha pago</TableHead>
+                        <TableHead>Referencia</TableHead>
+                        <TableHead>Importe</TableHead>
+                        <TableHead>Nivel asignado</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {regs.map((r) => (
+                        <TableRow key={r.id}>
+                          <TableCell className="font-medium">
+                            {r.exam?.codigo ?? `#${r.exam_id}`}
+                          </TableCell>
+                          <TableCell>{r.fecha_pago ?? "—"}</TableCell>
+                          <TableCell className="break-all">{r.referencia ?? "—"}</TableCell>
+                          <TableCell>{fmtCentavos(r.importe_centavos)}</TableCell>
+
+                          {/* ===== Celda de nivel asignado (azules por nivel) ===== */}
+                          <TableCell>
+                            {(() => {
+                              const nivelKey = getNivelAsignado(r); // "INTRO" | "B3" | "A6" | "—"
+                              const label = nivelLabel(nivelKey);
+                              return label === "—" ? (
+                                <span className={nivelClass("—")}>—</span>
+                              ) : (
+                                <span className={nivelClass(nivelKey)} title="Asignado por el docente">
+                                  {label}
+                                </span>
+                              );
+                            })()}
+                          </TableCell>
+
+                          <TableCell>
+                            <StatusCell registro={r} />
+                          </TableCell>
+
+                          <TableCell className="text-right space-x-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleDownload(r.id)}
+                              disabled={!r.comprobante}
+                              title={!r.comprobante ? "Sin comprobante" : ""}
+                              className="h-8"
+                            >
+                              Descargar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleCancel(r.id)}
+                              disabled={r.status !== "preinscrita"}
+                              title={
+                                r.status !== "preinscrita"
+                                  ? "Solo puedes cancelar mientras está preinscrita"
+                                  : ""
+                              }
+                              className="h-8"
+                            >
+                              Cancelar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -662,7 +700,7 @@ function PlacementContent() {
 
       {/* ——— Diálogo de inscripción ——— */}
       <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-w-[95vw] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Inscripción a examen</DialogTitle>
             <DialogDescription>
@@ -675,16 +713,16 @@ function PlacementContent() {
             <div className="grid gap-3">
               <div>
                 <Label className="text-xs text-muted-foreground">Examen</Label>
-                <div className="text-sm font-medium">
+                <div className="text-sm font-medium break-words">
                   {selected
-                    ? `${selected.codigo || selected.nombre} · ${
+                    ? `${selected.codigo || selected.nombre || ""} · ${
                         selected.fecha || "—"
                       } ${selected.hora || ""}`
                     : "—"}
                 </div>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="referencia">Referencia</Label>
                   <Input
@@ -693,6 +731,7 @@ function PlacementContent() {
                     value={referencia}
                     onChange={(e) => setReferencia(e.target.value)}
                     required
+                    className="h-10"
                   />
                 </div>
                 <div>
@@ -707,11 +746,12 @@ function PlacementContent() {
                     value={importePesos}
                     onChange={(e) => setImportePesos(e.target.value)}
                     required
+                    className="h-10"
                   />
                 </div>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="fecha_pago">Fecha de pago</Label>
                   <Input
@@ -720,6 +760,7 @@ function PlacementContent() {
                     value={fechaPago}
                     onChange={(e) => setFechaPago(e.target.value)}
                     required
+                    className="h-10"
                   />
                 </div>
 
@@ -731,6 +772,7 @@ function PlacementContent() {
                     ref={fileRef}
                     accept=".pdf,.jpg,.jpeg,.png,.webp"
                     required
+                    className="h-10"
                   />
                 </div>
               </div>
@@ -741,16 +783,17 @@ function PlacementContent() {
               <p className="text-sm text-green-600">{successMsg}</p>
             )}
 
-            <DialogFooter>
+            <DialogFooter className="gap-2 sm:gap-0">
               <Button
                 type="button"
                 variant="ghost"
                 onClick={() => setOpenDialog(false)}
                 disabled={submitting}
+                className="h-10"
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={submitting}>
+              <Button type="submit" disabled={submitting} className="h-10">
                 {submitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando…
@@ -912,4 +955,182 @@ function StatusCell({ registro }: { registro: PlacementRegistro }) {
   }
 
   return <div className="flex items-center gap-2">{badge}</div>;
+}
+
+/* ===================== VISTAS MÓVILES (Cards) ===================== */
+
+function MobileExamCard({
+  ex,
+  onInscribir,
+  sinCupo,
+}: {
+  ex: PlacementExam;
+  onInscribir: () => void;
+  sinCupo: boolean;
+}) {
+  // === inline CupoCell (evita la referencia a CupoCell del padre) ===
+  const disp = ex.disponibles;
+  const total = ex.cupo_total;
+  const occ = ex.ocupados;
+
+  const text =
+    typeof disp === "number" && typeof total === "number"
+      ? `${disp}/${total}`
+      : typeof total === "number"
+      ? `${total}`
+      : "—";
+
+  const danger = typeof disp === "number" && disp <= 0;
+
+  const cupoBadge = (
+    <span
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ${
+        danger
+          ? "bg-red-50 text-red-700 ring-red-200"
+          : "bg-zinc-50 text-zinc-700 ring-zinc-200"
+      }`}
+    >
+      {danger && <AlertTriangle className="mr-1 h-3.5 w-3.5" />}
+      {text}
+    </span>
+  );
+
+  return (
+    <div className="rounded-xl border bg-white/70 p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        
+     <div className="min-w-0 space-y-1">
+        {/* Badge con el CÓDIGO del examen (guinda) */}
+        <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide bg-[#7c0040]/10 text-[#7c0040] border-[#7c0040]/30">
+          {ex.codigo ? ex.codigo : `#${ex.id}`}
+        </span>
+
+        {/* Badge con el IDIOMA (azul) */}
+        <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium tracking-wide bg-blue-50 text-blue-700 border-blue-200 capitalize">
+          {ex.idioma ?? "—"}
+        </span>
+      </div>
+
+        <div className="text-right shrink-0">
+          <span className="text-xs text-neutral-500">Costo</span>
+          <div className="text-sm font-medium">
+            {typeof ex.costo === "number"
+              ? ex.costo.toLocaleString("es-MX", { style: "currency", currency: "MXN" })
+              : "—"}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-neutral-700">
+        <div><b>Fecha:</b> {ex.fecha ?? "—"}</div>
+        <div><b>Hora:</b> {ex.hora ?? "—"}</div>
+        <div><b>Salón:</b> {ex.salon ?? "—"}</div>
+        <div className="flex items-center gap-1">
+          <b>Cupo:</b>{" "}
+          {typeof occ === "number" ? (
+            <Tooltip>
+              <TooltipTrigger asChild>{cupoBadge}</TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                Ocupados: {occ}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            cupoBadge
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <Button
+          onClick={onInscribir}
+          disabled={sinCupo}
+          variant="outline"
+          className="w-full h-10 rounded-xl border-primary/30 text-primary hover:bg-primary/5 hover:border-primary/50 disabled:opacity-60 disabled:cursor-not-allowed"
+          title={sinCupo ? "Sin lugares disponibles" : "Inscribirme"}
+        >
+          <CheckCircle2 className="h-4 w-4 mr-2" />
+          Inscribirme
+        </Button>
+
+      </div>
+    </div>
+  );
+}
+
+function MobileRegCard({
+  r,
+  onCancel,
+  onDownload,
+}: {
+  r: PlacementRegistro;
+  onCancel: () => void;
+  onDownload: () => void;
+}) {
+  const nivelKey = getNivelAsignado(r);
+  const nivelTxt = nivelLabel(nivelKey);
+  const meta = statusMeta(r.status);
+  const { Icon } = meta;
+
+  return (
+    <div className="rounded-xl border bg-white/70 p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-medium text-sm truncate">
+            {r.exam?.codigo ?? `#${r.exam_id}`}
+          </div>
+          <div className="mt-0.5 text-[12px] text-neutral-600">
+            <b>Ref:</b>{" "}
+            <span className="break-all">{r.referencia ?? "—"}</span>
+          </div>
+        </div>
+        <span className={pillClass(meta.tone)}>
+          <Icon className="h-3.5 w-3.5" />
+          {meta.label}
+        </span>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-neutral-700">
+        <div><b>Fecha pago:</b> {r.fecha_pago ?? "—"}</div>
+        <div>
+          <b>Importe:</b>{" "}
+          {typeof r.importe_centavos === "number"
+            ? (r.importe_centavos / 100).toLocaleString("es-MX", { style: "currency", currency: "MXN" })
+            : "—"}
+        </div>
+        <div className="col-span-2">
+          <b>Nivel asignado:</b>{" "}
+          {nivelTxt === "—" ? (
+            <span className={nivelClass("—")}>—</span>
+          ) : (
+            <span className={nivelClass(nivelKey)}>{nivelTxt}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Button
+          variant="secondary"
+          onClick={onDownload}
+          disabled={!r.comprobante}
+          className="h-10 rounded-xl"
+          title={!r.comprobante ? "Sin comprobante" : ""}
+        >
+          Descargar
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={onCancel}
+          disabled={r.status !== "preinscrita"}
+          className="h-10 rounded-xl"
+          title={
+            r.status !== "preinscrita"
+              ? "Solo puedes cancelar mientras está preinscrita"
+              : ""
+          }
+        >
+          Cancelar
+        </Button>
+      </div>
+    </div>
+  );
 }

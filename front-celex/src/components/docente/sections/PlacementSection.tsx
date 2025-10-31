@@ -47,7 +47,7 @@ interface PlacementExamAsignado {
   nivel?: string;     // nivel actual del examen (opcional)
   sede?: string;
   turno?: string;
-  inscritos?: number;
+  inscritos?: number; // (del back) puede incluir PREINSCRITA+VALIDADA; en UI usaremos validados calculados
 }
 
 interface RegistroAlumno {
@@ -137,7 +137,6 @@ function normalizeNivelKey(n: string | null | undefined): string | null {
   // Soportar palabras completas como "INTRODUCTORIO", "BÁSICO 1", "INTERMEDIO 3", "AVANZADO 2"
   if (k.startsWith("INTRO")) return "INTRO";
 
-  // Intento con patrones "BASICO X", "INTERMEDIO X", "AVANZADO X"
   const basico = k.match(/^B[ÁA]SICO\s*([1-5])$/);
   if (basico) return `B${basico[1]}`;
 
@@ -147,15 +146,52 @@ function normalizeNivelKey(n: string | null | undefined): string | null {
   const avan = k.match(/^AVANZADO\s*([1-6])$/);
   if (avan) return `A${avan[1]}`;
 
-  // Si ya es una clave válida del enum
   if (k in NIVEL_LABELS) return k;
-
-  // Cualquier otra cosa no la reconocemos
   return null;
 }
 
+/* ======= Chips de color por nivel ======= */
+function nivelChipClass(nKey: string | null | undefined, { subdued = false } = {}) {
+  const base =
+    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 whitespace-nowrap";
+  const k = normalizeNivelKey(nKey ?? null);
+
+  if (!k) return `${base} bg-zinc-50 text-zinc-700 ring-zinc-200`;
+
+  const soft = subdued ? "50" : "100";
+  if (k === "INTRO") return `${base} bg-slate-${soft} text-slate-700 ring-slate-200`;
+  if (k.startsWith("B")) return `${base} bg-amber-${soft} text-amber-800 ring-amber-200`;
+  if (k.startsWith("I")) return `${base} bg-blue-${soft} text-blue-800 ring-blue-200`;
+  if (k.startsWith("A")) return `${base} bg-violet-${soft} text-violet-800 ring-violet-200`;
+
+  return `${base} bg-zinc-${soft} text-zinc-700 ring-zinc-200`;
+}
+
+function NivelBadge({
+  nKey,
+  prefix,
+  subdued,
+  locked = false,
+}: {
+  nKey: string | null | undefined;
+  prefix?: string;
+  subdued?: boolean;
+  locked?: boolean;
+}) {
+  const labelKey = normalizeNivelKey(nKey);
+  const label = labelKey ? NIVEL_LABELS[labelKey] : "Sin nivel";
+  return (
+    <span
+      className={nivelChipClass(labelKey, { subdued })}
+      title={locked ? "Nivel ya fijado en el servidor" : undefined}
+    >
+      {prefix ? <strong>{prefix}:</strong> : null} {label}
+      {locked ? " · Fijado" : ""}
+    </span>
+  );
+}
+
 // ───────────────────────────────────────────────────────────────────────────────
-// Llamadas de red autocontenidas
 async function fetchExamenesAsignados(): Promise<PlacementExamAsignado[]> {
   const token = getToken();
   if (!token) throw new Error("UNAUTHORIZED");
@@ -187,9 +223,7 @@ async function fetchRegistrosPorExamen(examId: string | number): Promise<Registr
   const API = getApiUrl();
 
   const candidates = [
-    // Admin/coord style
     `${API}/placement-exams/${examId}/registros-admin`,
-    // Docente/mis registros (si el backend los filtra por docente asignado)
     `${API}/placement-exams/${examId}/registros?scope=teacher`,
     `${API}/placement-exams/${examId}/registros`,
   ];
@@ -202,7 +236,6 @@ async function fetchRegistrosPorExamen(examId: string | number): Promise<Registr
     if (res.ok) {
       const json = await res.json();
       const items = Array.isArray(json) ? json : json.items ?? [];
-      // Normalizamos campos comunes
       return items.map((r: any) => ({
         id: r.id ?? r.registro_id ?? r.pk ?? r.uuid ?? String(Math.random()),
         alumno_nombre: r.alumno_nombre ?? r.nombre ?? r.full_name ?? r.alumno?.nombre,
@@ -228,11 +261,9 @@ async function persistNivelPorRegistro(
   const body = JSON.stringify({ nivel_idioma: nivel, nivel });
 
   const candidates: { url: string; method: "PATCH" | "PUT" | "POST" }[] = [
-    // Endpoints específicos por registro
     { url: `${API}/placement-exams/registros/${registroId}/nivel-idioma`, method: "PATCH" },
     { url: `${API}/placement-exams/registros/${registroId}`, method: "PATCH" },
     { url: `${API}/placement-exams/registros/${registroId}`, method: "PUT" },
-    // Genéricos
     { url: `${API}/registros/${registroId}/nivel-idioma`, method: "PATCH" },
     { url: `${API}/registros/${registroId}`, method: "PATCH" },
   ];
@@ -247,17 +278,37 @@ async function persistNivelPorRegistro(
       body,
     });
     if (res.ok) return true;
+
+    if (res.status === 409) {
+      let detail = "Este registro ya tiene un nivel asignado y no puede modificarse.";
+      try {
+        const j = await res.json();
+        detail = j?.detail || detail;
+      } catch {}
+      throw new Error(detail);
+    }
+
     if (res.status === 404) continue;
     if (res.status === 401) throw new Error("UNAUTHORIZED");
+
+    try {
+      const j = await res.json();
+      throw new Error(j?.detail || "Error al guardar el nivel.");
+    } catch {
+      throw new Error("Error al guardar el nivel.");
+    }
   }
   throw new Error("ENDPOINT_NO_DISPONIBLE");
 }
+
 // ───────────────────────────────────────────────────────────────────────────────
 
 export default function PlacementSection() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [data, setData] = useState<PlacementExamAsignado[]>([]);
+
+  const [validadosByExam, setValidadosByExam] = useState<Record<string, number>>({});
 
   // Sheet state
   const [open, setOpen] = useState(false);
@@ -291,6 +342,39 @@ export default function PlacementSection() {
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    if (!data || data.length === 0) return;
+    let canceled = false;
+
+    (async () => {
+      try {
+        const results = await Promise.allSettled(
+          data.map(async (ex) => {
+            const regs = await fetchRegistrosPorExamen(ex.id);
+            return [String(ex.id), regs.length] as const;
+          })
+        );
+
+        if (canceled) return;
+
+        const next: Record<string, number> = {};
+        for (const r of results) {
+          if (r.status === "fulfilled") {
+            const [id, count] = r.value;
+            next[id] = count;
+          }
+        }
+        setValidadosByExam(next);
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+
+    return () => {
+      canceled = true;
+    };
+  }, [data]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return data;
@@ -319,7 +403,6 @@ export default function PlacementSection() {
     );
   }, [registros, regFilter]);
 
-  // Abrir sheet y cargar alumnos
   const openAlumnosSheet = async (ex: PlacementExamAsignado) => {
     setExamFocus(ex);
     setOpen(true);
@@ -329,7 +412,6 @@ export default function PlacementSection() {
       setRegistros(regs);
       const initial: Record<string, string | undefined> = {};
       regs.forEach((r) => {
-        // Normalizamos a la CLAVE del enum (lo que usa el <Select value=...>)
         initial[String(r.id)] = normalizeNivelKey(r.nivel_asignado) ?? undefined;
       });
       setNivelUIByRegId(initial);
@@ -351,32 +433,45 @@ export default function PlacementSection() {
   const handleGuardarNivel = async (r: RegistroAlumno) => {
     const id = String(r.id);
     const elegido = nivelUIByRegId[id];
+    const previoKey = normalizeNivelKey(r.nivel_asignado);
+
+    if (previoKey) {
+      toast.error("Este alumno ya tiene un nivel asignado y no puede modificarse.");
+      return;
+    }
+
     if (!elegido) {
       toast.message("Selecciona un nivel antes de guardar.");
       return;
     }
+
     setSavingByRegId((p) => ({ ...p, [id]: true }));
-    const prev = r.nivel_asignado ?? null;
 
     try {
-      // Optimista (guardamos la CLAVE en el estado; para mostrar usaremos NIVEL_LABELS)
       setRegistros((rows) =>
-        rows.map((x) => (String(x.id) === id ? { ...x, nivel_asignado: elegido } : x))
+        rows.map((x) =>
+          String(x.id) === id ? { ...x, nivel_asignado: elegido } : x
+        )
       );
       await persistNivelPorRegistro(r.id, elegido);
-      toast.success("Nivel guardado.");
+      toast.success("Nivel asignado.");
     } catch (err: any) {
       console.error(err);
-      // revert
       setRegistros((rows) =>
-        rows.map((x) => (String(x.id) === id ? { ...x, nivel_asignado: prev } : x))
+        rows.map((x) =>
+          String(x.id) === id ? { ...x, nivel_asignado: r.nivel_asignado ?? null } : x
+        )
       );
+
+      const msg = String(err?.message || "");
       if (err?.message === "UNAUTHORIZED") {
         toast.error("Sesión expirada. Inicia sesión nuevamente.");
-      } else if (String(err?.message || "").startsWith("FALTA_CONFIG_API_URL")) {
+      } else if (msg.startsWith("FALTA_CONFIG_API_URL")) {
         toast.error("Configura NEXT_PUBLIC_API_URL en tu .env.local.");
+      } else if (msg.includes("ya tiene un nivel") || msg.includes("no puede modificarse") || msg.includes("conflic")) {
+        toast.info("Este registro ya estaba fijado en el servidor.");
       } else if (err?.message === "ENDPOINT_NO_DISPONIBLE") {
-        toast.info("No hay endpoint disponible. Se guardó localmente.");
+        toast.info("No hay endpoint disponible.");
       } else {
         toast.error("No se pudo guardar el nivel.");
       }
@@ -420,35 +515,36 @@ export default function PlacementSection() {
                 <TableRow>
                   <TableHead>Título</TableHead>
                   <TableHead>Fecha</TableHead>
-                  <TableHead>Modalidad</TableHead>
                   <TableHead>Idioma</TableHead>
-                  <TableHead>Nivel actual</TableHead>
-                  <TableHead>Sede/Turno</TableHead>
+                  <TableHead>Aula</TableHead>
                   <TableHead className="text-right">Inscritos</TableHead>
                   <TableHead className="text-right">Alumnos</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((ex) => (
-                  <TableRow key={ex.id}>
-                    <TableCell className="font-medium">
-                      {ex.titulo ?? `Examen #${ex.id}`}
-                    </TableCell>
-                    <TableCell>{formatDate(ex.fecha)}</TableCell>
-                    <TableCell>{ex.modalidad ?? "—"}</TableCell>
-                    <TableCell>{ex.idioma ?? "—"}</TableCell>
-                    <TableCell>{ex.nivel ?? "—"}</TableCell>
-                    <TableCell>
-                      {[ex.sede, ex.turno].filter(Boolean).join(" · ") || "—"}
-                    </TableCell>
-                    <TableCell className="text-right">{ex.inscritos ?? "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="default" onClick={() => openAlumnosSheet(ex)}>
-                        Ver alumnos
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filtered.map((ex) => {
+                  const validados = validadosByExam[String(ex.id)];
+                  return (
+                    <TableRow key={ex.id}>
+                      <TableCell className="font-medium">
+                        {ex.titulo ?? `Examen #${ex.id}`}
+                      </TableCell>
+                      <TableCell>{formatDate(ex.fecha)}</TableCell>
+                      <TableCell>{ex.idioma ?? "—"}</TableCell>
+                      <TableCell>
+                        {[ex.sede, ex.turno].filter(Boolean).join(" · ") || "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {typeof validados === "number" ? validados : "…"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="default" onClick={() => openAlumnosSheet(ex)}>
+                          Ver alumnos
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -457,7 +553,9 @@ export default function PlacementSection() {
 
       {/* Sheet de alumnos */}
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="w-full overflow-hidden p-0 sm:max-w-2xl">
+        {/* ⬇️ altura controlada y sin scroll del contenedor; el scroll vive adentro */}
+        <SheetContent className="w-full p-0 sm:max-w-2xl h-[100svh] sm:h-[85vh] overflow-hidden">
+          {/* ⬇️ importantísimo para que el hijo pueda scrollear */}
           <div className="flex h-full flex-col">
             <SheetHeader className="p-4 pb-2">
               <SheetTitle>Alumnos — {examFocus?.titulo ?? `Examen #${examFocus?.id}`}</SheetTitle>
@@ -465,6 +563,8 @@ export default function PlacementSection() {
                 Asigna el <strong>nivel a cursar</strong> para cada alumno inscrito.
               </SheetDescription>
             </SheetHeader>
+
+            {/* Filtro superior */}
             <div className="px-4 pb-2">
               <div className="flex items-center gap-2">
                 <Input
@@ -475,8 +575,11 @@ export default function PlacementSection() {
                 <Badge variant="secondary">{filteredRegistros.length}</Badge>
               </div>
             </div>
+
             <Separator />
-            <div className="flex-1">
+
+            {/* ⬇️ contenedor que permite que ScrollArea calcule bien el alto */}
+            <div className="flex-1 min-h-0">
               {regLoading ? (
                 <div className="p-4 text-sm text-neutral-500">Cargando alumnos…</div>
               ) : filteredRegistros.length === 0 ? (
@@ -484,23 +587,22 @@ export default function PlacementSection() {
                   No hay alumnos inscritos {regFilter ? "que coincidan con la búsqueda." : "."}
                 </div>
               ) : (
+                // ⬇️ el scroll ocurre aquí
                 <ScrollArea className="h-full">
-                  <div className="p-4 space-y-3">
+                  <div className="p-4 space-y-3 pr-2">
                     {filteredRegistros.map((r) => {
                       const id = String(r.id);
                       const saving = !!savingByRegId[id];
-                      const seleccionado = nivelUIByRegId[id]; // CLAVE del enum o undefined
-                      const hasChanges =
-                        (normalizeNivelKey(r.nivel_asignado) ?? undefined) !== (seleccionado ?? undefined);
 
                       const actualKey = normalizeNivelKey(r.nivel_asignado);
-                      const actualLabel = actualKey ? NIVEL_LABELS[actualKey] : null;
+                      const seleccionado = nivelUIByRegId[id];
+                      const seleccionadoKey = normalizeNivelKey(seleccionado);
+                      const hasChanges =
+                        (normalizeNivelKey(r.nivel_asignado) ?? undefined) !== (seleccionadoKey ?? undefined);
+                      const locked = !!actualKey;
 
                       return (
-                        <div
-                          key={id}
-                          className="rounded-xl border p-3"
-                        >
+                        <div key={id} className="rounded-xl border p-3">
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center justify-between gap-2">
                               <div className="min-w-0">
@@ -511,40 +613,48 @@ export default function PlacementSection() {
                                   {r.alumno_email ?? "sin-email"} · {r.alumno_boleta ?? "sin-boleta"}
                                 </div>
                               </div>
-                              <Badge variant="outline">
-                                {actualLabel ? `Actual: ${actualLabel}` : "Sin nivel"}
-                              </Badge>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <NivelBadge nKey={actualKey} prefix="" locked={locked} />
+                                {hasChanges && seleccionadoKey && (
+                                  <NivelBadge nKey={seleccionadoKey} prefix="Nuevo" subdued />
+                                )}
+                              </div>
                             </div>
 
                             <div className="mt-2 flex flex-wrap items-end gap-2">
                               <div className="grid gap-1">
                                 <Label className="text-xs text-neutral-500">Nivel a cursar</Label>
                                 <Select
-                                  value={seleccionado}
+                                  value={seleccionado ?? undefined}
                                   onValueChange={(v) =>
                                     setNivelUIByRegId((p) => ({ ...p, [id]: v }))
                                   }
-                                  disabled={saving}
+                                  disabled={saving || locked}
                                 >
                                   <SelectTrigger className="w-56">
-                                    <SelectValue placeholder="Elige nivel" />
+                                    <SelectValue placeholder={locked ? "Nivel fijado" : "Elige nivel"} />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {NIVELES.map((n) => (
-                                      <SelectItem key={n.value} value={n.value}>
+                                      <SelectItem key={n.value} value={n.value} disabled={locked}>
                                         {n.label}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
+                                {locked && (
+                                  <span className="text-[11px] text-neutral-500">
+                                    Este nivel fue asignado y ya no se puede cambiar.
+                                  </span>
+                                )}
                               </div>
 
                               <Button
                                 variant={hasChanges ? "default" : "secondary"}
                                 onClick={() => handleGuardarNivel(r)}
-                                disabled={saving || !hasChanges || !seleccionado}
+                                disabled={saving || !hasChanges || !seleccionadoKey || locked}
                               >
-                                {saving ? "Guardando…" : hasChanges ? "Guardar" : "Guardado"}
+                                {saving ? "Guardando…" : hasChanges ? "Guardar" : locked ? "Asignado" : "Guardado"}
                               </Button>
                             </div>
                           </div>
@@ -555,7 +665,9 @@ export default function PlacementSection() {
                 </ScrollArea>
               )}
             </div>
+
             <Separator />
+
             <SheetFooter className="p-3">
               <div className="text-xs text-neutral-500">
                 © {new Date().getFullYear()} CELEX · CECyT 15 "Diódoro Antúnez"
