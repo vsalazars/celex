@@ -198,7 +198,9 @@ function PrismTile({
         </div>
       )}
 
-      <div className="p-3 pb-3 h-full flex flex-col">
+
+      <div className="px-3 pt-1.5 pb-2.5 h-full flex flex-col">
+
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/80">

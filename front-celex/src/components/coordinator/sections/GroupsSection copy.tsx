@@ -1905,6 +1905,7 @@ function FormCiclo({
                     <SelectContent>
                       <SelectItem value="intensivo">Intensivo</SelectItem>
                       <SelectItem value="sabatino">Sabatino</SelectItem>
+                      <SelectItem value="semestral">Semestral</SelectItem>
                     </SelectContent>
                   </Select>
                 )}
@@ -1927,6 +1928,7 @@ function FormCiclo({
                     <SelectContent>
                       <SelectItem value="matutino">Matutino</SelectItem>
                       <SelectItem value="vespertino">Vespertino</SelectItem>
+                      <SelectItem value="mixto">Mixto</SelectItem>
                     </SelectContent>
                   </Select>
                 )}
@@ -2159,7 +2161,27 @@ function FormCiclo({
           </div>
         </Section>
 
-          {/* Inscripción */}
+        {/* Periodo del curso */}
+        <Section title="Periodo del curso">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Controller
+              control={control}
+              name="curso"
+              render={({ field }) => (
+                <DateRangePicker
+                  label=""
+                  value={field.value as DateRange}
+                  onChange={field.onChange}
+                  months={2}
+                  error={errors.curso?.to?.message || errors.curso?.from?.message}
+                />
+              )}
+            />
+          </div>
+          
+        </Section>
+
+        {/* Inscripción */}
         <Section title="Inscripción">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Controller
@@ -2178,27 +2200,7 @@ function FormCiclo({
           </div>
         
         </Section>
-        {/* Periodo del curso */}
-        <Section title="Curso">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Controller
-              control={control}
-              name="curso"
-              render={({ field }) => (
-                <DateRangePicker
-                  label="Periodo del curso"
-                  value={field.value as DateRange}
-                  onChange={field.onChange}
-                  months={2}
-                  error={errors.curso?.to?.message || errors.curso?.from?.message}
-                />
-              )}
-            />
-          </div>
-          
-        </Section>
 
-      
 
         {/* Exámenes / Colocación (opcionales) */}
         <Section title="Exámenes (opcionales)">

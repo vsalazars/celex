@@ -1,6 +1,8 @@
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import IntegrityError
+
 import os
 
 # Auth / DB
@@ -256,7 +258,7 @@ def get_ciclo(ciclo_id: int = Path(..., ge=1), db: Session = Depends(get_db)):
 )
 def create_ciclo(payload: CicloCreate, db: Session = Depends(get_db)):
     if db.query(Ciclo).filter(Ciclo.codigo == payload.codigo.strip()).first():
-        raise HTTPException(status_code=400, detail="Ya existe un ciclo con ese código")
+        raise HTTPException(status_code=400, detail="Ya existe un grupo con ese código")
 
     if payload.cupo_total < 0:
         raise HTTPException(status_code=400, detail="cupo_total no puede ser negativo")
@@ -389,10 +391,33 @@ def update_ciclo(ciclo_id: int, payload: CicloUpdate, db: Session = Depends(get_
 def delete_ciclo(ciclo_id: int, db: Session = Depends(get_db)):
     m = db.query(Ciclo).filter(Ciclo.id == ciclo_id).first()
     if not m:
-        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
-    db.delete(m)
-    db.commit()
+        raise HTTPException(status_code=404, detail="Grupo no encontrado")
+
+    # Bloqueo explícito si tiene inscripciones
+    inscritos = (
+        db.query(Inscripcion)
+        .filter(Inscripcion.ciclo_id == ciclo_id)
+        .count()
+    )
+    if inscritos > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se puede eliminar el grupo porque tiene alumnos inscritos ({inscritos}). "
+                   f"Cancela o reubica a los alumnos antes de eliminar.",
+        )
+
+    try:
+        db.delete(m)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="No se puede eliminar el grupo por restricciones de integridad. "
+                   "Verifica inscripciones u otras referencias.",
+        )
     return
+
 
 
 # ====== NUEVO: listar inscripciones del ciclo (con metadatos de archivos) ======

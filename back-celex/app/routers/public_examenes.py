@@ -1,7 +1,7 @@
 # app/routers/public_examenes.py
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, literal_column
+from sqlalchemy import and_, or_, func, literal_column, case
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime, timezone
 
@@ -157,6 +157,7 @@ def list_placement_exams_public(
     idioma_col   = _first_col(PlacementExam, ["idioma", "language", "lang"])
     fecha_col    = _first_col(PlacementExam, ["fecha", "fecha_examen", "exam_date"])
 
+    # Ventana de inscripción
     insc_ini_col = _first_col(PlacementExam, ["insc_inicio", "inscripcion_inicio", "registro_inicio", "insc_from"])
     insc_fin_col = _first_col(PlacementExam, ["insc_fin", "inscripcion_fin", "registro_fin", "insc_to"])
 
@@ -213,14 +214,32 @@ def list_placement_exams_public(
         )
         query = query.filter(or_(window_ok, upcoming_ok))
 
-    # Orden
+    # ===== ORDEN: por inicio de inscripción (más antiguo primero).
+    # Reglas:
+    #  - Primero exámenes con ventana de inscripción (insc_inicio no NULL).
+    #  - Dentro de ellos: insc_inicio ASC.
+    #  - Luego (fallback): fecha ASC para los que no tienen ventana.
+    #  - Desempate final: codigo ASC (case-insensitive).
+    order_exprs = []
+
+    if insc_ini_col is not None:
+        # Empuja NULLs (sin ventana) al final
+        order_exprs.append(
+            case(
+                (insc_ini_col.is_(None), 1),
+                else_=0
+            ).asc()
+        )
+        order_exprs.append(insc_ini_col.asc())
+
     if fecha_col is not None:
-        if codigo_col is not None:
-            query = query.order_by(fecha_col.asc(), codigo_col.asc())
-        else:
-            query = query.order_by(fecha_col.asc())
-    elif codigo_col is not None:
-        query = query.order_by(codigo_col.asc())
+        order_exprs.append(fecha_col.asc())
+
+    if codigo_col is not None:
+        order_exprs.append(func.lower(codigo_col).asc())
+
+    if order_exprs:
+        query = query.order_by(*order_exprs)
 
     total = query.count()
     pages = max(1, (total + page_size - 1) // page_size)
@@ -302,7 +321,7 @@ def list_placement_exams_public(
 
 @router.get("/placement-exams/capacity")
 def get_placement_exams_capacity(
-    ids: str = Query(..., description="CSV de IDs, p.ej. 1,9,8,10"),
+    ids: str = Query(..., description="CSV de IDs, p.ej. 1, 9, 8, 10"),
     db: Session = Depends(get_db),
 ):
     """Devuelve capacidad por lote. No requiere auth."""

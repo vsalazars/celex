@@ -735,16 +735,17 @@ export default function HeroFeatures() {
                         <div className="mt-4 space-y-3 text-sm text-neutral-700 border-t pt-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <CalendarDays className="h-4 w-4 shrink-0" /> <b>Periodo del curso</b>
-                            </div>
-                            <div className="ml-6">{d(c.curso?.from)} – {d(c.curso?.to)}</div>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
                               <CalendarDays className="h-4 w-4 shrink-0" /> <b>Inscripción</b>
                             </div>
                             <div className="ml-6">{d(c.inscripcion?.from)} – {d(c.inscripcion?.to)}</div>
                           </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <CalendarDays className="h-4 w-4 shrink-0" /> <b>Periodo del curso</b>
+                            </div>
+                            <div className="ml-6">{d(c.curso?.from)} – {d(c.curso?.to)}</div>
+                          </div>
+                          
                           <div>
                             <div className="flex items-center gap-2 mb-1">
                               <Clock3 className="h-4 w-4 shrink-0" /> <b>Horario</b>
@@ -835,6 +836,22 @@ export default function HeroFeatures() {
                         </div>
 
                         <div className="mt-4 space-y-3 text-sm text-neutral-700 border-t pt-3">
+                          
+                            {/* Inscripción */}
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <CalendarDays className="h-4 w-4 shrink-0" /> <b>Inscripción</b>
+                            </div>
+                            <div className="ml-6">
+                              {(() => {
+                                const ins = (e as any)?.inscripcion;
+                                const from = ins?.from ?? (e as any)?.insc_inicio ?? null;
+                                const to   = ins?.to   ?? (e as any)?.insc_fin    ?? null;
+                                return (from || to) ? `${d(from)} – ${d(to)}` : "—";
+                              })()}
+                            </div>
+                          </div>
+
                           <div>
                             <div className="flex items-center gap-2 mb-1">
                               <CalendarDays className="h-4 w-4 shrink-0" /> <b>Fecha del examen</b>
@@ -863,26 +880,12 @@ export default function HeroFeatures() {
                           {aula ? (
                             <div>
                               <div className="flex items-center gap-2 mb-1">
-                                <Building2 className="h-4 w-4 shrink-0" /> <b>Salón</b>
+                                <Building2 className="h-4 w-4 shrink-0" /> <b>Aula</b>
                               </div>
                               <div className="ml-6">{aula}</div>
                             </div>
                           ) : null}
-
-                          {/* Inscripción */}
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <CalendarDays className="h-4 w-4 shrink-0" /> <b>Inscripción</b>
-                            </div>
-                            <div className="ml-6">
-                              {(() => {
-                                const ins = (e as any)?.inscripcion;
-                                const from = ins?.from ?? (e as any)?.insc_inicio ?? null;
-                                const to   = ins?.to   ?? (e as any)?.insc_fin    ?? null;
-                                return (from || to) ? `${d(from)} – ${d(to)}` : "—";
-                              })()}
-                            </div>
-                          </div>
+                       
                         </div>
 
                         <div className="mt-3 h-2 w-full rounded-full bg-neutral-100 overflow-hidden" aria-hidden>

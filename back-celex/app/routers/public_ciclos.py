@@ -80,11 +80,16 @@ def list_ciclos_abiertos(
     pages = max(1, (total + page_size - 1) // page_size)
     page = min(page, pages)
 
+    # ==== ORDEN PRINCIPAL: inicio de inscripción ASC (más antiguos primero)
+    # Desempate: codigo ASC (case-insensitive)
     rows: List[Ciclo] = (
-        query.order_by(getattr(Ciclo, "codigo"))
-             .offset((page - 1) * page_size)
-             .limit(page_size)
-             .all()
+        query.order_by(
+            insc_ini_col.asc(),
+            func.lower(getattr(Ciclo, "codigo")).asc(),
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
     )
 
     # Estados que consideramos "ocupando lugar"

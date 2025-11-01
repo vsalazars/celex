@@ -46,8 +46,8 @@ export default function ReportsSection() {
       <Card className="shadow-sm">
         <CardContent className="p-4 md:p-6 space-y-4">
           <div className="flex flex-wrap gap-2">
-            {tabBtn("alumnos", "Alumnos inscritos", ClipboardList)}
-            {tabBtn("pagos", "Pagos", CreditCard)}
+            {tabBtn("alumnos", "Alumnos Inscritos", ClipboardList)}
+            {tabBtn("pagos", "Pagos de Cursos", CreditCard)}
             {tabBtn("pagos_examen", "Pagos Examen de Colocación", ReceiptText)}
             {tabBtn("encuesta", "Encuesta", BarChart3)}
             {tabBtn("desempeno", "Desempeño Docente", GraduationCap)}
